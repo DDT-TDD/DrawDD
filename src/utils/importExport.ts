@@ -1,0 +1,1036 @@
+import JSZip from 'jszip';
+import type { DrawddDocument, XMindSheet, XMindTopic, MindmapNode } from '../types';
+import type { Graph } from '@antv/x6';
+import { applyMindmapLayout } from './layout';
+
+// ============ XMind Import ============
+
+export async function importXMind(file: File): Promise<MindmapNode> {
+  const zip = new JSZip();
+  const contents = await zip.loadAsync(file);
+
+  const fileList = Object.keys(contents.files);
+  const findBySuffix = (re: RegExp) => fileList.find((p) => re.test(p));
+  
+  // Try XMind 8+ format (content.json)
+  let contentPath = findBySuffix(/(^|\/|\\)content\.json$/i);
+  let contentFile = contentPath ? contents.file(contentPath) : contents.file('content.json');
+  if (contentFile) {
+    try {
+      const contentText = await contentFile.async('string');
+      const parsed = JSON.parse(contentText.replace(/^\uFEFF/, ''));
+      const sheets: XMindSheet[] = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.sheets)
+          ? parsed.sheets
+          : [];
+
+      const rootTopic = sheets?.[0]?.rootTopic;
+      if (rootTopic) {
+        return convertXMindTopic(rootTopic);
+      }
+    } catch (e) {
+      console.warn('Failed to parse XMind JSON format:', e);
+    }
+  }
+  
+  // Try legacy XMind format (content.xml)
+  contentPath = findBySuffix(/(^|\/|\\)content\.xml$/i);
+  contentFile = contentPath ? contents.file(contentPath) : contents.file('content.xml');
+  if (contentFile) {
+    try {
+      const xmlText = await contentFile.async('string');
+      return parseXMindXML(xmlText);
+    } catch (e) {
+      console.warn('Failed to parse XMind XML format:', e);
+    }
+  }
+  
+  // Try manifest.json approach (XMind 2020+)
+  const manifestPath = findBySuffix(/(^|\/|\\)manifest\.json$/i);
+  const manifestFile = manifestPath ? contents.file(manifestPath) : contents.file('manifest.json');
+  if (manifestFile) {
+    try {
+      const manifestText = await manifestFile.async('string');
+      const manifest = JSON.parse(manifestText.replace(/^\uFEFF/, ''));
+      
+      // Look for content file in manifest
+      const entriesRaw = manifest?.['file-entries'];
+      const entries = Array.isArray(entriesRaw)
+        ? entriesRaw
+        : entriesRaw && typeof entriesRaw === 'object'
+          ? Object.values(entriesRaw)
+          : [];
+      for (const entry of entries as any[]) {
+        const fullPath: string | undefined = entry?.['full-path'] || entry?.fullPath;
+        if (fullPath && /content\.json$/i.test(fullPath)) {
+          const actualContentFile = contents.file(fullPath);
+          if (actualContentFile) {
+            const contentText = await actualContentFile.async('string');
+            const parsed = JSON.parse(contentText.replace(/^\uFEFF/, ''));
+            const sheets: XMindSheet[] = Array.isArray(parsed)
+              ? parsed
+              : Array.isArray(parsed?.sheets)
+                ? parsed.sheets
+                : [];
+            const rootTopic = sheets?.[0]?.rootTopic;
+            if (rootTopic) return convertXMindTopic(rootTopic);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse XMind manifest:', e);
+    }
+  }
+  
+  // List all files for debugging
+  console.log('XMind files found:', fileList);
+
+  // Broad fallback: try to locate any JSON/XML that looks like XMind content
+  for (const path of fileList) {
+    if (!/\.json$/i.test(path)) continue;
+    try {
+      const f = contents.file(path);
+      if (!f) continue;
+      const text = await f.async('string');
+      const parsed = JSON.parse(text.replace(/^\uFEFF/, ''));
+      const rootTopic = extractRootTopic(parsed);
+      if (rootTopic) return convertXMindTopic(rootTopic);
+    } catch {
+      // ignore and continue
+    }
+  }
+
+  for (const path of fileList) {
+    if (!/\.xml$/i.test(path)) continue;
+    try {
+      const f = contents.file(path);
+      if (!f) continue;
+      const text = await f.async('string');
+      // Heuristic: try parsing as legacy XMind XML
+      const node = parseXMindXML(text);
+      if (node) return node;
+    } catch {
+      // ignore and continue
+    }
+  }
+  
+  throw new Error('Invalid or unsupported XMind file format. Files found: ' + fileList.join(', '));
+}
+
+function extractRootTopic(parsed: any): any | null {
+  if (!parsed) return null;
+  if (Array.isArray(parsed)) {
+    if (parsed[0]?.rootTopic) return parsed[0].rootTopic;
+    if (parsed[0]?.sheet?.rootTopic) return parsed[0].sheet.rootTopic;
+    return null;
+  }
+  if (Array.isArray(parsed.sheets)) {
+    if (parsed.sheets[0]?.rootTopic) return parsed.sheets[0].rootTopic;
+  }
+  if (parsed.rootTopic) return parsed.rootTopic;
+  if (parsed.sheet?.rootTopic) return parsed.sheet.rootTopic;
+  if (parsed.content?.rootTopic) return parsed.content.rootTopic;
+  return null;
+}
+
+function parseXMindXML(xmlText: string): MindmapNode {
+  const parser = new DOMParser();
+  const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+
+  // Detect parse errors
+  const parseError = xmlDoc.querySelector('parsererror');
+  if (parseError) {
+    throw new Error('Failed to parse XMind XML content');
+  }
+  
+  // Find the root topic
+  const rootTopic =
+    xmlDoc.querySelector('sheet > topic') ||
+    xmlDoc.querySelector('sheet topic') ||
+    xmlDoc.querySelector('topic');
+  if (!rootTopic) {
+    throw new Error('No root topic found in XMind XML');
+  }
+  
+  return convertXMindXMLTopic(rootTopic);
+}
+
+function convertXMindXMLTopic(element: Element): MindmapNode {
+  const titleElement = element.querySelector(':scope > title');
+  const topic = titleElement?.textContent || 'Untitled';
+  
+  const node: MindmapNode = {
+    id: element.getAttribute('id') || (globalThis.crypto?.randomUUID?.() ?? String(Date.now())),
+    topic: topic,
+    expanded: true,
+  };
+  
+  // Find children topics
+  const childrenContainer = element.querySelector(':scope > children');
+  if (childrenContainer) {
+    const topics = childrenContainer.querySelectorAll(':scope > topics > topic');
+    if (topics.length > 0) {
+      node.children = Array.from(topics).map(convertXMindXMLTopic);
+    }
+  }
+  
+  return node;
+}
+
+function convertXMindTopic(topic: any): MindmapNode {
+  const node: MindmapNode = {
+    id: topic?.id || (globalThis.crypto?.randomUUID?.() ?? String(Date.now())),
+    topic: (typeof topic?.title === 'string'
+      ? topic.title
+      : typeof topic?.title?.text === 'string'
+        ? topic.title.text
+        : typeof topic?.topic === 'string'
+          ? topic.topic
+          : 'Untitled'),
+    expanded: true,
+  };
+  
+  const attached: unknown = topic.children?.attached;
+  if (Array.isArray(attached) && attached.length > 0) {
+    const first = attached[0] as any;
+    // Some XMind variants wrap topics: { topics: XMindTopic[] }
+    if (first && Array.isArray(first.topics)) {
+      node.children = (attached as any[])
+        .flatMap((a) => (Array.isArray(a?.topics) ? a.topics : []))
+        .map(convertXMindTopic);
+    } else {
+      node.children = (attached as XMindTopic[]).map(convertXMindTopic);
+    }
+  }
+
+  // Other known variants: children.topics or children is an array
+  if (!node.children) {
+    const topics = topic?.children?.topics;
+    if (Array.isArray(topics)) {
+      node.children = topics.map(convertXMindTopic);
+    } else if (Array.isArray(topic?.children)) {
+      node.children = topic.children.map(convertXMindTopic);
+    }
+  }
+  
+  return node;
+}
+
+// ============ MindManager Import ============
+
+export async function importMindManager(file: File): Promise<MindmapNode> {
+  const zip = new JSZip();
+  const contents = await zip.loadAsync(file);
+  
+  // MindManager uses Document.xml
+  const documentFile = contents.file('Document.xml');
+  if (!documentFile) {
+    throw new Error('Invalid MindManager file: Document.xml not found');
+  }
+  
+  const xmlText = await documentFile.async('string');
+  const parser = new DOMParser();
+  const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+  
+  // Find the central topic
+  const centralTopic = xmlDoc.querySelector('OneTopic > Topic');
+  if (!centralTopic) {
+    throw new Error('No central topic found in MindManager file');
+  }
+  
+  return convertMindManagerNode(centralTopic);
+}
+
+function convertMindManagerNode(element: Element): MindmapNode {
+  const textElement = element.querySelector(':scope > Text');
+  const topic = textElement?.getAttribute('PlainText') || 'Untitled';
+  
+  const node: MindmapNode = {
+    id: element.getAttribute('OId') || crypto.randomUUID(),
+    topic: topic,
+    expanded: true,
+  };
+  
+  const subTopics = element.querySelectorAll(':scope > SubTopics > Topic');
+  if (subTopics.length > 0) {
+    node.children = Array.from(subTopics).map(convertMindManagerNode);
+  }
+  
+  return node;
+}
+
+// ============ JSON Import/Export ============
+
+export function exportToJSON(
+  graph: Graph,
+  settings?: {
+    canvasBackground?: { type: 'color' | 'image'; color: string; imageUrl?: string };
+    showGrid?: boolean;
+    mindmapDirection?: 'right' | 'left' | 'both' | 'top' | 'bottom' | 'radial';
+    timelineDirection?: 'horizontal' | 'vertical';
+  }
+): DrawddDocument {
+  const cells = graph.toJSON();
+  const nodes = cells.cells?.filter((c: { shape?: string }) => c.shape !== 'edge') || [];
+  const edges = cells.cells?.filter((c: { shape?: string }) => c.shape === 'edge') || [];
+  
+  return {
+    version: '1.0.0',
+    type: 'flowchart',
+    nodes,
+    edges,
+    metadata: {
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    settings: settings ? {
+      canvasBackground: settings.canvasBackground,
+      showGrid: settings.showGrid,
+      mindmapDirection: settings.mindmapDirection,
+      timelineDirection: settings.timelineDirection,
+    } : undefined,
+  };
+}
+
+export function importFromJSON(
+  graph: Graph,
+  doc: DrawddDocument,
+  callbacks?: {
+    setCanvasBackground?: (bg: { type: 'color' | 'image'; color: string; imageUrl?: string }) => void;
+    setShowGrid?: (show: boolean) => void;
+    setMindmapDirection?: (direction: 'right' | 'left' | 'both' | 'top' | 'bottom' | 'radial') => void;
+    setTimelineDirection?: (direction: 'horizontal' | 'vertical') => void;
+  }
+): void {
+  graph.clearCells();
+  
+  const cells = [...doc.nodes, ...doc.edges];
+  graph.fromJSON({ cells });
+
+  // Restore image URLs and decorations from node data
+  graph.getNodes().forEach(node => {
+    const data = node.getData() as any;
+    
+    // Restore image URL
+    if (data?.imageUrl && node.shape === 'image') {
+      node.setAttrs({
+        image: { xlinkHref: data.imageUrl }
+      });
+    }
+    
+    // Restore emoji decorations in label
+    if (data?.prefixDecoration || data?.suffixDecoration) {
+      const currentLabel = node.getAttrs().label?.text as string || '';
+      // Remove any existing decorations
+      const baseLabel = String(currentLabel)
+        .replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}]+ /gu, '')
+        .replace(/^[🔢#@★⭐🚩🏳️🏴🏁⚑✅❌⚠️💡🎯📌🚀💎🏆]+\s*/g, '')
+        .replace(/ [\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}]+$/gu, '')
+        .replace(/\s+[🚩🏁🏳️🏴⚑✓×⭐🌟💫✨🔆🌠⚡]+$/g, '');
+      const newLabel = `${data.prefixDecoration || ''}${data.prefixDecoration ? ' ' : ''}${baseLabel}${data.suffixDecoration ? ' ' : ''}${data.suffixDecoration || ''}`;
+      node.setAttrs({
+        label: { text: newLabel }
+      });
+    }
+  });
+
+  // Restore settings if provided
+  if (doc.settings) {
+    if (doc.settings.canvasBackground && callbacks?.setCanvasBackground) {
+      callbacks.setCanvasBackground(doc.settings.canvasBackground);
+      // Apply background to graph
+      graph.drawBackground({ color: doc.settings.canvasBackground.color });
+    }
+    if (doc.settings.showGrid !== undefined && callbacks?.setShowGrid) {
+      callbacks.setShowGrid(doc.settings.showGrid);
+      // Apply grid to graph
+      if (doc.settings.showGrid) {
+        graph.drawGrid();
+      } else {
+        graph.clearGrid();
+      }
+    }
+    if (doc.settings.mindmapDirection && callbacks?.setMindmapDirection) {
+      callbacks.setMindmapDirection(doc.settings.mindmapDirection);
+    }
+    if (doc.settings.timelineDirection && callbacks?.setTimelineDirection) {
+      callbacks.setTimelineDirection(doc.settings.timelineDirection);
+    }
+  }
+
+  normalizeMindmapAfterImport(graph);
+}
+
+function normalizeMindmapAfterImport(graph: Graph) {
+  const mindmapNodes = graph.getNodes().filter((n) => (n.getData() as any)?.isMindmap === true);
+  if (mindmapNodes.length === 0) return;
+
+  const createMindmapPorts = () => ({
+    groups: {
+      left: { position: 'left', attrs: { circle: { r: 5, magnet: true, stroke: '#5F95FF', strokeWidth: 2, fill: '#fff' } } },
+      right: { position: 'right', attrs: { circle: { r: 5, magnet: true, stroke: '#5F95FF', strokeWidth: 2, fill: '#fff' } } },
+      top: { position: 'top', attrs: { circle: { r: 5, magnet: true, stroke: '#5F95FF', strokeWidth: 2, fill: '#fff' } } },
+      bottom: { position: 'bottom', attrs: { circle: { r: 5, magnet: true, stroke: '#5F95FF', strokeWidth: 2, fill: '#fff' } } },
+    },
+    items: [
+      { group: 'left', id: 'left' },
+      { group: 'right', id: 'right' },
+      { group: 'top', id: 'top' },
+      { group: 'bottom', id: 'bottom' },
+    ],
+  });
+
+  // Ensure ports exist on mindmap nodes (older files may not have them)
+  for (const node of mindmapNodes) {
+    const ports = (node as any).getPorts?.();
+    if (!ports || ports.length === 0) {
+      (node as any).prop?.('ports', createMindmapPorts());
+    }
+  }
+
+  // Ensure mindmap edges attach to ports (point connections)
+  for (const edge of graph.getEdges()) {
+    const s = edge.getSource() as any;
+    const t = edge.getTarget() as any;
+    const sCell = s?.cell;
+    const tCell = t?.cell;
+    if (!sCell || !tCell) continue;
+
+    const sNode = graph.getCellById(sCell) as any;
+    const tNode = graph.getCellById(tCell) as any;
+    const sIsMindmap = sNode?.isNode?.() && (sNode.getData?.() as any)?.isMindmap === true;
+    const tIsMindmap = tNode?.isNode?.() && (tNode.getData?.() as any)?.isMindmap === true;
+    if (!sIsMindmap || !tIsMindmap) continue;
+
+    if (!s.port || !t.port) {
+      const sb = sNode.getBBox();
+      const tb = tNode.getBBox();
+      const dx = (tb.x + tb.width / 2) - (sb.x + sb.width / 2);
+      const dy = (tb.y + tb.height / 2) - (sb.y + sb.height / 2);
+      if (Math.abs(dx) >= Math.abs(dy)) {
+        edge.setSource({ cell: sCell, port: dx >= 0 ? 'right' : 'left' });
+        edge.setTarget({ cell: tCell, port: dx >= 0 ? 'left' : 'right' });
+      } else {
+        edge.setSource({ cell: sCell, port: dy >= 0 ? 'bottom' : 'top' });
+        edge.setTarget({ cell: tCell, port: dy >= 0 ? 'top' : 'bottom' });
+      }
+    }
+
+    // Avoid manhattan detours on mindmaps (older saves)
+    const router = (edge as any).getRouter?.();
+    if (!router || router?.name === 'manhattan') {
+      (edge as any).setRouter?.({ name: 'normal' });
+    }
+  }
+}
+
+// ============ Mindmap to Graph Conversion ============
+
+export function mindmapToGraph(graph: Graph, root: MindmapNode): void {
+  graph.clearCells();
+
+  const createMindmapPorts = () => ({
+    groups: {
+      left: { position: 'left', attrs: { circle: { r: 5, magnet: true, stroke: '#5F95FF', strokeWidth: 2, fill: '#fff' } } },
+      right: { position: 'right', attrs: { circle: { r: 5, magnet: true, stroke: '#5F95FF', strokeWidth: 2, fill: '#fff' } } },
+      top: { position: 'top', attrs: { circle: { r: 5, magnet: true, stroke: '#5F95FF', strokeWidth: 2, fill: '#fff' } } },
+      bottom: { position: 'bottom', attrs: { circle: { r: 5, magnet: true, stroke: '#5F95FF', strokeWidth: 2, fill: '#fff' } } },
+    },
+    items: [
+      { group: 'left', id: 'left' },
+      { group: 'right', id: 'right' },
+      { group: 'top', id: 'top' },
+      { group: 'bottom', id: 'bottom' },
+    ],
+  });
+  
+  const orderRef = { value: 1 };
+
+  // Create root node at origin
+  const rootNode = graph.addNode({
+    id: root.id,
+    x: 0,
+    y: 0,
+    width: 160,
+    height: 80,
+    attrs: {
+      body: {
+        fill: '#1976d2',
+        stroke: '#0d47a1',
+        strokeWidth: 2,
+        rx: 10,
+        ry: 10,
+      },
+      label: {
+        text: root.topic,
+        fill: '#ffffff',
+        fontSize: 16,
+        fontWeight: 'bold',
+      },
+    },
+    data: { isMindmap: true, level: 0, mmOrder: orderRef.value++ },
+    ports: createMindmapPorts(),
+  });
+  
+  // Create all children nodes and edges (recursively)
+  if (root.children) {
+    createMindmapNodes(graph, rootNode.id, root.children, 1, orderRef);
+  }
+  
+  // Apply proper layout to prevent overlap
+  applyMindmapLayout(graph, 'both', rootNode);
+  graph.centerContent();
+}
+
+function createMindmapNodes(
+  graph: Graph,
+  parentId: string,
+  children: MindmapNode[],
+  level: number,
+  orderRef: { value: number }
+): void {
+  const createMindmapPorts = () => ({
+    groups: {
+      left: { position: 'left', attrs: { circle: { r: 5, magnet: true, stroke: '#5F95FF', strokeWidth: 2, fill: '#fff' } } },
+      right: { position: 'right', attrs: { circle: { r: 5, magnet: true, stroke: '#5F95FF', strokeWidth: 2, fill: '#fff' } } },
+      top: { position: 'top', attrs: { circle: { r: 5, magnet: true, stroke: '#5F95FF', strokeWidth: 2, fill: '#fff' } } },
+      bottom: { position: 'bottom', attrs: { circle: { r: 5, magnet: true, stroke: '#5F95FF', strokeWidth: 2, fill: '#fff' } } },
+    },
+    items: [
+      { group: 'left', id: 'left' },
+      { group: 'right', id: 'right' },
+      { group: 'top', id: 'top' },
+      { group: 'bottom', id: 'bottom' },
+    ],
+  });
+
+  const colors = [
+    { fill: '#42a5f5', stroke: '#1e88e5' },
+    { fill: '#66bb6a', stroke: '#43a047' },
+    { fill: '#ffa726', stroke: '#fb8c00' },
+    { fill: '#ab47bc', stroke: '#8e24aa' },
+    { fill: '#26c6da', stroke: '#00acc1' },
+  ];
+  
+  children.forEach((child, index) => {
+    const color = colors[index % colors.length];
+    const width = Math.max(100, 140 - level * 20);
+    const height = Math.max(35, 50 - level * 5);
+    
+    // Create node at (0,0) - layout will position it
+    const node = graph.addNode({
+      id: child.id,
+      x: 0,
+      y: 0,
+      width,
+      height,
+      attrs: {
+        body: {
+          fill: color.fill,
+          stroke: color.stroke,
+          strokeWidth: 2,
+          rx: 8,
+          ry: 8,
+        },
+        label: {
+          text: child.topic,
+          fill: level > 1 ? '#333333' : '#ffffff',
+          fontSize: Math.max(11, 14 - level),
+        },
+      },
+      data: { isMindmap: true, level, mmOrder: orderRef.value++ },
+      ports: createMindmapPorts(),
+    });
+    
+    // Add edge from parent with straight connector to reduce overlap
+    graph.addEdge({
+      source: parentId,
+      target: node.id,
+      attrs: {
+        line: {
+          stroke: color.stroke,
+          strokeWidth: 2,
+          targetMarker: null,
+        },
+      },
+      connector: { name: 'normal' },
+      router: { name: 'normal' },
+    });
+    
+    // Recursively create grandchildren
+    if (child.children && child.children.length > 0) {
+      createMindmapNodes(graph, node.id, child.children, level + 1, orderRef);
+    }
+  });
+}
+
+// ============ KityMinder Import ============
+
+interface KityMinderNode {
+  data: {
+    id?: string;
+    text?: string;
+    created?: number;
+    expandState?: string;
+    priority?: number;
+    progress?: number;
+    note?: string;
+    hyperlink?: string;
+    image?: string;
+  };
+  children?: KityMinderNode[];
+}
+
+interface KityMinderData {
+  root: KityMinderNode;
+  template?: string;
+  theme?: string;
+  version?: string;
+}
+
+export async function importKityMinder(file: File): Promise<MindmapNode> {
+  const text = await file.text();
+  
+  try {
+    const data: KityMinderData = JSON.parse(text);
+    
+    if (!data.root) {
+      throw new Error('Invalid KityMinder file: no root node found');
+    }
+    
+    return convertKityMinderNode(data.root);
+  } catch (e) {
+    console.error('KityMinder parse error:', e);
+    throw new Error('Failed to parse KityMinder file. Make sure it is a valid .km JSON file.');
+  }
+}
+
+function convertKityMinderNode(node: KityMinderNode): MindmapNode {
+  const result: MindmapNode = {
+    id: node.data?.id || crypto.randomUUID(),
+    topic: node.data?.text || 'Untitled',
+    expanded: node.data?.expandState !== 'collapse',
+  };
+  
+  if (node.children && node.children.length > 0) {
+    result.children = node.children.map(convertKityMinderNode);
+  }
+  
+  return result;
+}
+
+// ============ FreeMind Import ============
+
+export async function importFreeMind(file: File): Promise<MindmapNode> {
+  const text = await file.text();
+  const parser = new DOMParser();
+  const xmlDoc = parser.parseFromString(text, 'text/xml');
+  
+  const rootNode = xmlDoc.querySelector('map > node');
+  if (!rootNode) {
+    throw new Error('Invalid FreeMind file: no root node found');
+  }
+  
+  return convertFreeMindNode(rootNode);
+}
+
+function convertFreeMindNode(element: Element): MindmapNode {
+  const text = element.getAttribute('TEXT') || 'Untitled';
+  
+  const node: MindmapNode = {
+    id: element.getAttribute('ID') || crypto.randomUUID(),
+    topic: text,
+    expanded: element.getAttribute('FOLDED') !== 'true',
+  };
+  
+  const children = element.querySelectorAll(':scope > node');
+  if (children.length > 0) {
+    node.children = Array.from(children).map(convertFreeMindNode);
+  }
+  
+  return node;
+}
+
+// ============ Visio Import ============
+
+interface VisioShape {
+  id: string;
+  name: string;
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  isEdge: boolean;
+  fromNode?: string;
+  toNode?: string;
+  fillColor?: string;
+  lineColor?: string;
+}
+
+interface VisioData {
+  shapes: VisioShape[];
+  edges: VisioShape[];
+}
+
+export async function importVisio(file: File): Promise<VisioData> {
+  const zip = new JSZip();
+  const contents = await zip.loadAsync(file);
+  
+  // Debug: log all files
+  const fileList = Object.keys(contents.files);
+  console.log('Visio files found:', fileList);
+  
+  // Parse page1.xml (primary page)
+  const pageFile = contents.file('visio/pages/page1.xml');
+  if (!pageFile) {
+    throw new Error('Invalid Visio file: page1.xml not found. Files: ' + fileList.join(', '));
+  }
+  
+  const pageXml = await pageFile.async('string');
+  const parser = new DOMParser();
+  const pageDoc = parser.parseFromString(pageXml, 'text/xml');
+  
+  const shapes: VisioShape[] = [];
+  const edges: VisioShape[] = [];
+  
+  // Parse shapes
+  const shapeElements = pageDoc.querySelectorAll('Shape');
+  
+  shapeElements.forEach((shape) => {
+    const id = shape.getAttribute('ID') || crypto.randomUUID();
+    const name = shape.getAttribute('Name') || shape.getAttribute('NameU') || '';
+    
+    // Get text content
+    const textEl = shape.querySelector('Text');
+    const text = textEl?.textContent?.trim() || name || 'Shape';
+    
+    // Get geometry
+    let x = 100, y = 100, width = 100, height = 60;
+    
+    const pinX = shape.querySelector('Cell[N="PinX"]');
+    const pinY = shape.querySelector('Cell[N="PinY"]');
+    const widthCell = shape.querySelector('Cell[N="Width"]');
+    const heightCell = shape.querySelector('Cell[N="Height"]');
+    
+    if (pinX) x = parseFloat(pinX.getAttribute('V') || '0') * 96; // Convert inches to pixels
+    if (pinY) y = parseFloat(pinY.getAttribute('V') || '0') * 96;
+    if (widthCell) width = parseFloat(widthCell.getAttribute('V') || '1') * 96;
+    if (heightCell) height = parseFloat(heightCell.getAttribute('V') || '1') * 96;
+    
+    // Get colors
+    let fillColor: string | undefined;
+    let lineColor: string | undefined;
+    
+    const fillFgnd = shape.querySelector('Cell[N="FillForegnd"]');
+    const lineColorCell = shape.querySelector('Cell[N="LineColor"]');
+    
+    if (fillFgnd?.getAttribute('V')) {
+      const colorVal = fillFgnd.getAttribute('V');
+      if (colorVal && colorVal.startsWith('#')) {
+        fillColor = colorVal;
+      }
+    }
+    if (lineColorCell?.getAttribute('V')) {
+      const colorVal = lineColorCell.getAttribute('V');
+      if (colorVal && colorVal.startsWith('#')) {
+        lineColor = colorVal;
+      }
+    }
+    
+    // Check if it's a connector/edge
+    const beginX = shape.querySelector('Cell[N="BeginX"]');
+    const endX = shape.querySelector('Cell[N="EndX"]');
+    const connects = shape.querySelectorAll('Connect');
+    
+    const isEdge = (beginX && endX) || connects.length >= 2;
+    
+    if (isEdge) {
+      let fromNode: string | undefined;
+      let toNode: string | undefined;
+      
+      connects.forEach((conn) => {
+        const toSheet = conn.getAttribute('ToSheet');
+        const fromCell = conn.getAttribute('FromCell');
+        
+        if (fromCell === 'BeginX' && toSheet) {
+          fromNode = toSheet;
+        } else if (fromCell === 'EndX' && toSheet) {
+          toNode = toSheet;
+        }
+      });
+      
+      edges.push({
+        id,
+        name,
+        text,
+        x, y, width, height,
+        isEdge: true,
+        fromNode,
+        toNode,
+        fillColor,
+        lineColor,
+      });
+    } else {
+      shapes.push({
+        id,
+        name,
+        text,
+        x, y, width, height,
+        isEdge: false,
+        fillColor,
+        lineColor,
+      });
+    }
+  });
+  
+  return { shapes, edges };
+}
+
+export function visioToGraph(graph: Graph, data: VisioData): void {
+  graph.clearCells();
+  
+  // Calculate bounding box to normalize positions
+  let minY = Infinity;
+  let maxY = -Infinity;
+  
+  data.shapes.forEach((shape) => {
+    if (shape.y < minY) minY = shape.y;
+    if (shape.y > maxY) maxY = shape.y;
+  });
+  
+  const pageHeight = maxY - minY + 200;
+  
+  // Create nodes
+  data.shapes.forEach((shape) => {
+    // Flip Y axis (Visio uses bottom-left origin)
+    const flippedY = pageHeight - (shape.y - minY);
+    
+    graph.addNode({
+      id: shape.id,
+      x: shape.x - shape.width / 2,
+      y: flippedY - shape.height / 2,
+      width: Math.max(60, shape.width),
+      height: Math.max(40, shape.height),
+      shape: 'rect',
+      attrs: {
+        body: {
+          fill: shape.fillColor || '#ffffff',
+          stroke: shape.lineColor || '#333333',
+          strokeWidth: 1,
+          rx: 4,
+          ry: 4,
+        },
+        label: {
+          text: shape.text,
+          fill: '#333333',
+          fontSize: 12,
+        },
+      },
+    });
+  });
+  
+  // Create edges
+  data.edges.forEach((edge) => {
+    if (edge.fromNode && edge.toNode) {
+      // Check if both nodes exist
+      const sourceExists = data.shapes.some(s => s.id === edge.fromNode);
+      const targetExists = data.shapes.some(s => s.id === edge.toNode);
+      
+      if (sourceExists && targetExists) {
+        graph.addEdge({
+          id: edge.id,
+          source: edge.fromNode,
+          target: edge.toNode,
+          attrs: {
+            line: {
+              stroke: edge.lineColor || '#333333',
+              strokeWidth: 1,
+              targetMarker: {
+                name: 'block',
+                size: 6,
+              },
+            },
+          },
+          labels: edge.text ? [{
+            attrs: { label: { text: edge.text, fill: '#333' } },
+          }] : [],
+        });
+      }
+    }
+  });
+}
+
+// ============ HTML Export ============
+
+export function exportToHTML(graph: Graph, settings?: {
+  canvasBackground?: { type: 'color' | 'image'; color: string; imageUrl?: string };
+  title?: string;
+}): string {
+  // Get SVG content
+  let svgContent = '';
+  graph.toSVG((svg: string) => {
+    svgContent = svg;
+  });
+
+  const backgroundColor = settings?.canvasBackground?.color || '#ffffff';
+  const title = settings?.title || 'DRAWDD Diagram';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${title}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: ${backgroundColor};
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        header {
+            background: #fff;
+            border-bottom: 1px solid #e0e0e0;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            font-size: 1.5rem;
+            color: #333;
+            font-weight: 600;
+        }
+        main {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            overflow: auto;
+        }
+        .diagram-container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            padding: 2rem;
+            max-width: 100%;
+            max-height: 100%;
+        }
+        svg {
+            max-width: 100%;
+            height: auto;
+            display: block;
+        }
+        footer {
+            background: #fff;
+            border-top: 1px solid #e0e0e0;
+            padding: 1rem 2rem;
+            text-align: center;
+            color: #666;
+            font-size: 0.875rem;
+        }
+        .controls {
+            margin-top: 1rem;
+            text-align: center;
+        }
+        button {
+            background: #1976d2;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            margin: 0 0.25rem;
+        }
+        button:hover {
+            background: #1565c0;
+        }
+        @media print {
+            header, footer, .controls {
+                display: none;
+            }
+            main {
+                padding: 0;
+            }
+            .diagram-container {
+                box-shadow: none;
+                padding: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>${title}</h1>
+    </header>
+    <main>
+        <div class="diagram-container">
+            ${svgContent}
+            <div class="controls">
+                <button onclick="window.print()">🖨️ Print</button>
+                <button onclick="downloadSVG()">💾 Download SVG</button>
+                <button onclick="downloadPNG()">📷 Download PNG</button>
+            </div>
+        </div>
+    </main>
+    <footer>
+        <p>Created with DRAWDD - Open Source Diagramming Tool</p>
+        <p>Exported on ${new Date().toLocaleString()}</p>
+    </footer>
+    <script>
+        function downloadSVG() {
+            const svg = document.querySelector('svg');
+            const serializer = new XMLSerializer();
+            const svgString = serializer.serializeToString(svg);
+            const blob = new Blob([svgString], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'diagram.svg';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function downloadPNG() {
+            const svg = document.querySelector('svg');
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const svgData = new XMLSerializer().serializeToString(svg);
+            const img = new Image();
+            
+            img.onload = function() {
+                canvas.width = img.width * 2;
+                canvas.height = img.height * 2;
+                ctx.scale(2, 2);
+                ctx.fillStyle = '${backgroundColor}';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0);
+                canvas.toBlob(function(blob) {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'diagram.png';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                });
+            };
+            
+            img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+        }
+    </script>
+</body>
+</html>`;
+}
+

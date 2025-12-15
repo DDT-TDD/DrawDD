@@ -1,0 +1,166 @@
+@import "tailwindcss";
+
+/* Enable class-based dark mode for Tailwind v4 */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  /* Clean, standard font stack */
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  line-height: 1.6;
+  font-weight: 400;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  
+  /* Light theme colors */
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f1f5f9;
+  --text-primary: #1e293b;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --border-color: #e2e8f0;
+  --border-dark: #cbd5e1;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+}
+
+.dark {
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --border-color: #334155;
+  --border-dark: #475569;
+  --accent: #60a5fa;
+  --accent-hover: #3b82f6;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Dark mode styles */
+.dark .x6-graph {
+  background-color: #1e293b !important;
+}
+
+.dark .x6-graph-grid-dot {
+  fill: #475569 !important;
+}
+
+.dark .x6-widget-minimap {
+  background-color: #1e293b;
+  border-color: #475569;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+
+/* Menu z-index layers */
+.menu-bar {
+  z-index: 100;
+  position: relative;
+}
+
+.menu-dropdown {
+  z-index: 1000;
+}
+
+/* Fix dialog overlays */
+.dialog-overlay {
+  z-index: 9999;
+}
+
+/* Ensure proper stacking */
+.toolbar {
+  z-index: 50;
+  position: relative;
+}
+
+.sidebar {
+  z-index: 40;
+}
+
+.canvas-container {
+  z-index: 10;
+}
+
+/* Improved button styles for accessibility */
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Menu bar styles */
+.menu-bar {
+  z-index: 100;
+  position: relative;
+}
+
+.menu-dropdown {
+  z-index: 1000;
+}
+
+/* Sidebar styles */
+.sidebar {
+  z-index: 40;
+}
+
+.sidebar h3 {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Performance optimizations */
+.x6-graph-svg {
+  will-change: transform;
+}
+
+/* Hide port circles by default; show on hover/selection; force-hide for exports */
+.x6-port-body {
+  visibility: hidden;
+}
+
+.x6-node:hover .x6-port-body,
+.x6-node-selected .x6-port-body,
+.x6-node.x6-edge-hover-target .x6-port-body {
+  visibility: visible;
+}
+
+.hide-ports .x6-port-body {
+  visibility: hidden !important;
+}
+
+/* Ensure text is selectable in inputs */
+input, textarea {
+  user-select: text;
+}
