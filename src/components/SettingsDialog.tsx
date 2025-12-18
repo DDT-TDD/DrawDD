@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useGraph } from '../context/GraphContext';
 import { COLOR_SCHEMES, getColorScheme } from '../config/colorSchemes';
+import { resetThemeCycle } from '../utils/theme';
 import type { MindmapLayoutDirection } from '../types';
 
 // Available spellcheck languages
@@ -76,6 +77,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   const handleApplyColorScheme = (schemeId: string) => {
     setColorScheme(schemeId);
     const scheme = getColorScheme(schemeId);
+    resetThemeCycle(schemeId);
     
     // Apply to canvas background
     setCanvasBackground({ type: 'color', color: scheme.backgroundColor });
@@ -85,6 +87,17 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
     if (graph) {
       const nodes = graph.getNodes();
       nodes.forEach((node, index) => {
+        const currentBodyAttrs = node.getAttrs().body || {};
+        const currentFill = (currentBodyAttrs as any).fill;
+        const currentStroke = (currentBodyAttrs as any).stroke;
+        
+        // Skip nodes with transparent backgrounds (text shapes, labels)
+        // These should not have theme colors applied
+        if (currentFill === 'transparent' || currentFill === 'none' || 
+            (currentStroke === 'transparent' && currentFill === 'transparent')) {
+          return;
+        }
+        
         const colorType = index % 3 === 0 ? 'primary' : index % 3 === 1 ? 'secondary' : 'accent';
         const colors = scheme.nodeColors[colorType];
         node.setAttrs({

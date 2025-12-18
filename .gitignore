@@ -17,6 +17,12 @@ dist-ssr
 release-builds
 release
 
+# Build cache and temporary directories
+.bin
+.tmp
+.vite
+.vite-temp
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

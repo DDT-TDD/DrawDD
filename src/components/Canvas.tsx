@@ -16,6 +16,8 @@ import { QuickActions } from './QuickActions';
 import { useAutoSave, getAutoSaveInfo } from '../utils/autoSave';
 import { registerLogicGateShapes } from '../config/logicGateShapes';
 import { FULL_PORTS_CONFIG } from '../config/shapes';
+import { getNextThemeColors, getLineColor } from '../utils/theme';
+import { setNodeLabelWithAutoSize } from '../utils/text';
 
 // Register custom shapes on module load
 registerLogicGateShapes();
@@ -50,14 +52,14 @@ function showContextMenu(graph: Graph, cell: Cell, x: number, y: number, mode: '
   `;
 
   const isNode = cell.isNode();
-  
+
   interface MenuItem {
     label: string;
     action?: () => void;
   }
-  
+
   const menuItems: MenuItem[] = [];
-  
+
   const data = isNode ? (cell as any).getData?.() : null;
   const isMindmapNode = isNode && data?.isMindmap === true;
   const allowMindmapActions = (isMindmapNode || mode === 'mindmap' || mode === undefined) && mode !== 'timeline';
@@ -65,123 +67,55 @@ function showContextMenu(graph: Graph, cell: Cell, x: number, y: number, mode: '
   if (isNode && allowMindmapActions) {
     // Mindmap-specific options for nodes
     menuItems.push(
-      { label: '➕ Add Child Node', action: () => {
-        const parentNode = cell;
-        
-        // Get direction from context (captured at render time)
-        const dir = (window as any).__mindmapDirection || 'right';
-        
-        const parentPos = (parentNode as any).getPosition?.() || { x: 0, y: 0 };
-        const parentSize = (parentNode as any).getSize?.() || { width: 120, height: 40 };
-        const incoming = graph.getIncomingEdges(parentNode as any);
-        const parentData = (parentNode as any).getData?.() || {};
-        const level = (typeof parentData.level === 'number' ? parentData.level : (incoming?.length ? 1 : 0)) + 1;
+      {
+        label: '➕ Add Child Node', action: () => {
+          const parentNode = cell;
 
-        // Place near parent to keep ordering stable before layout
-        const x0 = dir === 'left' ? parentPos.x - 200 : parentPos.x + parentSize.width + 120;
-        const y0 = dir === 'top' ? parentPos.y - 120 : dir === 'bottom' ? parentPos.y + parentSize.height + 80 : parentPos.y;
+          // Get direction from context (captured at render time)
+          const dir = (window as any).__mindmapDirection || 'right';
+          const ctxLineColor = (window as any).__drawdd_lineColor || '#5F95FF';
+          const ctxScheme = (window as any).__drawdd_colorScheme || 'default';
+          const ctxColors = getNextThemeColors(ctxScheme);
 
-        const childNode = graph.addNode({
-          x: x0,
-          y: y0,
-          width: 120,
-          height: 40,
-          attrs: {
-            body: {
-              fill: '#90caf9',
-              stroke: '#64b5f6',
-              strokeWidth: 2,
-              rx: 6,
-              ry: 6,
-            },
-            label: {
-              text: 'New Topic',
-              fill: '#333333',
-              fontSize: 12,
-            },
-          },
-          data: { isMindmap: true, level, mmOrder: mindmapOrderCounter++ },
-          ports: FULL_PORTS_CONFIG as any,
-        });
+          const parentPos = (parentNode as any).getPosition?.() || { x: 0, y: 0 };
+          const parentSize = (parentNode as any).getSize?.() || { width: 120, height: 40 };
+          const incoming = graph.getIncomingEdges(parentNode as any);
+          const parentData = (parentNode as any).getData?.() || {};
+          const level = (typeof parentData.level === 'number' ? parentData.level : (incoming?.length ? 1 : 0)) + 1;
 
-        graph.addEdge({
-          source: { cell: parentNode.id },
-          target: { cell: childNode.id },
-          attrs: {
-            line: {
-              stroke: '#5F95FF',
-              strokeWidth: 2,
-              targetMarker: {
-                name: 'block',
-                width: 12,
-                height: 8,
+          // Place near parent to keep ordering stable before layout
+          const x0 = dir === 'left' ? parentPos.x - 200 : parentPos.x + parentSize.width + 120;
+          const y0 = dir === 'top' ? parentPos.y - 120 : dir === 'bottom' ? parentPos.y + parentSize.height + 80 : parentPos.y;
+
+          const childNode = graph.addNode({
+            x: x0,
+            y: y0,
+            width: 120,
+            height: 40,
+            attrs: {
+              body: {
+                fill: ctxColors.fill,
+                stroke: ctxColors.stroke,
+                strokeWidth: 2,
+                rx: 6,
+                ry: 6,
+              },
+              label: {
+                text: 'New Topic',
+                fill: ctxColors.text,
+                fontSize: 12,
               },
             },
-          },
-          router: { name: 'normal' },
-          connector: { name: 'smooth' },
-        });
+            data: { isMindmap: true, level, mmOrder: mindmapOrderCounter++ },
+            ports: FULL_PORTS_CONFIG as any,
+          });
 
-        // Find root node by traversing up
-        const traverseUp = (node: typeof parentNode): typeof parentNode => {
-          const incomingEdges = graph.getIncomingEdges(node);
-          if (!incomingEdges || incomingEdges.length === 0) return node;
-          const source = graph.getCellById(incomingEdges[0].getSourceCellId() || '');
-          return source?.isNode() ? traverseUp(source) : node;
-        };
-        const rootNode = traverseUp(parentNode);
-        
-        // Apply layout to prevent overlap
-        applyMindmapLayout(graph, dir, rootNode);
-
-        graph.select(childNode);
-      }},
-      { label: '➡️ Add Sibling Node', action: () => {
-        if (!cell.isNode()) return;
-        const currentNode = cell as X6Node;
-        const currentSize = currentNode.getSize();
-        
-        const incomingEdges = graph.getIncomingEdges(currentNode);
-        const parentEdge = incomingEdges?.[0];
-        const parentNode = parentEdge ? graph.getCellById(parentEdge.getSourceCellId() || '') : null;
-
-        // Get direction from context
-        const dir = (window as any).__mindmapDirection || 'right';
-
-        const currentPos = currentNode.getPosition();
-        const currentData = (currentNode as any).getData?.() || {};
-        const level = typeof currentData.level === 'number' ? currentData.level : 1;
-
-        const siblingNode = graph.addNode({
-          x: currentPos.x,
-          y: currentPos.y + currentSize.height + 60,
-          width: currentSize.width,
-          height: currentSize.height,
-          attrs: {
-            body: {
-              fill: '#90caf9',
-              stroke: '#64b5f6',
-              strokeWidth: 2,
-              rx: 6,
-              ry: 6,
-            },
-            label: {
-              text: 'New Topic',
-              fill: '#333333',
-              fontSize: 12,
-            },
-          },
-          data: { isMindmap: true, level, mmOrder: mindmapOrderCounter++ },
-          ports: FULL_PORTS_CONFIG as any,
-        });
-
-        if (parentNode && parentNode.isNode()) {
           graph.addEdge({
             source: { cell: parentNode.id },
-            target: { cell: siblingNode.id },
+            target: { cell: childNode.id },
             attrs: {
               line: {
-                stroke: '#5F95FF',
+                stroke: ctxLineColor,
                 strokeWidth: 2,
                 targetMarker: {
                   name: 'block',
@@ -193,31 +127,110 @@ function showContextMenu(graph: Graph, cell: Cell, x: number, y: number, mode: '
             router: { name: 'normal' },
             connector: { name: 'smooth' },
           });
-          
+
           // Find root node by traversing up
           const traverseUp = (node: typeof parentNode): typeof parentNode => {
-            const incomingSibling = graph.getIncomingEdges(node);
-            if (!incomingSibling || incomingSibling.length === 0) return node;
-            const source = graph.getCellById(incomingSibling[0].getSourceCellId() || '');
+            const incomingEdges = graph.getIncomingEdges(node);
+            if (!incomingEdges || incomingEdges.length === 0) return node;
+            const source = graph.getCellById(incomingEdges[0].getSourceCellId() || '');
             return source?.isNode() ? traverseUp(source) : node;
           };
           const rootNode = traverseUp(parentNode);
-          
+
           // Apply layout to prevent overlap
           applyMindmapLayout(graph, dir, rootNode);
-        }
 
-        graph.select(siblingNode);
-      }},
-      { label: '✏️ Edit Text', action: () => {
-        const currentLabel = cell.getAttrs()?.label?.text || '';
-        
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.value = String(currentLabel);
-        
-        const inputIsDark = document.documentElement.classList.contains('dark');
-        input.style.cssText = `
+          graph.select(childNode);
+        }
+      },
+      {
+        label: '➡️ Add Sibling Node', action: () => {
+          if (!cell.isNode()) return;
+          const currentNode = cell as X6Node;
+          const currentSize = currentNode.getSize();
+
+          const incomingEdges = graph.getIncomingEdges(currentNode);
+          const parentEdge = incomingEdges?.[0];
+          const parentNode = parentEdge ? graph.getCellById(parentEdge.getSourceCellId() || '') : null;
+
+          // Get direction and theme from context
+          const dir = (window as any).__mindmapDirection || 'right';
+          const sibLineColor = (window as any).__drawdd_lineColor || '#5F95FF';
+          const sibScheme = (window as any).__drawdd_colorScheme || 'default';
+          const sibColors = getNextThemeColors(sibScheme);
+
+          const currentPos = currentNode.getPosition();
+          const currentData = (currentNode as any).getData?.() || {};
+          const level = typeof currentData.level === 'number' ? currentData.level : 1;
+
+          const siblingNode = graph.addNode({
+            x: currentPos.x,
+            y: currentPos.y + currentSize.height + 60,
+            width: currentSize.width,
+            height: currentSize.height,
+            attrs: {
+              body: {
+                fill: sibColors.fill,
+                stroke: sibColors.stroke,
+                strokeWidth: 2,
+                rx: 6,
+                ry: 6,
+              },
+              label: {
+                text: 'New Topic',
+                fill: sibColors.text,
+                fontSize: 12,
+              },
+            },
+            data: { isMindmap: true, level, mmOrder: mindmapOrderCounter++ },
+            ports: FULL_PORTS_CONFIG as any,
+          });
+
+          if (parentNode && parentNode.isNode()) {
+            graph.addEdge({
+              source: { cell: parentNode.id },
+              target: { cell: siblingNode.id },
+              attrs: {
+                line: {
+                  stroke: sibLineColor,
+                  strokeWidth: 2,
+                  targetMarker: {
+                    name: 'block',
+                    width: 12,
+                    height: 8,
+                  },
+                },
+              },
+              router: { name: 'normal' },
+              connector: { name: 'smooth' },
+            });
+
+            // Find root node by traversing up
+            const traverseUp = (node: typeof parentNode): typeof parentNode => {
+              const incomingSibling = graph.getIncomingEdges(node);
+              if (!incomingSibling || incomingSibling.length === 0) return node;
+              const source = graph.getCellById(incomingSibling[0].getSourceCellId() || '');
+              return source?.isNode() ? traverseUp(source) : node;
+            };
+            const rootNode = traverseUp(parentNode);
+
+            // Apply layout to prevent overlap
+            applyMindmapLayout(graph, dir, rootNode);
+          }
+
+          graph.select(siblingNode);
+        }
+      },
+      {
+        label: '✏️ Edit Text', action: () => {
+          const currentLabel = cell.getAttrs()?.label?.text || '';
+
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.value = String(currentLabel);
+
+          const inputIsDark = document.documentElement.classList.contains('dark');
+          input.style.cssText = `
           position: fixed;
           left: ${x}px;
           top: ${y - 40}px;
@@ -232,26 +245,27 @@ function showContextMenu(graph: Graph, cell: Cell, x: number, y: number, mode: '
           background: ${inputIsDark ? '#1e293b' : 'white'};
           color: ${inputIsDark ? '#f1f5f9' : '#1e293b'};
         `;
-        document.body.appendChild(input);
-        input.focus();
-        input.select();
+          document.body.appendChild(input);
+          input.focus();
+          input.select();
 
-        const handleBlur = () => {
-          cell.setAttrs({ label: { text: input.value } });
-          input.remove();
-        };
-
-        const handleKeyDown = (ev: KeyboardEvent) => {
-          if (ev.key === 'Enter') {
-            handleBlur();
-          } else if (ev.key === 'Escape') {
+          const handleBlur = () => {
+            cell.setAttrs({ label: { text: input.value } });
             input.remove();
-          }
-        };
+          };
 
-        input.addEventListener('blur', handleBlur);
-        input.addEventListener('keydown', handleKeyDown);
-      }},
+          const handleKeyDown = (ev: KeyboardEvent) => {
+            if (ev.key === 'Enter') {
+              handleBlur();
+            } else if (ev.key === 'Escape') {
+              input.remove();
+            }
+          };
+
+          input.addEventListener('blur', handleBlur);
+          input.addEventListener('keydown', handleKeyDown);
+        }
+      },
       { label: '---' }
     );
   }
@@ -259,54 +273,60 @@ function showContextMenu(graph: Graph, cell: Cell, x: number, y: number, mode: '
   // Timeline-specific options for timeline mode
   if (isNode && mode === 'timeline') {
     menuItems.push(
-      { label: '📅 Add Timeline Event', action: () => {
-        const nodePos = (cell as any).getPosition?.() || { x: 0, y: 0 };
-        const nodeSize = (cell as any).getSize?.() || { width: 140, height: 50 };
-        const dir = (window as any).__timelineDirection || 'horizontal';
-        
-        const x0 = dir === 'horizontal' ? nodePos.x + nodeSize.width + 120 : nodePos.x;
-        const y0 = dir === 'horizontal' ? nodePos.y : nodePos.y + nodeSize.height + 80;
+      {
+        label: '📅 Add Timeline Event', action: () => {
+          const nodePos = (cell as any).getPosition?.() || { x: 0, y: 0 };
+          const nodeSize = (cell as any).getSize?.() || { width: 140, height: 50 };
+          const dir = (window as any).__timelineDirection || 'horizontal';
+          const tlLineColor = (window as any).__drawdd_lineColor || '#5F95FF';
+          const tlScheme = (window as any).__drawdd_colorScheme || 'default';
+          const tlColors = getNextThemeColors(tlScheme);
 
-        const newEvent = graph.addNode({
-          x: x0,
-          y: y0,
-          width: 140,
-          height: 50,
-          attrs: {
-            body: {
-              fill: '#e3f2fd',
-              stroke: '#2196f3',
-              strokeWidth: 2,
-              rx: 8,
-              ry: 8,
+          const x0 = dir === 'horizontal' ? nodePos.x + nodeSize.width + 120 : nodePos.x;
+          const y0 = dir === 'horizontal' ? nodePos.y : nodePos.y + nodeSize.height + 80;
+
+          const newEvent = graph.addNode({
+            x: x0,
+            y: y0,
+            width: 140,
+            height: 50,
+            attrs: {
+              body: {
+                fill: tlColors.fill,
+                stroke: tlColors.stroke,
+                strokeWidth: 2,
+                rx: 8,
+                ry: 8,
+              },
+              label: {
+                text: 'New Event',
+                fill: tlColors.text,
+                fontSize: 14,
+              },
             },
-            label: {
-              text: 'New Event',
-              fill: '#333333',
-              fontSize: 14,
-            },
-          },
-          data: { isTimeline: true, eventType: 'event' },
-          ports: graph.getNodes()[0]?.getPorts() || [],
-        });
+            data: { isTimeline: true, eventType: 'event' },
+            ports: graph.getNodes()[0]?.getPorts() || [],
+          });
 
-        graph.addEdge({
-          source: cell.id,
-          target: newEvent.id,
-          attrs: { line: { stroke: '#2196f3', strokeWidth: 2 } },
-        });
+          graph.addEdge({
+            source: cell.id,
+            target: newEvent.id,
+            attrs: { line: { stroke: tlLineColor, strokeWidth: 2 } },
+          });
 
-        graph.select(newEvent);
-      }},
-      { label: '✏️ Edit Text', action: () => {
-        const currentLabel = cell.getAttrs()?.label?.text || '';
-        
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.value = String(currentLabel);
-        
-        const inputIsDark = document.documentElement.classList.contains('dark');
-        input.style.cssText = `
+          graph.select(newEvent);
+        }
+      },
+      {
+        label: '✏️ Edit Text', action: () => {
+          const currentLabel = cell.getAttrs()?.label?.text || '';
+
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.value = String(currentLabel);
+
+          const inputIsDark = document.documentElement.classList.contains('dark');
+          input.style.cssText = `
           position: fixed;
           left: ${x}px;
           top: ${y - 40}px;
@@ -321,26 +341,27 @@ function showContextMenu(graph: Graph, cell: Cell, x: number, y: number, mode: '
           background: ${inputIsDark ? '#1e293b' : 'white'};
           color: ${inputIsDark ? '#f1f5f9' : '#1e293b'};
         `;
-        document.body.appendChild(input);
-        input.focus();
-        input.select();
+          document.body.appendChild(input);
+          input.focus();
+          input.select();
 
-        const handleBlur = () => {
-          cell.setAttrs({ label: { text: input.value } });
-          input.remove();
-        };
-
-        const handleKeyDown = (ev: KeyboardEvent) => {
-          if (ev.key === 'Enter') {
-            handleBlur();
-          } else if (ev.key === 'Escape') {
+          const handleBlur = () => {
+            cell.setAttrs({ label: { text: input.value } });
             input.remove();
-          }
-        };
+          };
 
-        input.addEventListener('blur', handleBlur);
-        input.addEventListener('keydown', handleKeyDown);
-      }},
+          const handleKeyDown = (ev: KeyboardEvent) => {
+            if (ev.key === 'Enter') {
+              handleBlur();
+            } else if (ev.key === 'Escape') {
+              input.remove();
+            }
+          };
+
+          input.addEventListener('blur', handleBlur);
+          input.addEventListener('keydown', handleKeyDown);
+        }
+      },
       { label: '---' }
     );
   }
@@ -348,57 +369,63 @@ function showContextMenu(graph: Graph, cell: Cell, x: number, y: number, mode: '
   // Common options for all nodes
   if (isNode) {
     menuItems.push(
-      { label: '🔄 Change Shape', action: () => {
-        // Trigger a custom event that PropertiesPanel will listen to
-        const event = new CustomEvent('drawdd:change-shape', { detail: { cell } });
-        window.dispatchEvent(event);
-      }}
+      {
+        label: '🔄 Change Shape', action: () => {
+          // Trigger a custom event that PropertiesPanel will listen to
+          const event = new CustomEvent('drawdd:change-shape', { detail: { cell } });
+          window.dispatchEvent(event);
+        }
+      }
     );
-    
+
     // Add "Change Image" option for image nodes
     if ((cell as any).shape === 'image') {
       menuItems.push(
-        { label: '🖼️ Change Image', action: () => {
-          const input = document.createElement('input');
-          input.type = 'file';
-          input.accept = 'image/*';
-          input.onchange = (e) => {
-            const file = (e.target as HTMLInputElement).files?.[0];
-            if (file) {
-              const reader = new FileReader();
-              reader.onload = (evt) => {
-                const dataUrl = evt.target?.result as string;
-                const imgEl = new Image();
-                imgEl.onload = () => {
-                  const maxDim = 320;
-                  const minDim = 60;
-                  const scale = Math.min(maxDim / imgEl.width, maxDim / imgEl.height, 1);
-                  const width = Math.max(minDim, Math.round(imgEl.width * scale));
-                  const height = Math.max(minDim, Math.round(imgEl.height * scale));
+        {
+          label: '🖼️ Change Image', action: () => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            input.onchange = (e) => {
+              const file = (e.target as HTMLInputElement).files?.[0];
+              if (file) {
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                  const dataUrl = evt.target?.result as string;
+                  const imgEl = new Image();
+                  imgEl.onload = () => {
+                    const maxDim = 320;
+                    const minDim = 60;
+                    const scale = Math.min(maxDim / imgEl.width, maxDim / imgEl.height, 1);
+                    const width = Math.max(minDim, Math.round(imgEl.width * scale));
+                    const height = Math.max(minDim, Math.round(imgEl.height * scale));
 
-                  (cell as any).resize(width, height);
-                  (cell as any).setAttrs({
-                    image: { xlinkHref: dataUrl, width, height, preserveAspectRatio: 'xMidYMid meet' },
-                  });
-                  (cell as any).setData({ imageUrl: dataUrl, naturalWidth: imgEl.width, naturalHeight: imgEl.height });
+                    (cell as any).resize(width, height);
+                    (cell as any).setAttrs({
+                      image: { xlinkHref: dataUrl, width, height, preserveAspectRatio: 'xMidYMid meet' },
+                    });
+                    (cell as any).setData({ imageUrl: dataUrl, naturalWidth: imgEl.width, naturalHeight: imgEl.height });
+                  };
+                  imgEl.src = dataUrl;
                 };
-                imgEl.src = dataUrl;
-              };
-              reader.readAsDataURL(file);
-            }
-          };
-          input.click();
-        }}
+                reader.readAsDataURL(file);
+              }
+            };
+            input.click();
+          }
+        }
       );
     }
   }
 
   menuItems.push(
-    { label: '📄 Duplicate', action: () => {
-      const clone = cell.clone();
-      clone.translate(30, 30);
-      graph.addCell(clone);
-    }},
+    {
+      label: '📄 Duplicate', action: () => {
+        const clone = cell.clone();
+        clone.translate(30, 30);
+        graph.addCell(clone);
+      }
+    },
     { label: '---' },
     { label: '⬆️ Bring to Front', action: () => { cell.toFront(); } },
     { label: '⬇️ Send to Back', action: () => { cell.toBack(); } },
@@ -444,20 +471,30 @@ function showContextMenu(graph: Graph, cell: Cell, x: number, y: number, mode: '
 export function Canvas() {
   const containerRef = useRef<HTMLDivElement>(null);
   const minimapRef = useRef<HTMLDivElement>(null);
-  const { graph: contextGraph, setGraph, setSelectedCell, setZoom, showGrid, mindmapDirection, timelineDirection, mode, gridSize } = useGraph();
+  const { graph: contextGraph, setGraph, setSelectedCell, setZoom, showGrid, mindmapDirection, timelineDirection, mode, gridSize, colorScheme } = useGraph();
   const graphRef = useRef<Graph | null>(null);
   const [showRestorePrompt, setShowRestorePrompt] = useState(false);
   const hasCheckedAutoSave = useRef(false);
+  const lineColorRef = useRef<string>(getLineColor(colorScheme));
+
+  // Keep lineColorRef in sync with colorScheme
+  useEffect(() => {
+    lineColorRef.current = getLineColor(colorScheme);
+    (window as any).__drawdd_lineColor = lineColorRef.current;
+    (window as any).__drawdd_colorScheme = colorScheme;
+  }, [colorScheme]);
 
   // Sync mindmap and timeline direction to window for keyboard shortcut access
   useEffect(() => {
     (window as any).__mindmapDirection = mindmapDirection;
     (window as any).__timelineDirection = timelineDirection;
     (window as any).__drawdd_mode = mode;
-    return () => { 
-      delete (window as any).__mindmapDirection; 
+    return () => {
+      delete (window as any).__mindmapDirection;
       delete (window as any).__timelineDirection;
       delete (window as any).__drawdd_mode;
+      delete (window as any).__drawdd_lineColor;
+      delete (window as any).__drawdd_colorScheme;
     };
   }, [mindmapDirection, timelineDirection, mode]);
 
@@ -501,6 +538,82 @@ export function Canvas() {
   const handleDismiss = () => {
     clearStorage();
     setShowRestorePrompt(false);
+  };
+
+  // Helper to update node label with auto-resize
+  const updateNodeLabel = (node: X6Node, text: string) => {
+    setNodeLabelWithAutoSize(node, text);
+  };
+
+  // Multiline text editor helper (textarea-based)
+  const openTextEditor = ({
+    initial,
+    clientX,
+    clientY,
+    onSubmit,
+    onCancel,
+  }: {
+    initial: string;
+    clientX: number;
+    clientY: number;
+    onSubmit: (value: string) => void;
+    onCancel?: () => void;
+  }) => {
+    const textarea = document.createElement('textarea');
+    textarea.value = initial;
+    textarea.rows = Math.min(6, Math.max(2, initial.split('\n').length));
+    textarea.spellcheck = true;
+
+    const isDark = document.documentElement.classList.contains('dark');
+    textarea.style.cssText = `
+      position: fixed;
+      left: ${clientX}px;
+      top: ${clientY}px;
+      transform: translate(-50%, -50%);
+      padding: 10px 12px;
+      font-size: 14px;
+      line-height: 1.3;
+      border: 2px solid #5F95FF;
+      border-radius: 8px;
+      outline: none;
+      box-shadow: 0 4px 12px rgba(0,0,0,${isDark ? '0.4' : '0.15'});
+      z-index: 10000;
+      min-width: 200px;
+      max-width: 440px;
+      min-height: 64px;
+      background: ${isDark ? '#1e293b' : 'white'};
+      color: ${isDark ? '#f1f5f9' : '#1e293b'};
+      resize: vertical;
+      white-space: pre-wrap;
+    `;
+
+    let closed = false;
+    const close = (shouldSubmit: boolean) => {
+      if (closed) return;
+      closed = true;
+      if (shouldSubmit) {
+        onSubmit(textarea.value);
+      } else {
+        onCancel?.();
+      }
+      textarea.remove();
+    };
+
+    textarea.addEventListener('keydown', (ev) => {
+      if ((ev.ctrlKey || ev.metaKey) && ev.key === 'Enter') {
+        ev.preventDefault();
+        close(true);
+      } else if (ev.key === 'Escape') {
+        ev.preventDefault();
+        close(false);
+      }
+    });
+
+    textarea.addEventListener('blur', () => close(true));
+
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
   };
 
   const initGraph = useCallback(() => {
@@ -547,7 +660,7 @@ export function Canvas() {
         modifiers: 'shift',
       },
       connecting: ({
-        router: 'manhattan',
+        router: 'normal', // Use normal router to allow manual vertex positioning
         connector: {
           name: 'rounded',
           args: {
@@ -742,7 +855,7 @@ export function Canvas() {
         const minY = Math.min(...boxes.map(b => b.y)) - 10;
         const maxX = Math.max(...boxes.map(b => b.x + b.width)) + 10;
         const maxY = Math.max(...boxes.map(b => b.y + b.height)) + 10;
-        
+
         const group = graph.createNode({
           x: minX,
           y: minY,
@@ -799,6 +912,8 @@ export function Canvas() {
     graph.bindKey(['insert', 'ins', 'Insert'], () => {
       const currentMode = (window as any).__drawdd_mode;
       const cells = graph.getSelectedCells();
+      const insLineColor = lineColorRef.current;
+      const insColors = getNextThemeColors(colorScheme);
 
       if (currentMode === 'timeline') {
         if (cells.length === 1 && cells[0].isNode()) {
@@ -814,15 +929,15 @@ export function Canvas() {
             width: 100,
             height: 60,
             attrs: {
-              body: { fill: '#e3f2fd', stroke: '#1976d2', strokeWidth: 2, rx: 4, ry: 4 },
-              label: { text: 'New Event', fill: '#000', fontSize: 14 },
+              body: { fill: insColors.fill, stroke: insColors.stroke, strokeWidth: 2, rx: 4, ry: 4 },
+              label: { text: 'New Event', fill: insColors.text, fontSize: 14 },
             },
           });
 
           graph.addEdge({
             source: parentNode,
             target: newNode,
-            attrs: { line: { stroke: '#1976d2', strokeWidth: 2 } },
+            attrs: { line: { stroke: insLineColor, strokeWidth: 2 } },
           });
 
           graph.cleanSelection();
@@ -841,6 +956,7 @@ export function Canvas() {
         if (!allowMindmap) return false;
 
         const dir = (window as any).__mindmapDirection || 'right';
+        const mmColors = getNextThemeColors(colorScheme);
 
         const parentPos = parentNode.getPosition();
         const parentSize = parentNode.getSize();
@@ -860,15 +976,15 @@ export function Canvas() {
           height: 40,
           attrs: {
             body: {
-              fill: '#90caf9',
-              stroke: '#64b5f6',
+              fill: mmColors.fill,
+              stroke: mmColors.stroke,
               strokeWidth: 2,
               rx: 6,
               ry: 6,
             },
             label: {
               text: 'New Topic',
-              fill: '#333333',
+              fill: mmColors.text,
               fontSize: 12,
             },
           },
@@ -881,7 +997,7 @@ export function Canvas() {
           target: { cell: childNode.id },
           attrs: {
             line: {
-              stroke: '#5F95FF',
+              stroke: lineColorRef.current,
               strokeWidth: 2,
               targetMarker: {
                 name: 'block',
@@ -921,14 +1037,15 @@ export function Canvas() {
         const allowMindmap = currentData.isMindmap === true || mode === 'mindmap' || mode === undefined;
         if (!allowMindmap) return false;
         const currentSize = currentNode.getSize();
-        
+
         // Find incoming edges to find parent
         const incomingEdges = graph.getIncomingEdges(currentNode);
         const parentEdge = incomingEdges?.[0];
         const parentNode = parentEdge ? graph.getCellById(parentEdge.getSourceCellId() || '') : null;
 
-        // Get direction from context
+        // Get direction and theme from context
         const dir = (window as any).__mindmapDirection || 'right';
+        const enterColors = getNextThemeColors(colorScheme);
 
         const currentPos = currentNode.getPosition();
         const level = typeof currentData.level === 'number' ? currentData.level : 1;
@@ -941,15 +1058,15 @@ export function Canvas() {
           height: currentSize.height,
           attrs: {
             body: {
-              fill: '#90caf9',
-              stroke: '#64b5f6',
+              fill: enterColors.fill,
+              stroke: enterColors.stroke,
               strokeWidth: 2,
               rx: 6,
               ry: 6,
             },
             label: {
               text: 'New Topic',
-              fill: '#333333',
+              fill: enterColors.text,
               fontSize: 12,
             },
           },
@@ -964,7 +1081,7 @@ export function Canvas() {
             target: { cell: siblingNode.id },
             attrs: {
               line: {
-                stroke: '#5F95FF',
+                stroke: lineColorRef.current,
                 strokeWidth: 2,
                 targetMarker: {
                   name: 'block',
@@ -976,7 +1093,7 @@ export function Canvas() {
             router: { name: 'normal' },
             connector: { name: 'smooth' },
           });
-          
+
           // Find root node by traversing up
           const traverseUp = (node: typeof parentNode): typeof parentNode => {
             const incoming = graph.getIncomingEdges(node);
@@ -997,98 +1114,63 @@ export function Canvas() {
     });
 
     // Arrow keys for navigation
-    graph.bindKey('up', () => {
+    // Keyboard Nudging
+    const NUDGE_STEP = 10;
+    const NUDGE_FINE_STEP = 1;
+
+    // Up
+    graph.bindKey(['up', 'arrowup'], (e) => {
+      e.preventDefault();
       const cells = graph.getSelectedCells();
-      if (cells.length === 1 && cells[0].isNode()) {
-        const currentNode = cells[0];
-        const currentPos = currentNode.getPosition();
-        const nodes = graph.getNodes().filter(n => n.id !== currentNode.id);
-        
-        // Find nearest node above
-        let nearestNode = null;
-        let nearestDist = Infinity;
-        
-        for (const node of nodes) {
-          const pos = node.getPosition();
-          if (pos.y < currentPos.y) {
-            const dist = Math.sqrt(Math.pow(pos.x - currentPos.x, 2) + Math.pow(pos.y - currentPos.y, 2));
-            if (dist < nearestDist) {
-              nearestDist = dist;
-              nearestNode = node;
-            }
-          }
-        }
-        
-        if (nearestNode) {
-          graph.select(nearestNode);
-        }
-      }
+      if (cells.length > 0) cells.forEach(c => c.translate(0, -NUDGE_STEP));
+      return false;
+    });
+    graph.bindKey(['shift+up', 'shift+arrowup'], (e) => {
+      e.preventDefault();
+      const cells = graph.getSelectedCells();
+      if (cells.length > 0) cells.forEach(c => c.translate(0, -NUDGE_FINE_STEP));
       return false;
     });
 
-    graph.bindKey('down', () => {
+    // Down
+    graph.bindKey(['down', 'arrowdown'], (e) => {
+      e.preventDefault();
       const cells = graph.getSelectedCells();
-      if (cells.length === 1 && cells[0].isNode()) {
-        const currentNode = cells[0];
-        const currentPos = currentNode.getPosition();
-        const nodes = graph.getNodes().filter(n => n.id !== currentNode.id);
-        
-        let nearestNode = null;
-        let nearestDist = Infinity;
-        
-        for (const node of nodes) {
-          const pos = node.getPosition();
-          if (pos.y > currentPos.y) {
-            const dist = Math.sqrt(Math.pow(pos.x - currentPos.x, 2) + Math.pow(pos.y - currentPos.y, 2));
-            if (dist < nearestDist) {
-              nearestDist = dist;
-              nearestNode = node;
-            }
-          }
-        }
-        
-        if (nearestNode) {
-          graph.select(nearestNode);
-        }
-      }
+      if (cells.length > 0) cells.forEach(c => c.translate(0, NUDGE_STEP));
+      return false;
+    });
+    graph.bindKey(['shift+down', 'shift+arrowdown'], (e) => {
+      e.preventDefault();
+      const cells = graph.getSelectedCells();
+      if (cells.length > 0) cells.forEach(c => c.translate(0, NUDGE_FINE_STEP));
       return false;
     });
 
-    graph.bindKey('left', () => {
+    // Left
+    graph.bindKey(['left', 'arrowleft'], (e) => {
+      e.preventDefault();
       const cells = graph.getSelectedCells();
-      if (cells.length === 1 && cells[0].isNode()) {
-        const currentNode = cells[0];
-        const incomingEdges = graph.getIncomingEdges(currentNode);
-        
-        if (incomingEdges && incomingEdges.length > 0) {
-          const parentId = incomingEdges[0].getSourceCellId();
-          if (parentId) {
-            const parentNode = graph.getCellById(parentId);
-            if (parentNode) {
-              graph.select(parentNode);
-            }
-          }
-        }
-      }
+      if (cells.length > 0) cells.forEach(c => c.translate(-NUDGE_STEP, 0));
+      return false;
+    });
+    graph.bindKey(['shift+left', 'shift+arrowleft'], (e) => {
+      e.preventDefault();
+      const cells = graph.getSelectedCells();
+      if (cells.length > 0) cells.forEach(c => c.translate(-NUDGE_FINE_STEP, 0));
       return false;
     });
 
-    graph.bindKey('right', () => {
+    // Right
+    graph.bindKey(['right', 'arrowright'], (e) => {
+      e.preventDefault();
       const cells = graph.getSelectedCells();
-      if (cells.length === 1 && cells[0].isNode()) {
-        const currentNode = cells[0];
-        const outgoingEdges = graph.getOutgoingEdges(currentNode);
-        
-        if (outgoingEdges && outgoingEdges.length > 0) {
-          const childId = outgoingEdges[0].getTargetCellId();
-          if (childId) {
-            const childNode = graph.getCellById(childId);
-            if (childNode) {
-              graph.select(childNode);
-            }
-          }
-        }
-      }
+      if (cells.length > 0) cells.forEach(c => c.translate(NUDGE_STEP, 0));
+      return false;
+    });
+    graph.bindKey(['shift+right', 'shift+arrowright'], (e) => {
+      e.preventDefault();
+      const cells = graph.getSelectedCells();
+      if (cells.length > 0) cells.forEach(c => c.translate(NUDGE_FINE_STEP, 0));
       return false;
     });
 
@@ -1099,15 +1181,15 @@ export function Canvas() {
         const cell = cells[0];
         const pos = cell.getBBox();
         const currentLabel = cell.getAttrs()?.label?.text || '';
-        
+
         const input = document.createElement('input');
         input.type = 'text';
         input.value = String(currentLabel);
-        
+
         // Get container position for proper positioning
         const containerRect = containerRef.current?.getBoundingClientRect();
         const graphPos = graph.localToGraph({ x: pos.x + pos.width / 2, y: pos.y + pos.height / 2 });
-        
+
         const editIsDark = document.documentElement.classList.contains('dark');
         input.style.cssText = `
           position: fixed;
@@ -1159,8 +1241,8 @@ export function Canvas() {
       if (selected.length === 1) {
         const cell = selected[0] as any;
         setSelectedCell(cell as never);
-        
-        // Add simple draggable endpoint handles to edges when selected
+
+        // Add draggable tools to edges when selected
         if (cell.isEdge?.()) {
           cell.addTools([
             {
@@ -1187,12 +1269,41 @@ export function Canvas() {
                 }
               }
             },
+            {
+              name: 'vertices',
+              args: {
+                attrs: {
+                  fill: '#1976d2',
+                  stroke: '#fff',
+                  'stroke-width': 2,
+                  r: 5,
+                  cursor: 'move',
+                },
+                // Allow adding vertices by clicking on the edge
+                stopPropagation: false,
+              }
+            },
+            {
+              name: 'segments',
+              args: {
+                attrs: {
+                  fill: '#1976d2',
+                  stroke: '#fff',
+                  'stroke-width': 2,
+                  width: 10,
+                  height: 10,
+                  cursor: 'pointer',
+                },
+                // Show segment manipulation handles
+                stopPropagation: false,
+              }
+            },
           ]);
         }
       } else {
         setSelectedCell(null);
       }
-      
+
       // Remove tools from unselected cells
       const selectedArray = Array.isArray(selected) ? selected : Array.from(selected as any);
       graph.getCells().forEach(cell => {
@@ -1212,119 +1323,78 @@ export function Canvas() {
       setZoom(sx);
     });
 
-    // Double-click to edit text
+    // Double-click to edit text (multiline supported)
     graph.on('cell:dblclick', ({ cell, e }) => {
       if (cell.isNode()) {
         const currentLabel = cell.getAttrs()?.label?.text || '';
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.value = String(currentLabel);
-        const dblclickIsDark = document.documentElement.classList.contains('dark');
-        input.style.cssText = `
-          position: fixed;
-          left: ${e.clientX}px;
-          top: ${e.clientY}px;
-          transform: translate(-50%, -50%);
-          padding: 8px 12px;
-          font-size: 14px;
-          border: 2px solid #5F95FF;
-          border-radius: 6px;
-          outline: none;
-          box-shadow: 0 4px 12px rgba(0,0,0,${dblclickIsDark ? '0.4' : '0.15'});
-          z-index: 10000;
-          min-width: 150px;
-          text-align: center;
-          background: ${dblclickIsDark ? '#1e293b' : 'white'};
-          color: ${dblclickIsDark ? '#f1f5f9' : '#1e293b'};
-        `;
-        document.body.appendChild(input);
-        input.focus();
-        input.select();
-
-        const handleBlur = () => {
-          try {
+        openTextEditor({
+          initial: String(currentLabel),
+          clientX: e.clientX,
+          clientY: e.clientY,
+          onSubmit: (value) => {
             if (graph.hasCell(cell.id)) {
-              cell.setAttrs({ label: { text: input.value } });
+              updateNodeLabel(cell as X6Node, value || '');
             }
-          } finally {
-            input.remove();
-          }
-        };
-
-        const handleKeyDown = (ev: KeyboardEvent) => {
-          if (ev.key === 'Enter') {
-            handleBlur();
-          } else if (ev.key === 'Escape') {
-            input.remove();
-          }
-        };
-
-        input.addEventListener('blur', handleBlur);
-        input.addEventListener('keydown', handleKeyDown);
+          },
+        });
       } else if (cell.isEdge()) {
         const edge = cell;
         const existing = edge.getLabels?.()[0]?.attrs?.text?.text || '';
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.value = String(existing);
-        const edgeIsDark = document.documentElement.classList.contains('dark');
-        input.style.cssText = `
-          position: fixed;
-          left: ${e.clientX}px;
-          top: ${e.clientY}px;
-          transform: translate(-50%, -50%);
-          padding: 8px 12px;
-          font-size: 14px;
-          border: 2px solid #5F95FF;
-          border-radius: 6px;
-          outline: none;
-          box-shadow: 0 4px 12px rgba(0,0,0,${edgeIsDark ? '0.4' : '0.15'});
-          z-index: 10000;
-          min-width: 150px;
-          text-align: center;
-          background: ${edgeIsDark ? '#1e293b' : 'white'};
-          color: ${edgeIsDark ? '#f1f5f9' : '#1e293b'};
-        `;
-        document.body.appendChild(input);
-        input.focus();
-        input.select();
-
-        const applyLabel = () => {
-          const text = input.value;
-          if (text) {
-            edge.setLabels([{
-              attrs: {
-                text: { text, fill: '#333', fontSize: 12, background: { fill: '#fff' } },
-                rect: { fill: '#fff', stroke: '#ddd', strokeWidth: 1 },
-              },
-              position: 0.5,
-            }]);
-          } else {
-            edge.setLabels([]);
-          }
-        };
-
-        const handleBlur = () => {
-          try {
+        openTextEditor({
+          initial: String(existing),
+          clientX: e.clientX,
+          clientY: e.clientY,
+          onSubmit: (value) => {
             if (graph.hasCell(edge.id)) {
-              applyLabel();
+              if (value) {
+                edge.setLabels([{
+                  attrs: {
+                    text: { text: value, fill: '#333', fontSize: 12, lineHeight: 1.3, whiteSpace: 'pre-wrap' },
+                    rect: { fill: '#fff', stroke: '#ddd', strokeWidth: 1 },
+                  },
+                  position: 0.5,
+                }]);
+              } else {
+                edge.setLabels([]);
+              }
             }
-          } finally {
-            input.remove();
-          }
-        };
-
-        const handleKeyDown = (ev: KeyboardEvent) => {
-          if (ev.key === 'Enter') {
-            handleBlur();
-          } else if (ev.key === 'Escape') {
-            input.remove();
-          }
-        };
-
-        input.addEventListener('blur', handleBlur);
-        input.addEventListener('keydown', handleKeyDown);
+          },
+        });
       }
+    });
+
+    // Double-click on blank canvas to add a new text node (transparent - no background)
+    graph.on('blank:dblclick', ({ e, x, y }) => {
+      const textNode = graph.addNode({
+        x: x - 60,
+        y: y - 20,
+        width: 120,
+        height: 40,
+        attrs: {
+          body: {
+            fill: 'transparent',
+            stroke: 'transparent',
+            strokeWidth: 0
+          },
+          label: { text: 'Text', fontSize: 14, fill: '#333333' },
+        },
+        ports: FULL_PORTS_CONFIG as any,
+      });
+
+      // Don't apply theme to text nodes - they should stay transparent
+      setNodeLabelWithAutoSize(textNode as X6Node, 'Text');
+      const size = textNode.size();
+      textNode.position(x - size.width / 2, y - size.height / 2);
+
+      graph.cleanSelection();
+      graph.select(textNode);
+
+      openTextEditor({
+        initial: 'Text',
+        clientX: e.clientX,
+        clientY: e.clientY,
+        onSubmit: (value) => updateNodeLabel(textNode as X6Node, value || ''),
+      });
     });
 
     // Right-click context menu
@@ -1336,8 +1406,9 @@ export function Canvas() {
     graphRef.current = graph;
     setGraph(graph);
 
-    // Add some initial demo nodes
-    addDemoNodes(graph);
+    // Add some initial demo nodes (theme-aware) - uses colorScheme from window global
+    addDemoNodes(graph, (window as any).__drawdd_colorScheme || 'default', lineColorRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setGraph, setSelectedCell, setZoom]);
 
   useEffect(() => {
@@ -1382,7 +1453,7 @@ export function Canvas() {
         ref={containerRef}
         className="w-full h-full"
       />
-      
+
       {/* Auto-save restore prompt */}
       {showRestorePrompt && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-4 z-50 max-w-md">
@@ -1413,7 +1484,7 @@ export function Canvas() {
           </div>
         </div>
       )}
-      
+
       <ZoomControls />
       <QuickActions />
       <div
@@ -1424,7 +1495,13 @@ export function Canvas() {
   );
 }
 
-function addDemoNodes(graph: Graph) {
+function addDemoNodes(graph: Graph, colorScheme: string, lineColor: string) {
+  // Get themed colors for nodes
+  const startColors = getNextThemeColors(colorScheme);
+  const processColors = getNextThemeColors(colorScheme);
+  const decisionColors = getNextThemeColors(colorScheme);
+  const endColors = getNextThemeColors(colorScheme);
+
   // Port configuration helper
   const createPorts = () => ({
     groups: {
@@ -1434,7 +1511,7 @@ function addDemoNodes(graph: Graph) {
           circle: {
             r: 5,
             magnet: true,
-            stroke: '#5F95FF',
+            stroke: lineColor,
             strokeWidth: 2,
             fill: '#fff',
           },
@@ -1446,7 +1523,7 @@ function addDemoNodes(graph: Graph) {
           circle: {
             r: 5,
             magnet: true,
-            stroke: '#5F95FF',
+            stroke: lineColor,
             strokeWidth: 2,
             fill: '#fff',
           },
@@ -1458,7 +1535,7 @@ function addDemoNodes(graph: Graph) {
           circle: {
             r: 5,
             magnet: true,
-            stroke: '#5F95FF',
+            stroke: lineColor,
             strokeWidth: 2,
             fill: '#fff',
           },
@@ -1470,7 +1547,7 @@ function addDemoNodes(graph: Graph) {
           circle: {
             r: 5,
             magnet: true,
-            stroke: '#5F95FF',
+            stroke: lineColor,
             strokeWidth: 2,
             fill: '#fff',
           },
@@ -1495,13 +1572,13 @@ function addDemoNodes(graph: Graph) {
     shape: 'ellipse',
     attrs: {
       body: {
-        fill: '#e8f5e9',
-        stroke: '#4caf50',
+        fill: startColors.fill,
+        stroke: startColors.stroke,
         strokeWidth: 2,
       },
       label: {
         text: 'Start',
-        fill: '#333333',
+        fill: startColors.text,
         fontSize: 14,
       },
     },
@@ -1517,15 +1594,15 @@ function addDemoNodes(graph: Graph) {
     height: 60,
     attrs: {
       body: {
-        fill: '#ffffff',
-        stroke: '#333333',
+        fill: processColors.fill,
+        stroke: processColors.stroke,
         strokeWidth: 2,
         rx: 6,
         ry: 6,
       },
       label: {
         text: 'Process',
-        fill: '#333333',
+        fill: processColors.text,
         fontSize: 14,
       },
     },
@@ -1542,14 +1619,14 @@ function addDemoNodes(graph: Graph) {
     shape: 'polygon',
     attrs: {
       body: {
-        fill: '#fff3e0',
-        stroke: '#ff9800',
+        fill: decisionColors.fill,
+        stroke: decisionColors.stroke,
         strokeWidth: 2,
         refPoints: '0.5,0 1,0.5 0.5,1 0,0.5',
       },
       label: {
         text: 'Decision',
-        fill: '#333333',
+        fill: decisionColors.text,
         fontSize: 12,
       },
     },
@@ -1566,26 +1643,26 @@ function addDemoNodes(graph: Graph) {
     shape: 'ellipse',
     attrs: {
       body: {
-        fill: '#ffebee',
-        stroke: '#f44336',
+        fill: endColors.fill,
+        stroke: endColors.stroke,
         strokeWidth: 2,
       },
       label: {
         text: 'End',
-        fill: '#333333',
+        fill: endColors.text,
         fontSize: 14,
       },
     },
     ports: createPorts(),
   });
 
-  // Add edges connecting the nodes
+  // Add edges connecting the nodes (using theme line color)
   graph.addEdge({
     source: { cell: startNode.id, port: 'bottom' },
     target: { cell: processNode.id, port: 'top' },
     attrs: {
       line: {
-        stroke: '#5F95FF',
+        stroke: lineColor,
         strokeWidth: 2,
         targetMarker: {
           name: 'block',
@@ -1603,7 +1680,7 @@ function addDemoNodes(graph: Graph) {
     target: { cell: decisionNode.id, port: 'top' },
     attrs: {
       line: {
-        stroke: '#5F95FF',
+        stroke: lineColor,
         strokeWidth: 2,
         targetMarker: {
           name: 'block',
@@ -1622,7 +1699,7 @@ function addDemoNodes(graph: Graph) {
     labels: [{ attrs: { label: { text: 'Yes' } }, position: 0.5 }],
     attrs: {
       line: {
-        stroke: '#4caf50',
+        stroke: lineColor,
         strokeWidth: 2,
         targetMarker: {
           name: 'block',

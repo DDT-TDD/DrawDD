@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, shell, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, Menu, shell, ipcMain, dialog, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -40,10 +40,54 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.cjs'),
+      spellcheck: true, // Enable spellcheck
     },
     show: false,
     titleBarStyle: 'default',
     autoHideMenuBar: true, // Hide native menu - use web app MenuBar instead
+  });
+
+  // Set spellcheck languages
+  mainWindow.webContents.session.setSpellCheckerLanguages(['en-GB', 'en-US']);
+
+  // Context menu with spelling suggestions
+  mainWindow.webContents.on('context-menu', (event, params) => {
+    const menuItems = [];
+
+    // Add spelling suggestions if there are any
+    if (params.misspelledWord && params.dictionarySuggestions.length > 0) {
+      params.dictionarySuggestions.forEach((suggestion) => {
+        menuItems.push({
+          label: suggestion,
+          click: () => mainWindow.webContents.replaceMisspelling(suggestion),
+        });
+      });
+      menuItems.push({ type: 'separator' });
+      menuItems.push({
+        label: 'Add to Dictionary',
+        click: () => mainWindow.webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord),
+      });
+      menuItems.push({ type: 'separator' });
+    }
+
+    // Add standard edit menu items for editable fields
+    if (params.isEditable) {
+      menuItems.push(
+        { label: 'Cut', role: 'cut', enabled: params.editFlags.canCut },
+        { label: 'Copy', role: 'copy', enabled: params.editFlags.canCopy },
+        { label: 'Paste', role: 'paste', enabled: params.editFlags.canPaste },
+        { label: 'Select All', role: 'selectAll' }
+      );
+    } else if (params.selectionText) {
+      // Non-editable but has selection
+      menuItems.push({ label: 'Copy', role: 'copy' });
+    }
+
+    // Only show context menu if we have items
+    if (menuItems.length > 0) {
+      const contextMenu = Menu.buildFromTemplate(menuItems);
+      contextMenu.popup();
+    }
   });
 
   // Load the built app

@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useGraph } from '../context/GraphContext';
-import { 
-  COLOR_PALETTE, 
-  FLOWCHART_SHAPES, 
-  MINDMAP_SHAPES, 
+import {
+  COLOR_PALETTE,
+  FLOWCHART_SHAPES,
+  MINDMAP_SHAPES,
   TIMELINE_SHAPES,
-  BASIC_SHAPES, 
-  ARROW_SHAPES, 
+  BASIC_SHAPES,
+  ARROW_SHAPES,
   CALLOUT_SHAPES,
   CONTAINER_SHAPES,
   ORGCHART_SHAPES,
@@ -16,9 +16,10 @@ import {
 } from '../config/shapes';
 import { COLOR_SCHEMES, getColorScheme } from '../config/colorSchemes';
 import type { Node, Edge } from '@antv/x6';
-import { 
-  AlignStartVertical, 
-  AlignCenterVertical, 
+import { setNodeLabelWithAutoSize, redistributeNodeText } from '../utils/text';
+import {
+  AlignStartVertical,
+  AlignCenterVertical,
   AlignEndVertical,
   AlignStartHorizontal,
   AlignCenterHorizontal,
@@ -29,7 +30,10 @@ import {
   Trash2,
   Group,
   Ungroup,
-  Check
+  Check,
+  Clipboard,
+  Maximize,
+  Minimize
 } from 'lucide-react';
 
 const FONT_SIZES = [10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48];
@@ -46,7 +50,8 @@ const FONT_FAMILIES = [
 export function PropertiesPanel() {
   const { selectedCell, graph, showGrid, setShowGrid, canvasBackground, setCanvasBackground, gridSize, setGridSize, exportGrid, setExportGrid, colorScheme, setColorScheme, spellcheckLanguage } = useGraph();
   const [selectedNodes, setSelectedNodes] = useState<Node[]>([]);
-  
+  const [selectedEdges, setSelectedEdges] = useState<Edge[]>([]);
+
   // Node properties
   const [label, setLabel] = useState('');
   const [fillColor, setFillColor] = useState('#ffffff');
@@ -68,12 +73,12 @@ export function PropertiesPanel() {
   const [shadowOffsetY, setShadowOffsetY] = useState(3);
   const [shadowColor, setShadowColor] = useState('#00000040');
   const [nodeShape, setNodeShape] = useState<'rect' | 'ellipse' | 'none'>('rect');
-  
+
   // Image and decoration properties
   const [imageUrl, setImageUrl] = useState('');
   const [prefixDecoration, setPrefixDecoration] = useState('');
   const [suffixDecoration, setSuffixDecoration] = useState('');
-  
+
   // Edge properties
   const [edgeColor, setEdgeColor] = useState('#5F95FF');
   const [edgeWidth, setEdgeWidth] = useState(2);
@@ -83,29 +88,54 @@ export function PropertiesPanel() {
   const [targetArrow, setTargetArrow] = useState<'block' | 'classic' | 'diamond' | 'circle' | 'circlePlus' | 'ellipse' | 'cross' | 'none'>('classic');
   const [edgeLabel, setEdgeLabel] = useState('');
 
+  // Clipboard State
+  const [clipboardSize, setClipboardSize] = useState<{ width: number; height: number } | null>(null);
+  const [clipboardStyle, setClipboardStyle] = useState<any | null>(null);
+
+  // Computed properties
   const isNode = selectedCell?.isNode();
-  const isEdge = selectedCell?.isEdge();
+  const activeEdge = selectedCell?.isEdge?.() ? (selectedCell as Edge) : selectedEdges[0] ?? null;
+  const isEdge = !!activeEdge;
+  const getEdgeTargets = () => (selectedEdges.length ? selectedEdges : activeEdge ? [activeEdge] : []);
 
   // Track multiple selected nodes
   useEffect(() => {
     if (!graph) {
       setSelectedNodes([]);
+      setSelectedEdges([]);
       return;
     }
-    
+
     const updateSelection = () => {
       const cells = graph.getSelectedCells();
       const nodes = cells.filter(c => c.isNode()) as Node[];
+      const edges = cells.filter(c => c.isEdge()) as Edge[];
       setSelectedNodes(nodes);
+      setSelectedEdges(edges);
     };
-    
+
     updateSelection();
     graph.on('selection:changed', updateSelection);
-    
+
     return () => {
       graph.off('selection:changed', updateSelection);
     };
   }, [graph, selectedCell]);
+
+  // Redistribute text when node is resized
+  useEffect(() => {
+    if (!graph) return;
+
+    const handleNodeResized = ({ node }: { node: Node }) => {
+      redistributeNodeText(node);
+    };
+
+    graph.on('node:resized', handleNodeResized);
+
+    return () => {
+      graph.off('node:resized', handleNodeResized);
+    };
+  }, [graph]);
 
   // ========== Alignment Functions ==========
   const handleAlignLeft = () => {
@@ -185,7 +215,7 @@ export function PropertiesPanel() {
     const minY = Math.min(...boxes.map(b => b.y)) - 10;
     const maxX = Math.max(...boxes.map(b => b.x + b.width)) + 10;
     const maxY = Math.max(...boxes.map(b => b.y + b.height)) + 10;
-    
+
     const group = graph.createNode({
       x: minX, y: minY,
       width: maxX - minX, height: maxY - minY,
@@ -220,6 +250,69 @@ export function PropertiesPanel() {
     graph.removeCells(selectedNodes);
   };
 
+  const handleCopySize = () => {
+    if (selectedCell && isNode) {
+      const { width, height } = (selectedCell as Node).getSize();
+      setClipboardSize({ width, height });
+    } else if (selectedNodes.length > 0) {
+      const { width, height } = selectedNodes[selectedNodes.length - 1].getSize();
+      setClipboardSize({ width, height });
+    }
+  };
+
+  const handlePasteSize = () => {
+    if (clipboardSize) {
+      const targets = selectedNodes.length > 0 ? selectedNodes : (selectedCell && isNode ? [selectedCell as Node] : []);
+      targets.forEach(node => {
+        // Apply logic to preserve width if needed? No, user explicitly requested Paste Size.
+        // So we override size.
+        node.resize(clipboardSize.width, clipboardSize.height);
+      });
+    }
+  };
+
+  const handleCopyStyle = () => {
+    const target = selectedNodes.length > 0 ? selectedNodes[selectedNodes.length - 1] : selectedCell;
+    if (target) {
+      setClipboardStyle(target.getAttrs());
+    }
+  };
+
+  const handlePasteStyle = () => {
+    if (clipboardStyle) {
+      const targets = selectedNodes.length > 0 ? selectedNodes : (selectedCell && isNode ? [selectedCell as Node] : []);
+      const edges = selectedEdges.length > 0 ? selectedEdges : (selectedCell && !isNode ? [selectedCell as Edge] : []);
+
+      const allTargets = [...targets, ...edges];
+
+      allTargets.forEach(cell => {
+        // Node -> Node
+        if (cell.isNode()) {
+          if (clipboardStyle.body) cell.setAttrs({ body: clipboardStyle.body });
+          if (clipboardStyle.label) {
+            // Preserve text property
+            const currentText = cell.getAttrByPath('label/text');
+            // Also preserve textWrap if not in style?
+            const { text, textWrap, ...style } = clipboardStyle.label;
+            // Apply style but ensure text is kept (if we passed text in style it would overwrite)
+            // setAttrs merges? explicit label object replacement might remove text.
+            // We should merge.
+            cell.setAttrs({
+              label: {
+                ...style,
+                text: currentText // Ensure text is preserved (or restored if style had text)
+              }
+            });
+          }
+        }
+        // Edge -> Edge
+        if (cell.isEdge()) {
+          if (clipboardStyle.line) cell.setAttrs({ line: clipboardStyle.line });
+        }
+      });
+    }
+  };
+
   const handleDuplicateSelected = () => {
     if (!graph || selectedNodes.length === 0) return;
     graph.copy(selectedNodes);
@@ -229,10 +322,10 @@ export function PropertiesPanel() {
   };
 
   useEffect(() => {
-    if (selectedCell && isNode) {
+    if (selectedCell && selectedCell.isNode()) {
       const node = selectedCell as Node;
       const attrs = node.getAttrs();
-      
+
       setLabel((attrs.label?.text as string) || '');
       setFillColor((attrs.body?.fill as string) || '#ffffff');
       setStrokeColor((attrs.body?.stroke as string) || '#333333');
@@ -255,16 +348,16 @@ export function PropertiesPanel() {
       } else {
         setNodeShape('rect');
       }
-      
+
       // Load image and decoration data
       setImageUrl((attrs.image?.xlinkHref as string) || '');
       const data = node.getData() || {};
       setPrefixDecoration((data.prefixDecoration as string) || '');
       setSuffixDecoration((data.suffixDecoration as string) || '');
-    } else if (selectedCell && isEdge) {
-      const edge = selectedCell as Edge;
+    } else if (activeEdge) {
+      const edge = activeEdge as Edge;
       const attrs = edge.getAttrs();
-      
+
       setEdgeColor((attrs.line?.stroke as string) || '#5F95FF');
       setEdgeWidth((attrs.line?.strokeWidth as number) || 2);
       const dashArray = attrs.line?.strokeDasharray as string;
@@ -274,13 +367,13 @@ export function PropertiesPanel() {
 
       const connector = (edge.getConnector() as any)?.name || 'normal';
       const router = (edge.getRouter() as any)?.name;
-      
+
       if (connector === 'smooth') setEdgeConnector('smooth');
       else if (connector === 'rounded' && router !== 'manhattan') setEdgeConnector('rounded');
       else if (router === 'manhattan') setEdgeConnector('ortho');
       else setEdgeConnector('normal');
     }
-  }, [selectedCell, isNode, isEdge]);
+  }, [selectedCell, activeEdge]);
 
   // Listen for shape change event from context menu
   const [showShapeDialog, setShowShapeDialog] = useState(false);
@@ -295,7 +388,7 @@ export function PropertiesPanel() {
         setShowShapeDialog(true);
       }
     };
-    
+
     window.addEventListener('drawdd:change-shape', handleChangeShape);
     return () => window.removeEventListener('drawdd:change-shape', handleChangeShape);
   }, []);
@@ -309,10 +402,10 @@ export function PropertiesPanel() {
     const oldData = oldNode.getData();
 
     const allShapes = [
-      ...FLOWCHART_SHAPES, 
-      ...MINDMAP_SHAPES, 
+      ...FLOWCHART_SHAPES,
+      ...MINDMAP_SHAPES,
       ...TIMELINE_SHAPES,
-      ...BASIC_SHAPES, 
+      ...BASIC_SHAPES,
       ...ARROW_SHAPES,
       ...CALLOUT_SHAPES,
       ...CONTAINER_SHAPES,
@@ -375,36 +468,40 @@ export function PropertiesPanel() {
   const handleLabelChange = (value: string) => {
     setLabel(value);
     if (selectedCell && isNode) {
-      (selectedCell as Node).setAttrs({ label: { text: value } });
+      setNodeLabelWithAutoSize(selectedCell as Node, value);
     }
   };
 
   const handleFillColorChange = (color: string) => {
     setFillColor(color);
-    if (selectedCell && isNode) {
-      (selectedCell as Node).setAttrs({ body: { fill: color } });
-    }
+    const targets = selectedNodes.length > 0 ? selectedNodes : (selectedCell && isNode ? [selectedCell as Node] : []);
+    targets.forEach(node => {
+      node.setAttrs({ body: { fill: color } });
+    });
   };
 
   const handleStrokeColorChange = (color: string) => {
     setStrokeColor(color);
-    if (selectedCell && isNode) {
-      (selectedCell as Node).setAttrs({ body: { stroke: color } });
-    }
+    const targets = selectedNodes.length > 0 ? selectedNodes : (selectedCell && isNode ? [selectedCell as Node] : []);
+    targets.forEach(node => {
+      node.setAttrs({ body: { stroke: color } });
+    });
   };
 
   const handleStrokeWidthChange = (width: number) => {
     setStrokeWidth(width);
-    if (selectedCell && isNode) {
-      (selectedCell as Node).setAttrs({ body: { strokeWidth: width } });
-    }
+    const targets = selectedNodes.length > 0 ? selectedNodes : (selectedCell && isNode ? [selectedCell as Node] : []);
+    targets.forEach(node => {
+      node.setAttrs({ body: { strokeWidth: width } });
+    });
   };
 
   const handleFontSizeChange = (size: number) => {
     setFontSize(size);
-    if (selectedCell && isNode) {
-      (selectedCell as Node).setAttrs({ label: { fontSize: size } });
-    }
+    const targets = selectedNodes.length > 0 ? selectedNodes : (selectedCell && isNode ? [selectedCell as Node] : []);
+    targets.forEach(node => {
+      node.setAttrs({ label: { fontSize: size } });
+    });
   };
 
   const handleFontFamilyChange = (family: string) => {
@@ -417,23 +514,26 @@ export function PropertiesPanel() {
 
   const handleTextColorChange = (color: string) => {
     setTextColor(color);
-    if (selectedCell && isNode) {
-      (selectedCell as Node).setAttrs({ label: { fill: color } });
-    }
+    const targets = selectedNodes.length > 0 ? selectedNodes : (selectedCell && isNode ? [selectedCell as Node] : []);
+    targets.forEach(node => {
+      node.setAttrs({ label: { fill: color } });
+    });
   };
 
   const handleOpacityChange = (value: number) => {
     setOpacity(value);
-    if (selectedCell && isNode) {
-      (selectedCell as Node).setAttrs({ body: { opacity: value } });
-    }
+    const targets = selectedNodes.length > 0 ? selectedNodes : (selectedCell && isNode ? [selectedCell as Node] : []);
+    targets.forEach(node => {
+      node.setAttrs({ body: { opacity: value } });
+    });
   };
 
   const handleCornerRadiusChange = (value: number) => {
     setCornerRadius(value);
-    if (selectedCell && isNode) {
-      (selectedCell as Node).setAttrs({ body: { rx: value, ry: value } });
-    }
+    const targets = selectedNodes.length > 0 ? selectedNodes : (selectedCell && isNode ? [selectedCell as Node] : []);
+    targets.forEach(node => {
+      node.setAttrs({ body: { rx: value, ry: value } });
+    });
   };
 
   const handleTextAlignChange = (align: 'left' | 'center' | 'right') => {
@@ -441,11 +541,11 @@ export function PropertiesPanel() {
     if (selectedCell && isNode) {
       const textAnchor = align === 'left' ? 'start' : align === 'right' ? 'end' : 'middle';
       const refX = align === 'left' ? 0.1 : align === 'right' ? 0.9 : 0.5;
-      (selectedCell as Node).setAttrs({ 
-        label: { 
+      (selectedCell as Node).setAttrs({
+        label: {
           textAnchor,
           refX,
-        } 
+        }
       });
     }
   };
@@ -482,8 +582,8 @@ export function PropertiesPanel() {
     setShadowEnabled(enabled);
     if (selectedCell && isNode) {
       if (enabled) {
-        (selectedCell as Node).setAttrs({ 
-          body: { 
+        (selectedCell as Node).setAttrs({
+          body: {
             filter: {
               name: 'dropShadow',
               args: {
@@ -493,7 +593,7 @@ export function PropertiesPanel() {
                 color: shadowColor,
               },
             },
-          } 
+          }
         });
       } else {
         (selectedCell as Node).setAttrs({ body: { filter: null } });
@@ -507,8 +607,8 @@ export function PropertiesPanel() {
     setShadowOffsetY(offsetY);
     setShadowColor(color);
     if (selectedCell && isNode && shadowEnabled) {
-      (selectedCell as Node).setAttrs({ 
-        body: { 
+      (selectedCell as Node).setAttrs({
+        body: {
           filter: {
             name: 'dropShadow',
             args: {
@@ -518,7 +618,7 @@ export function PropertiesPanel() {
               color: color,
             },
           },
-        } 
+        }
       });
     }
   };
@@ -536,7 +636,7 @@ export function PropertiesPanel() {
         const height = Math.max(minDim, Math.round(imgEl.height * scale));
 
         node.resize(width, height);
-        node.setAttrs({ 
+        node.setAttrs({
           image: {
             xlinkHref: url,
             width,
@@ -556,7 +656,7 @@ export function PropertiesPanel() {
     if (selectedCell && isNode) {
       const node = selectedCell as Node;
       node.setData({ ...node.getData(), prefixDecoration: decoration });
-      
+
       // Update label to show decoration
       const currentLabel = node.getAttrs().label?.text as string || '';
       const baseLabel = currentLabel.replace(/^[\u{1F300}-\u{1F9FF}]+ /u, '').replace(/^[🔢#@★⭐🚩🏳️🏴🏁⚑]+\s*/g, '');
@@ -571,7 +671,7 @@ export function PropertiesPanel() {
     if (selectedCell && isNode) {
       const node = selectedCell as Node;
       node.setData({ ...node.getData(), suffixDecoration: decoration });
-      
+
       // Update label to show decoration
       const currentLabel = node.getAttrs().label?.text as string || '';
       const baseLabel = currentLabel.replace(/ [\u{1F300}-\u{1F9FF}]+$/u, '').replace(/\s*[🔢#@★⭐🚩🏳️🏴🏁⚑]+$/g, '');
@@ -603,22 +703,22 @@ export function PropertiesPanel() {
 
   const handleEdgeColorChange = (color: string) => {
     setEdgeColor(color);
-    if (selectedCell && isEdge) {
-      (selectedCell as Edge).setAttrs({ line: { stroke: color } });
-    }
+    getEdgeTargets().forEach(edge => {
+      edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), stroke: color } });
+    });
   };
 
   const handleEdgeWidthChange = (width: number) => {
     setEdgeWidth(width);
-    if (selectedCell && isEdge) {
-      (selectedCell as Edge).setAttrs({ line: { strokeWidth: width } });
-    }
+    getEdgeTargets().forEach(edge => {
+      edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), strokeWidth: width } });
+    });
   };
 
   const handleApplyEdgesToAll = () => {
     if (!graph) return;
     const dashArray = edgeStyle === 'dashed' ? '5 5' : edgeStyle === 'dotted' ? '2 2' : '0';
-    const sourceMarker = sourceArrow === 'none' ? null : { name: sourceArrow, width: 10, height: 6 };
+    const sourceMarker = sourceArrow === 'none' ? null : { name: sourceArrow, width: 12, height: 8 };
     const targetMarker = targetArrow === 'none' ? null : { name: targetArrow, width: 12, height: 8 };
 
     graph.getEdges().forEach(edge => {
@@ -660,16 +760,15 @@ export function PropertiesPanel() {
 
   const handleEdgeStyleChange = (style: 'solid' | 'dashed' | 'dotted') => {
     setEdgeStyle(style);
-    if (selectedCell && isEdge) {
-      const dashArray = style === 'dashed' ? '5 5' : style === 'dotted' ? '2 2' : '0';
-      (selectedCell as Edge).setAttrs({ line: { strokeDasharray: dashArray } });
-    }
+    const dashArray = style === 'dashed' ? '5 5' : style === 'dotted' ? '2 2' : '0';
+    getEdgeTargets().forEach(edge => {
+      edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), strokeDasharray: dashArray } });
+    });
   };
 
   const handleEdgeConnectorChange = (type: 'normal' | 'rounded' | 'smooth' | 'ortho') => {
     setEdgeConnector(type);
-    if (selectedCell && isEdge) {
-      const edge = selectedCell as Edge;
+    getEdgeTargets().forEach(edge => {
       if (type === 'smooth') {
         edge.setConnector('smooth');
         edge.setRouter('normal');
@@ -683,43 +782,38 @@ export function PropertiesPanel() {
         edge.setConnector('normal');
         edge.setRouter('normal');
       }
-    }
+    });
   };
 
   const handleSourceArrowChange = (type: 'block' | 'classic' | 'diamond' | 'circle' | 'circlePlus' | 'ellipse' | 'cross' | 'none') => {
     setSourceArrow(type);
-    if (selectedCell && isEdge) {
-      const edge = selectedCell as Edge;
+    getEdgeTargets().forEach(edge => {
       if (type === 'none') {
-        // Remove the source marker entirely
-        edge.setAttrs({ line: { sourceMarker: '' } });
+        edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), sourceMarker: '' } });
       } else {
-        edge.setAttrs({ line: { sourceMarker: { name: type, width: 10, height: 6 } } });
+        edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), sourceMarker: { name: type, width: 12, height: 8 } } });
       }
-    }
+    });
   };
 
   const handleTargetArrowChange = (type: 'block' | 'classic' | 'diamond' | 'circle' | 'circlePlus' | 'ellipse' | 'cross' | 'none') => {
     setTargetArrow(type);
-    if (selectedCell && isEdge) {
-      const edge = selectedCell as Edge;
+    getEdgeTargets().forEach(edge => {
       if (type === 'none') {
-        // Remove the target marker entirely
-        edge.setAttrs({ line: { targetMarker: '' } });
+        edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), targetMarker: '' } });
       } else {
-        edge.setAttrs({ line: { targetMarker: { name: type, width: 12, height: 8 } } });
+        edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), targetMarker: { name: type, width: 12, height: 8 } } });
       }
-    }
+    });
   };
 
   const handleEdgeLabelChange = (value: string) => {
     setEdgeLabel(value);
-    if (selectedCell && isEdge) {
-      const edge = selectedCell as Edge;
+    getEdgeTargets().forEach(edge => {
       if (value) {
         edge.setLabels([{
           attrs: {
-            text: { text: value, fill: '#333', fontSize: 12 },
+            text: { text: value, fill: '#333', fontSize: 12, lineHeight: 1.3, whiteSpace: 'pre-wrap' },
             rect: { fill: '#fff', stroke: '#ddd', strokeWidth: 1 },
           },
           position: 0.5,
@@ -727,10 +821,11 @@ export function PropertiesPanel() {
       } else {
         edge.setLabels([]);
       }
-    }
+    });
   };
 
-  if (!selectedCell && selectedNodes.length === 0) {
+  // Show Canvas Properties only when nothing is selected
+  if (!selectedCell && selectedNodes.length === 0 && selectedEdges.length === 0) {
     const handleBackgroundColorChange = (color: string) => {
       setCanvasBackground({ type: 'color', color });
       if (graph) {
@@ -766,15 +861,21 @@ export function PropertiesPanel() {
     const handleApplyColorScheme = (schemeId: string) => {
       setColorScheme(schemeId);
       const scheme = getColorScheme(schemeId);
-      
+
       // Apply to canvas background
       setCanvasBackground({ type: 'color', color: scheme.backgroundColor });
       if (graph) {
         graph.drawBackground({ color: scheme.backgroundColor });
-        
+
         // Apply to existing nodes
         const nodes = graph.getNodes();
         nodes.forEach((node, index) => {
+          // Skip text boxes (transparent body)
+          const attrs = node.getAttrs();
+          if (attrs.body?.fill === 'transparent' && attrs.body?.stroke === 'transparent') {
+            return;
+          }
+
           const colorType = index % 3 === 0 ? 'primary' : index % 3 === 1 ? 'secondary' : 'accent';
           const colors = scheme.nodeColors[colorType];
           node.setAttrs({
@@ -782,7 +883,7 @@ export function PropertiesPanel() {
             label: { fill: colors.text }
           });
         });
-        
+
         // Apply to edges
         const edges = graph.getEdges();
         edges.forEach((edge) => {
@@ -802,13 +903,13 @@ export function PropertiesPanel() {
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-5">
           <Section title="Background Color">
-            <ColorRow 
-              color={canvasBackground.type === 'color' ? canvasBackground.color : '#f8fafc'} 
-              onChange={handleBackgroundColorChange} 
+            <ColorRow
+              color={canvasBackground.type === 'color' ? canvasBackground.color : '#f8fafc'}
+              onChange={handleBackgroundColorChange}
             />
-            <ColorPalette 
-              selectedColor={canvasBackground.type === 'color' ? canvasBackground.color : '#f8fafc'} 
-              onColorSelect={handleBackgroundColorChange} 
+            <ColorPalette
+              selectedColor={canvasBackground.type === 'color' ? canvasBackground.color : '#f8fafc'}
+              onColorSelect={handleBackgroundColorChange}
             />
           </Section>
 
@@ -817,14 +918,12 @@ export function PropertiesPanel() {
               <span className="text-sm text-gray-700 dark:text-gray-300">Show Grid</span>
               <button
                 onClick={handleGridToggle}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  showGrid ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
-                }`}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${showGrid ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                  }`}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    showGrid ? 'translate-x-6' : 'translate-x-1'
-                  }`}
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${showGrid ? 'translate-x-6' : 'translate-x-1'
+                    }`}
                 />
               </button>
             </div>
@@ -846,14 +945,12 @@ export function PropertiesPanel() {
               <span className="text-sm text-gray-700 dark:text-gray-300">Export Grid</span>
               <button
                 onClick={() => setExportGrid?.(!exportGrid)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  exportGrid ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
-                }`}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${exportGrid ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                  }`}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    exportGrid ? 'translate-x-6' : 'translate-x-1'
-                  }`}
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${exportGrid ? 'translate-x-6' : 'translate-x-1'
+                    }`}
                 />
               </button>
             </div>
@@ -865,11 +962,10 @@ export function PropertiesPanel() {
                 <button
                   key={scheme.id}
                   onClick={() => handleApplyColorScheme(scheme.id)}
-                  className={`flex items-center gap-2 p-2 rounded-lg border-2 transition-all text-left ${
-                    colorScheme === scheme.id
-                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
-                  }`}
+                  className={`flex items-center gap-2 p-2 rounded-lg border-2 transition-all text-left ${colorScheme === scheme.id
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                    }`}
                 >
                   <div className="flex gap-0.5">
                     {scheme.preview.slice(0, 3).map((color, i) => (
@@ -901,125 +997,152 @@ export function PropertiesPanel() {
     );
   }
 
-  // Multi-selection panel
+  // Multiple Selected Nodes
   if (selectedNodes.length > 1) {
+    const handleMatchSize = (type: 'width' | 'height' | 'both') => {
+      if (!graph || selectedNodes.length < 2) return;
+      const primary = selectedNodes[selectedNodes.length - 1];
+      const size = primary.getSize();
+
+      selectedNodes.forEach(node => {
+        if (node.id === primary.id) return;
+        const current = node.getSize();
+        node.resize(
+          type === 'height' ? current.width : size.width,
+          type === 'width' ? current.height : size.height
+        );
+      });
+    };
+
     return (
-      <div className="w-72 bg-white dark:bg-gray-800 flex flex-col h-full overflow-hidden">
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wide">
-            🔲 {selectedNodes.length} Shapes Selected
-          </h2>
+      <div className="w-72 bg-white dark:bg-gray-800 flex flex-col h-full overflow-hidden border-l border-gray-200 dark:border-gray-700">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-blue-50/50 dark:bg-blue-900/10">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-blue-100 dark:bg-blue-900/30 rounded text-blue-600 dark:text-blue-400">
+              <Check size={16} />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wide">
+                {selectedNodes.length} Items Selected
+              </h2>
+            </div>
+          </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-5">
+        <div className="flex-1 overflow-y-auto p-4 space-y-6">
           {/* Alignment */}
-          <Section title="Align Horizontally">
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                onClick={handleAlignLeft}
-                className="flex flex-col items-center gap-1 p-2 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400 transition-colors"
-                title="Align Left"
-              >
-                <AlignStartVertical size={18} className="text-gray-600 dark:text-gray-400" />
-                <span className="text-[10px] text-gray-500 dark:text-gray-400">Left</span>
+          <Section title="Alignment">
+            <div className="grid grid-cols-6 gap-1">
+              <button onClick={handleAlignLeft} title="Align Left" className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded border border-transparent hover:border-gray-200 dark:hover:border-gray-600 transition-colors"><AlignStartVertical size={18} className="text-gray-700 dark:text-gray-300" /></button>
+              <button onClick={handleAlignCenterH} title="Align Center Horizontal" className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded border border-transparent hover:border-gray-200 dark:hover:border-gray-600 transition-colors"><AlignCenterVertical size={18} className="text-gray-700 dark:text-gray-300" /></button>
+              <button onClick={handleAlignRight} title="Align Right" className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded border border-transparent hover:border-gray-200 dark:hover:border-gray-600 transition-colors"><AlignEndVertical size={18} className="text-gray-700 dark:text-gray-300" /></button>
+              <button onClick={handleAlignTop} title="Align Top" className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded border border-transparent hover:border-gray-200 dark:hover:border-gray-600 transition-colors"><AlignStartHorizontal size={18} className="text-gray-700 dark:text-gray-300" /></button>
+              <button onClick={handleAlignCenterV} title="Align Center Vertical" className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded border border-transparent hover:border-gray-200 dark:hover:border-gray-600 transition-colors"><AlignCenterHorizontal size={18} className="text-gray-700 dark:text-gray-300" /></button>
+              <button onClick={handleAlignBottom} title="Align Bottom" className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded border border-transparent hover:border-gray-200 dark:hover:border-gray-600 transition-colors"><AlignEndHorizontal size={18} className="text-gray-700 dark:text-gray-300" /></button>
+            </div>
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              <button onClick={handleDistributeH} className="flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-medium border border-gray-200 dark:border-gray-700 rounded hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300 transition-colors">
+                <AlignHorizontalDistributeCenter size={14} /> Distribute H
               </button>
-              <button
-                onClick={handleAlignCenterH}
-                className="flex flex-col items-center gap-1 p-2 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400 transition-colors"
-                title="Align Center Horizontally"
-              >
-                <AlignCenterVertical size={18} className="text-gray-600 dark:text-gray-400" />
-                <span className="text-[10px] text-gray-500 dark:text-gray-400">Center</span>
-              </button>
-              <button
-                onClick={handleAlignRight}
-                className="flex flex-col items-center gap-1 p-2 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400 transition-colors"
-                title="Align Right"
-              >
-                <AlignEndVertical size={18} className="text-gray-600 dark:text-gray-400" />
-                <span className="text-[10px] text-gray-500 dark:text-gray-400">Right</span>
+              <button onClick={handleDistributeV} className="flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-medium border border-gray-200 dark:border-gray-700 rounded hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300 transition-colors">
+                <AlignVerticalDistributeCenter size={14} /> Distribute V
               </button>
             </div>
           </Section>
 
-          <Section title="Align Vertically">
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                onClick={handleAlignTop}
-                className="flex flex-col items-center gap-1 p-2 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400 transition-colors"
-                title="Align Top"
-              >
-                <AlignStartHorizontal size={18} className="text-gray-600 dark:text-gray-400" />
-                <span className="text-[10px] text-gray-500 dark:text-gray-400">Top</span>
-              </button>
-              <button
-                onClick={handleAlignCenterV}
-                className="flex flex-col items-center gap-1 p-2 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400 transition-colors"
-                title="Align Center Vertically"
-              >
-                <AlignCenterHorizontal size={18} className="text-gray-600 dark:text-gray-400" />
-                <span className="text-[10px] text-gray-500 dark:text-gray-400">Middle</span>
-              </button>
-              <button
-                onClick={handleAlignBottom}
-                className="flex flex-col items-center gap-1 p-2 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400 transition-colors"
-                title="Align Bottom"
-              >
-                <AlignEndHorizontal size={18} className="text-gray-600 dark:text-gray-400" />
-                <span className="text-[10px] text-gray-500 dark:text-gray-400">Bottom</span>
-              </button>
-            </div>
-          </Section>
-
-          {selectedNodes.length >= 3 && (
-            <Section title="Distribute">
+          {/* Sizing */}
+          <Section title="Size">
+            <div className="space-y-2">
               <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={handleDistributeH}
-                  className="flex flex-col items-center gap-1 p-2 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400 transition-colors"
-                  title="Distribute Horizontally"
-                >
-                  <AlignHorizontalDistributeCenter size={18} className="text-gray-600 dark:text-gray-400" />
-                  <span className="text-[10px] text-gray-500 dark:text-gray-400">Horizontal</span>
+                <button onClick={() => handleMatchSize('width')} className="py-1.5 px-2 text-[11px] border border-gray-200 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300 transition-colors">
+                  Match Width
                 </button>
-                <button
-                  onClick={handleDistributeV}
-                  className="flex flex-col items-center gap-1 p-2 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400 transition-colors"
-                  title="Distribute Vertically"
-                >
-                  <AlignVerticalDistributeCenter size={18} className="text-gray-600 dark:text-gray-400" />
-                  <span className="text-[10px] text-gray-500 dark:text-gray-400">Vertical</span>
+                <button onClick={() => handleMatchSize('height')} className="py-1.5 px-2 text-[11px] border border-gray-200 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300 transition-colors">
+                  Match Height
                 </button>
               </div>
-            </Section>
-          )}
+              <button onClick={() => handleMatchSize('both')} className="w-full py-2 text-xs font-medium border rounded bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800 transition-colors flex items-center justify-center gap-2">
+                <span className="text-lg leading-none">⤢</span> Match Size
+              </button>
+              <p className="text-[10px] text-gray-400 dark:text-gray-500 text-center">
+                Matches size to the last selected item
+              </p>
+            </div>
+          </Section>
 
-          <Section title="Group">
+          {/* Grouping */}
+          <Section title="Grouping">
             <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={handleGroupSelected}
-                className="flex items-center justify-center gap-2 p-2 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400 transition-colors"
-                title="Group (Ctrl+G)"
-              >
-                <Group size={16} className="text-gray-600 dark:text-gray-400" />
-                <span className="text-xs text-gray-600 dark:text-gray-400">Group</span>
+              <button onClick={handleGroupSelected} className="flex items-center justify-center gap-2 py-2 border border-gray-200 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300 transition-colors">
+                <Group size={16} /> Group
               </button>
-              <button
-                onClick={handleUngroupSelected}
-                className="flex items-center justify-center gap-2 p-2 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400 transition-colors"
-                title="Ungroup (Ctrl+Shift+G)"
-              >
-                <Ungroup size={16} className="text-gray-600 dark:text-gray-400" />
-                <span className="text-xs text-gray-600 dark:text-gray-400">Ungroup</span>
+              <button onClick={handleUngroupSelected} className="flex items-center justify-center gap-2 py-2 border border-gray-200 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300 transition-colors">
+                <Ungroup size={16} /> Ungroup
               </button>
+            </div>
+          </Section>
+
+          <div className="border-t border-gray-100 dark:border-gray-700 my-4"></div>
+
+          {/* Fill */}
+          <Section title="Fill">
+            <ColorRow color={fillColor} onChange={handleFillColorChange} />
+            <ColorPalette selectedColor={fillColor} onColorSelect={handleFillColorChange} />
+          </Section>
+
+          {/* Border */}
+          <Section title="Border">
+            <ColorRow color={strokeColor} onChange={handleStrokeColorChange} />
+            <div className="mt-3">
+              <div className="flex justify-between mb-1">
+                <label className="text-xs text-gray-500 dark:text-gray-400">Width</label>
+                <span className="text-xs font-mono text-gray-600 dark:text-gray-300">{strokeWidth}px</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="10"
+                value={strokeWidth}
+                onChange={(e) => handleStrokeWidthChange(Number(e.target.value))}
+                className="w-full accent-blue-500"
+              />
             </div>
           </Section>
 
           <Section title="Actions">
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <button
+                onClick={handleCopyStyle}
+                className="flex items-center justify-center gap-2 py-2 border border-gray-200 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300 transition-colors"
+              >
+                Copy Style
+              </button>
+              <button
+                onClick={handlePasteStyle}
+                disabled={!clipboardStyle}
+                className={`flex items-center justify-center gap-2 py-2 border rounded transition-colors ${clipboardStyle ? 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300' : 'opacity-50 cursor-not-allowed border-gray-200 dark:border-gray-700 text-gray-400'}`}
+              >
+                Paste Style
+              </button>
+              <button
+                onClick={handleCopySize}
+                className="flex items-center justify-center gap-2 py-2 border border-gray-200 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300 transition-colors"
+              >
+                Copy Size
+              </button>
+              <button
+                onClick={handlePasteSize}
+                disabled={!clipboardSize}
+                className={`flex items-center justify-center gap-2 py-2 border rounded transition-colors ${clipboardSize ? 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300' : 'opacity-50 cursor-not-allowed border-gray-200 dark:border-gray-700 text-gray-400'}`}
+              >
+                Paste Size
+              </button>
+            </div>
+
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={handleDuplicateSelected}
-                className="flex items-center justify-center gap-2 p-2 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400 transition-colors"
+                className="flex items-center justify-center gap-2 py-2.5 border border-gray-200 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300 transition-colors"
                 title="Duplicate (Ctrl+D)"
               >
                 <Copy size={16} className="text-gray-600 dark:text-gray-400" />
@@ -1027,13 +1150,285 @@ export function PropertiesPanel() {
               </button>
               <button
                 onClick={handleDeleteSelected}
-                className="flex items-center justify-center gap-2 p-2 rounded-lg border border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/30 hover:border-red-400 transition-colors"
+                className="flex items-center justify-center gap-2 py-2.5 border border-red-200 text-red-600 bg-red-50 rounded hover:bg-red-100 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400 transition-colors"
                 title="Delete (Del)"
               >
                 <Trash2 size={16} className="text-red-500" />
                 <span className="text-xs text-red-500">Delete</span>
               </button>
             </div>
+          </Section>
+        </div>
+      </div>
+    );
+  }
+
+
+
+  // Multi-edge selection panel (when only edges are selected, no nodes)
+  if (selectedEdges.length > 1 && selectedNodes.length === 0) {
+    const arrowTypes = ['none', 'block', 'classic', 'diamond', 'circle'] as const;
+
+    return (
+      <div className="w-72 bg-white dark:bg-gray-800 flex flex-col h-full overflow-hidden">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wide">
+            🔗 {selectedEdges.length} Connections Selected
+          </h2>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-5">
+          <Section title="Line Style">
+            <div className="grid grid-cols-3 gap-2">
+              {(['solid', 'dashed', 'dotted'] as const).map((style) => (
+                <button
+                  key={style}
+                  onClick={() => {
+                    selectedEdges.forEach(edge => {
+                      edge.setAttrs({
+                        line: {
+                          strokeDasharray: style === 'dashed' ? '8 4' : style === 'dotted' ? '2 2' : '',
+                        },
+                      });
+                    });
+                  }}
+                  className="flex flex-col items-center gap-1 p-2 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400 transition-colors"
+                >
+                  <div className="w-8 h-0.5 bg-gray-600 dark:bg-gray-400" style={{
+                    backgroundImage: style === 'dashed' ? 'repeating-linear-gradient(90deg, currentColor 0, currentColor 8px, transparent 8px, transparent 12px)' :
+                      style === 'dotted' ? 'repeating-linear-gradient(90deg, currentColor 0, currentColor 2px, transparent 2px, transparent 4px)' : 'none',
+                    backgroundColor: style === 'solid' ? 'currentColor' : 'transparent',
+                  }} />
+                  <span className="text-xs text-gray-600 dark:text-gray-400 capitalize">{style}</span>
+                </button>
+              ))}
+            </div>
+          </Section>
+
+          <Section title="Line Color">
+            <ColorPalette
+              selectedColor={selectedEdges[0]?.getAttrs()?.line?.stroke as string || '#333'}
+              onColorSelect={(color) => {
+                selectedEdges.forEach(edge => {
+                  edge.setAttrs({ line: { stroke: color } });
+                });
+              }}
+            />
+          </Section>
+
+          <Section title="Line Width">
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min="1"
+                max="8"
+                step="0.5"
+                defaultValue="2"
+                onChange={(e) => {
+                  const width = parseFloat(e.target.value);
+                  selectedEdges.forEach(edge => {
+                    edge.setAttrs({ line: { strokeWidth: width } });
+                  });
+                }}
+                className="flex-1"
+              />
+              <span className="text-xs text-gray-500 w-8">px</span>
+            </div>
+          </Section>
+
+          <Section title="Source Arrow (Start)">
+            <div className="grid grid-cols-5 gap-1">
+              {arrowTypes.map((type) => (
+                <button
+                  key={type}
+                  onClick={() => {
+                    selectedEdges.forEach(edge => {
+                      if (type === 'none') {
+                        edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), sourceMarker: '' } });
+                      } else {
+                        edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), sourceMarker: { name: type, width: 12, height: 8 } } });
+                      }
+                    });
+                  }}
+                  className="flex flex-col items-center gap-0.5 p-1.5 rounded border border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400 transition-colors"
+                  title={type}
+                >
+                  <span className="text-[10px] text-gray-600 dark:text-gray-400 capitalize">{type === 'none' ? '—' : type.slice(0, 3)}</span>
+                </button>
+              ))}
+            </div>
+          </Section>
+
+          <Section title="Target Arrow (End)">
+            <div className="grid grid-cols-5 gap-1">
+              {arrowTypes.map((type) => (
+                <button
+                  key={type}
+                  onClick={() => {
+                    selectedEdges.forEach(edge => {
+                      if (type === 'none') {
+                        edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), targetMarker: '' } });
+                      } else {
+                        edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), targetMarker: { name: type, width: 12, height: 8 } } });
+                      }
+                    });
+                  }}
+                  className="flex flex-col items-center gap-0.5 p-1.5 rounded border border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400 transition-colors"
+                  title={type}
+                >
+                  <span className="text-[10px] text-gray-600 dark:text-gray-400 capitalize">{type === 'none' ? '—' : type.slice(0, 3)}</span>
+                </button>
+              ))}
+            </div>
+          </Section>
+
+          <Section title="Actions">
+            <button
+              onClick={handleDeleteSelected}
+              className="w-full flex items-center justify-center gap-2 p-2 rounded-lg border border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/30 hover:border-red-400 transition-colors"
+              title="Delete (Del)"
+            >
+              <Trash2 size={16} className="text-red-500" />
+              <span className="text-xs text-red-500">Delete All</span>
+            </button>
+          </Section>
+        </div>
+      </div>
+    );
+  }
+
+  // Single edge selected (or 1 edge with nodes) - handled by main return
+  // Also handles case when 1 edge is in selectedEdges but no selectedCell
+  if (selectedEdges.length === 1 && selectedNodes.length === 0 && !selectedCell) {
+    // Force show edge properties
+    const edge = selectedEdges[0];
+    const edgeAttrs = edge.getAttrs();
+    const lineAttrs = (edgeAttrs.line || {}) as Record<string, any>;
+    const arrowTypes = ['none', 'block', 'classic', 'diamond', 'circle'] as const;
+    const currentSourceMarker = lineAttrs.sourceMarker?.name || 'none';
+    const currentTargetMarker = lineAttrs.targetMarker?.name || (lineAttrs.targetMarker === '' ? 'none' : 'classic');
+
+    return (
+      <div className="w-72 bg-white dark:bg-gray-800 flex flex-col h-full overflow-hidden">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wide">
+            🔗 Connection Properties
+          </h2>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-5">
+          <Section title="Line Style">
+            <div className="grid grid-cols-3 gap-2">
+              {(['solid', 'dashed', 'dotted'] as const).map((style) => (
+                <button
+                  key={style}
+                  onClick={() => {
+                    edge.setAttrs({
+                      line: {
+                        strokeDasharray: style === 'dashed' ? '8 4' : style === 'dotted' ? '2 2' : '',
+                      },
+                    });
+                  }}
+                  className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-colors ${(lineAttrs.strokeDasharray === '8 4' && style === 'dashed') ||
+                    (lineAttrs.strokeDasharray === '2 2' && style === 'dotted') ||
+                    (!lineAttrs.strokeDasharray && style === 'solid')
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30'
+                    : 'border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400'
+                    }`}
+                >
+                  <div className="w-8 h-0.5 bg-gray-600 dark:bg-gray-400" style={{
+                    backgroundImage: style === 'dashed' ? 'repeating-linear-gradient(90deg, currentColor 0, currentColor 8px, transparent 8px, transparent 12px)' :
+                      style === 'dotted' ? 'repeating-linear-gradient(90deg, currentColor 0, currentColor 2px, transparent 2px, transparent 4px)' : 'none',
+                    backgroundColor: style === 'solid' ? 'currentColor' : 'transparent',
+                  }} />
+                  <span className="text-xs text-gray-600 dark:text-gray-400 capitalize">{style}</span>
+                </button>
+              ))}
+            </div>
+          </Section>
+
+          <Section title="Line Color">
+            <ColorRow
+              color={lineAttrs.stroke as string || '#333'}
+              onChange={(color) => edge.setAttrs({ line: { stroke: color } })}
+            />
+            <ColorPalette
+              selectedColor={lineAttrs.stroke as string || '#333'}
+              onColorSelect={(color) => edge.setAttrs({ line: { stroke: color } })}
+            />
+          </Section>
+
+          <Section title="Line Width">
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min="1"
+                max="8"
+                step="0.5"
+                value={lineAttrs.strokeWidth || 2}
+                onChange={(e) => edge.setAttrs({ line: { strokeWidth: parseFloat(e.target.value) } })}
+                className="flex-1"
+              />
+              <span className="text-xs text-gray-500 w-8">{lineAttrs.strokeWidth || 2}px</span>
+            </div>
+          </Section>
+
+          <Section title="Source Arrow (Start)">
+            <div className="grid grid-cols-5 gap-1">
+              {arrowTypes.map((type) => (
+                <button
+                  key={type}
+                  onClick={() => {
+                    if (type === 'none') {
+                      edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), sourceMarker: '' } });
+                    } else {
+                      edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), sourceMarker: { name: type, width: 12, height: 8 } } });
+                    }
+                  }}
+                  className={`flex flex-col items-center gap-0.5 p-1.5 rounded border transition-colors ${currentSourceMarker === type || (type === 'none' && !lineAttrs.sourceMarker)
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30'
+                    : 'border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400'
+                    }`}
+                  title={type}
+                >
+                  <span className="text-[10px] text-gray-600 dark:text-gray-400 capitalize">{type === 'none' ? '—' : type.slice(0, 3)}</span>
+                </button>
+              ))}
+            </div>
+          </Section>
+
+          <Section title="Target Arrow (End)">
+            <div className="grid grid-cols-5 gap-1">
+              {arrowTypes.map((type) => (
+                <button
+                  key={type}
+                  onClick={() => {
+                    if (type === 'none') {
+                      edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), targetMarker: '' } });
+                    } else {
+                      edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), targetMarker: { name: type, width: 12, height: 8 } } });
+                    }
+                  }}
+                  className={`flex flex-col items-center gap-0.5 p-1.5 rounded border transition-colors ${currentTargetMarker === type
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30'
+                    : 'border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400'
+                    }`}
+                  title={type}
+                >
+                  <span className="text-[10px] text-gray-600 dark:text-gray-400 capitalize">{type === 'none' ? '—' : type.slice(0, 3)}</span>
+                </button>
+              ))}
+            </div>
+          </Section>
+
+          <Section title="Actions">
+            <button
+              onClick={handleDeleteSelected}
+              className="w-full flex items-center justify-center gap-2 p-2 rounded-lg border border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/30 hover:border-red-400 transition-colors"
+              title="Delete (Del)"
+            >
+              <Trash2 size={16} className="text-red-500" />
+              <span className="text-xs text-red-500">Delete</span>
+            </button>
           </Section>
         </div>
       </div>
@@ -1062,7 +1457,7 @@ export function PropertiesPanel() {
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 resize-none"
                 placeholder="Enter text..."
               />
-              
+
               <div className="grid grid-cols-2 gap-2 mt-2">
                 <select
                   value={fontFamily}
@@ -1146,11 +1541,10 @@ export function PropertiesPanel() {
                   <button
                     key={shape}
                     onClick={() => applyNodeShape(shape)}
-                    className={`py-2 px-2 rounded border text-xs capitalize ${
-                      nodeShape === shape
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
-                        : 'border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300'
-                    }`}
+                    className={`py-2 px-2 rounded border text-xs capitalize ${nodeShape === shape
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
+                      : 'border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300'
+                      }`}
                   >
                     {shape === 'none' ? 'No Shape' : shape}
                   </button>
@@ -1219,7 +1613,7 @@ export function PropertiesPanel() {
                   <div className="text-xs text-gray-600 dark:text-gray-400 mb-2 font-medium">
                     Current: {prefixDecoration || '(none)'}
                   </div>
-                  
+
                   {/* Numbers */}
                   <details className="mb-2" open>
                     <summary className="text-xs font-medium text-gray-600 dark:text-gray-400 cursor-pointer mb-1">🔢 Numbers</summary>
@@ -1229,7 +1623,7 @@ export function PropertiesPanel() {
                       ))}
                     </div>
                   </details>
-                  
+
                   {/* Faces */}
                   <details className="mb-2">
                     <summary className="text-xs font-medium text-gray-600 dark:text-gray-400 cursor-pointer mb-1">😊 Faces</summary>
@@ -1239,7 +1633,7 @@ export function PropertiesPanel() {
                       ))}
                     </div>
                   </details>
-                  
+
                   {/* Task Progress */}
                   <details className="mb-2">
                     <summary className="text-xs font-medium text-gray-600 dark:text-gray-400 cursor-pointer mb-1">✓ Task Progress</summary>
@@ -1249,7 +1643,7 @@ export function PropertiesPanel() {
                       ))}
                     </div>
                   </details>
-                  
+
                   {/* Stars */}
                   <details className="mb-2">
                     <summary className="text-xs font-medium text-gray-600 dark:text-gray-400 cursor-pointer mb-1">⭐ Stars</summary>
@@ -1259,7 +1653,7 @@ export function PropertiesPanel() {
                       ))}
                     </div>
                   </details>
-                  
+
                   {/* People */}
                   <details className="mb-2">
                     <summary className="text-xs font-medium text-gray-600 dark:text-gray-400 cursor-pointer mb-1">👤 People</summary>
@@ -1269,7 +1663,7 @@ export function PropertiesPanel() {
                       ))}
                     </div>
                   </details>
-                  
+
                   {/* Arrows */}
                   <details className="mb-2">
                     <summary className="text-xs font-medium text-gray-600 dark:text-gray-400 cursor-pointer mb-1">➡️ Arrows</summary>
@@ -1279,7 +1673,7 @@ export function PropertiesPanel() {
                       ))}
                     </div>
                   </details>
-                  
+
                   {/* Symbols */}
                   <details className="mb-2">
                     <summary className="text-xs font-medium text-gray-600 dark:text-gray-400 cursor-pointer mb-1">🔣 Symbols</summary>
@@ -1311,7 +1705,7 @@ export function PropertiesPanel() {
                     </button>
                   </div>
                 </div>
-                
+
                 <div>
                   <label className="block text-xs text-gray-500 dark:text-gray-400 mb-2">
                     Suffix (after text)
@@ -1319,7 +1713,7 @@ export function PropertiesPanel() {
                   <div className="text-xs text-gray-600 dark:text-gray-400 mb-2 font-medium">
                     Current: {suffixDecoration || '(none)'}
                   </div>
-                  
+
                   {/* Flags */}
                   <details className="mb-2" open>
                     <summary className="text-xs font-medium text-gray-600 dark:text-gray-400 cursor-pointer mb-1">🚩 Flags</summary>
@@ -1329,7 +1723,7 @@ export function PropertiesPanel() {
                       ))}
                     </div>
                   </details>
-                  
+
                   {/* Stars */}
                   <details className="mb-2">
                     <summary className="text-xs font-medium text-gray-600 dark:text-gray-400 cursor-pointer mb-1">⭐ Stars</summary>
@@ -1339,7 +1733,7 @@ export function PropertiesPanel() {
                       ))}
                     </div>
                   </details>
-                  
+
                   {/* Check marks */}
                   <details className="mb-2">
                     <summary className="text-xs font-medium text-gray-600 dark:text-gray-400 cursor-pointer mb-1">✓ Status</summary>
@@ -1450,7 +1844,7 @@ export function PropertiesPanel() {
                 />
                 <span className="text-xs text-gray-600 dark:text-gray-400">Enable Shadow</span>
               </label>
-              
+
               {shadowEnabled && (
                 <>
                   <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
@@ -1464,7 +1858,7 @@ export function PropertiesPanel() {
                     onChange={(e) => handleShadowChange(Number(e.target.value), shadowOffsetX, shadowOffsetY, shadowColor)}
                     className="w-full accent-blue-500"
                   />
-                  
+
                   <div className="grid grid-cols-2 gap-2 mt-2">
                     <div>
                       <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
@@ -1495,6 +1889,37 @@ export function PropertiesPanel() {
                   </div>
                 </>
               )}
+            </Section>
+
+            <Section title="Actions pb-4">
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <button
+                  onClick={handleCopyStyle}
+                  className="flex items-center justify-center gap-2 py-2 border border-gray-200 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300 transition-colors text-xs"
+                >
+                  <Copy size={14} /> Copy Style
+                </button>
+                <button
+                  onClick={handlePasteStyle}
+                  disabled={!clipboardStyle}
+                  className={`flex items-center justify-center gap-2 py-2 border rounded transition-colors text-xs ${clipboardStyle ? 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300' : 'opacity-50 cursor-not-allowed border-gray-200 dark:border-gray-700 text-gray-400'}`}
+                >
+                  <Clipboard size={14} /> Paste Style
+                </button>
+                <button
+                  onClick={handleCopySize}
+                  className="flex items-center justify-center gap-2 py-2 border border-gray-200 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300 transition-colors text-xs"
+                >
+                  <Maximize size={14} /> Copy Size
+                </button>
+                <button
+                  onClick={handlePasteSize}
+                  disabled={!clipboardSize}
+                  className={`flex items-center justify-center gap-2 py-2 border rounded transition-colors text-xs ${clipboardSize ? 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300' : 'opacity-50 cursor-not-allowed border-gray-200 dark:border-gray-700 text-gray-400'}`}
+                >
+                  <Minimize size={14} /> Paste Size
+                </button>
+              </div>
             </Section>
           </>
         )}
@@ -1544,11 +1969,10 @@ export function PropertiesPanel() {
                   <button
                     key={type}
                     onClick={() => handleEdgeConnectorChange(type)}
-                    className={`py-2 px-3 rounded border text-xs capitalize ${
-                      edgeConnector === type
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
-                        : 'border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300'
-                    }`}
+                    className={`py-2 px-3 rounded border text-xs capitalize ${edgeConnector === type
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
+                      : 'border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300'
+                      }`}
                   >
                     {type === 'normal' ? 'Straight' : type === 'rounded' ? 'Rounded' : type === 'smooth' ? 'Curved' : 'Orthogonal'}
                   </button>
@@ -1563,11 +1987,10 @@ export function PropertiesPanel() {
                   <button
                     key={style}
                     onClick={() => handleEdgeStyleChange(style)}
-                    className={`py-2 px-3 rounded border text-xs capitalize ${
-                      edgeStyle === style
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
-                        : 'border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300'
-                    }`}
+                    className={`py-2 px-3 rounded border text-xs capitalize ${edgeStyle === style
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
+                      : 'border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300'
+                      }`}
                   >
                     {style}
                   </button>
@@ -1612,11 +2035,10 @@ export function PropertiesPanel() {
                   <button
                     key={item.type}
                     onClick={() => handleSourceArrowChange(item.type)}
-                    className={`py-2 px-1 rounded border text-[10px] flex flex-col items-center ${
-                      sourceArrow === item.type
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
-                        : 'border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300'
-                    }`}
+                    className={`py-2 px-1 rounded border text-[10px] flex flex-col items-center ${sourceArrow === item.type
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
+                      : 'border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300'
+                      }`}
                     title={item.label}
                   >
                     <span className="text-sm">{item.icon}</span>
@@ -1641,16 +2063,33 @@ export function PropertiesPanel() {
                   <button
                     key={item.type}
                     onClick={() => handleTargetArrowChange(item.type)}
-                    className={`py-2 px-1 rounded border text-[10px] flex flex-col items-center ${
-                      targetArrow === item.type
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
-                        : 'border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300'
-                    }`}
+                    className={`py-2 px-1 rounded border text-[10px] flex flex-col items-center ${targetArrow === item.type
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
+                      : 'border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300'
+                      }`}
                     title={item.label}
                   >
                     <span className="text-sm">{item.icon}</span>
                   </button>
                 ))}
+              </div>
+            </Section>
+
+            <Section title="Actions">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={handleCopyStyle}
+                  className="flex items-center justify-center gap-2 py-2 border border-gray-200 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300 transition-colors text-xs"
+                >
+                  <Copy size={14} /> Copy Style
+                </button>
+                <button
+                  onClick={handlePasteStyle}
+                  disabled={!clipboardStyle}
+                  className={`flex items-center justify-center gap-2 py-2 border rounded transition-colors text-xs ${clipboardStyle ? 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300' : 'opacity-50 cursor-not-allowed border-gray-200 dark:border-gray-700 text-gray-400'}`}
+                >
+                  <Clipboard size={14} /> Paste Style
+                </button>
               </div>
             </Section>
           </>
@@ -1716,7 +2155,7 @@ export function PropertiesPanel() {
                                 <polygon points="12,32 8,16 40,16 36,32" fill={fillColor} stroke={strokeColor} strokeWidth="2" />
                               ) : shape.label === 'Image' ? (
                                 <><rect x="6" y="6" width="36" height="36" fill="#f0f0f0" stroke={strokeColor} strokeWidth="2" />
-                                <text x="24" y="28" fontSize="20" textAnchor="middle" fill="#666">🖼️</text></>
+                                  <text x="24" y="28" fontSize="20" textAnchor="middle" fill="#666">🖼️</text></>
                               ) : (
                                 <rect x="4" y="12" width="40" height="24" fill={fillColor} stroke={strokeColor} strokeWidth="2" />
                               )}
@@ -1779,11 +2218,10 @@ function ColorPalette({ selectedColor, onColorSelect }: ColorPaletteProps) {
         <button
           key={color}
           onClick={() => onColorSelect(color)}
-          className={`w-5 h-5 rounded-sm border ${
-            selectedColor.toLowerCase() === color.toLowerCase()
-              ? 'ring-2 ring-blue-500 ring-offset-1 dark:ring-offset-gray-800'
-              : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
-          }`}
+          className={`w-5 h-5 rounded-sm border ${selectedColor.toLowerCase() === color.toLowerCase()
+            ? 'ring-2 ring-blue-500 ring-offset-1 dark:ring-offset-gray-800'
+            : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
+            }`}
           style={{ backgroundColor: color }}
           title={color}
         />

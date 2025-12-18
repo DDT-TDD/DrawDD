@@ -52,6 +52,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
   type DrawddWindow = Window & {
     __currentDiagramFile?: DiagramFile;
     __drawdd_save?: () => void;
+    __drawdd_saveAs?: () => void;
     __drawdd_exportPNG?: () => void;
     __drawdd_exportJPEG?: () => void;
     __drawdd_exportSVG?: () => void;
@@ -421,6 +422,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
   // Expose export functions to window for Electron menu access
   useEffect(() => {
     drawddWindow.__drawdd_save = handleSave;
+    drawddWindow.__drawdd_saveAs = handleSaveAs;
     drawddWindow.__drawdd_exportPNG = handleExportPNG;
     drawddWindow.__drawdd_exportJPEG = handleExportJPEG;
     drawddWindow.__drawdd_exportSVG = handleExportSVG;
@@ -429,6 +431,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     drawddWindow.__drawdd_exportJSON = handleExportJSON;
     return () => {
       delete drawddWindow.__drawdd_save;
+      delete drawddWindow.__drawdd_saveAs;
       delete drawddWindow.__drawdd_exportPNG;
       delete drawddWindow.__drawdd_exportJPEG;
       delete drawddWindow.__drawdd_exportSVG;
