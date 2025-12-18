@@ -41,6 +41,8 @@ import {
   Image as ImageIcon,
 } from 'lucide-react';
 import { useGraph } from '../context/GraphContext';
+import { getNextThemeColors } from '../utils/theme';
+import { setNodeLabelWithAutoSize } from '../utils/text';
 import { 
   FLOWCHART_SHAPES, 
   MINDMAP_SHAPES, 
@@ -103,7 +105,7 @@ interface ShapeCategory {
 }
 
 export function Sidebar() {
-  const { graph, mode } = useGraph();
+  const { graph, mode, colorScheme } = useGraph();
   const dndRef = useRef<Dnd | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['flowchart', 'mindmap', 'timeline', 'basic']));
   const [searchQuery, setSearchQuery] = useState('');
@@ -187,7 +189,7 @@ export function Sidebar() {
               const width = Math.max(minDim, Math.round(imgEl.width * scale));
               const height = Math.max(minDim, Math.round(imgEl.height * scale));
 
-              const node = createNode(graph, shape);
+              const node = createNode(graph, shape, colorScheme);
               node.resize(width, height);
               node.setAttrs({
                 image: {
@@ -215,7 +217,7 @@ export function Sidebar() {
       return;
     }
 
-    const node = createNode(graph, shape);
+    const node = createNode(graph, shape, colorScheme);
     dndRef.current.start(node, e.nativeEvent);
   };
 
@@ -305,9 +307,15 @@ export function Sidebar() {
   );
 }
 
-function createNode(graph: Graph, shape: ShapeConfig) {
+function createNode(graph: Graph, shape: ShapeConfig, colorScheme: string) {
   // Check if it's a custom logic gate shape
   const isCustomShape = shape.type.startsWith('logic-');
+  const theme = getNextThemeColors(colorScheme);
+  
+  // Check if this is a transparent shape (text boxes, labels, etc.)
+  // These should not have theme colors applied
+  const isTransparentShape = shape.attrs.body.fill === 'transparent' || 
+                             shape.attrs.body.stroke === 'transparent';
   
   const resolvedShape = isCustomShape
     ? shape.type
@@ -321,13 +329,21 @@ function createNode(graph: Graph, shape: ShapeConfig) {
             ? 'image'
             : 'rect';
 
+  // For transparent shapes, use original colors; for others, apply theme
+  const bodyAttrs = isTransparentShape 
+    ? { ...shape.attrs.body } 
+    : { ...shape.attrs.body, fill: theme.fill, stroke: theme.stroke };
+  const labelAttrs = isTransparentShape
+    ? { ...shape.attrs.label }
+    : { ...shape.attrs.label, fill: theme.text };
+
   const node = graph.createNode({
     width: shape.width,
     height: shape.height,
     shape: resolvedShape,
     attrs: isCustomShape ? undefined : {
-      body: { ...shape.attrs.body },
-      label: { ...shape.attrs.label },
+      body: bodyAttrs as any,
+      label: labelAttrs as any,
     },
     data: shape.data || {},
     ports: shape.ports || (isCustomShape ? undefined : {
@@ -369,6 +385,9 @@ function createNode(graph: Graph, shape: ShapeConfig) {
       ],
     }),
   });
+
+  const labelText = (node.getAttrs().label as any)?.text || shape.label || '';
+  setNodeLabelWithAutoSize(node as any, labelText, { minWidth: shape.width, minHeight: shape.height });
 
   return node;
 }

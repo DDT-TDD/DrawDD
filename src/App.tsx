@@ -299,6 +299,20 @@ function AppContent() {
         e.preventDefault();
         setShowFindReplace(true);
       }
+      // Ctrl+S / Cmd+S to save
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        (window as any).__drawdd_save?.();
+      }
+      // Ctrl+Shift+S to save as
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        if ((window as any).__drawdd_saveAs) {
+          (window as any).__drawdd_saveAs();
+        } else {
+          (window as any).__drawdd_save?.();
+        }
+      }
       // F1 for help/about
       if (e.key === 'F1') {
         e.preventDefault();

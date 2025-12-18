@@ -16,6 +16,7 @@ import {
 } from '../config/shapes';
 import { COLOR_SCHEMES, getColorScheme } from '../config/colorSchemes';
 import type { Node, Edge } from '@antv/x6';
+import { setNodeLabelWithAutoSize, redistributeNodeText } from '../utils/text';
 import { 
   AlignStartVertical, 
   AlignCenterVertical, 
@@ -46,6 +47,7 @@ const FONT_FAMILIES = [
 export function PropertiesPanel() {
   const { selectedCell, graph, showGrid, setShowGrid, canvasBackground, setCanvasBackground, gridSize, setGridSize, exportGrid, setExportGrid, colorScheme, setColorScheme, spellcheckLanguage } = useGraph();
   const [selectedNodes, setSelectedNodes] = useState<Node[]>([]);
+  const [selectedEdges, setSelectedEdges] = useState<Edge[]>([]);
   
   // Node properties
   const [label, setLabel] = useState('');
@@ -84,19 +86,24 @@ export function PropertiesPanel() {
   const [edgeLabel, setEdgeLabel] = useState('');
 
   const isNode = selectedCell?.isNode();
-  const isEdge = selectedCell?.isEdge();
+  const activeEdge = selectedCell?.isEdge?.() ? (selectedCell as Edge) : selectedEdges[0] ?? null;
+  const isEdge = !!activeEdge;
+  const getEdgeTargets = () => (selectedEdges.length ? selectedEdges : activeEdge ? [activeEdge] : []);
 
   // Track multiple selected nodes
   useEffect(() => {
     if (!graph) {
       setSelectedNodes([]);
+      setSelectedEdges([]);
       return;
     }
     
     const updateSelection = () => {
       const cells = graph.getSelectedCells();
       const nodes = cells.filter(c => c.isNode()) as Node[];
+      const edges = cells.filter(c => c.isEdge()) as Edge[];
       setSelectedNodes(nodes);
+      setSelectedEdges(edges);
     };
     
     updateSelection();
@@ -106,6 +113,21 @@ export function PropertiesPanel() {
       graph.off('selection:changed', updateSelection);
     };
   }, [graph, selectedCell]);
+
+  // Redistribute text when node is resized
+  useEffect(() => {
+    if (!graph) return;
+    
+    const handleNodeResized = ({ node }: { node: Node }) => {
+      redistributeNodeText(node);
+    };
+    
+    graph.on('node:resized', handleNodeResized);
+    
+    return () => {
+      graph.off('node:resized', handleNodeResized);
+    };
+  }, [graph]);
 
   // ========== Alignment Functions ==========
   const handleAlignLeft = () => {
@@ -229,7 +251,7 @@ export function PropertiesPanel() {
   };
 
   useEffect(() => {
-    if (selectedCell && isNode) {
+    if (selectedCell && selectedCell.isNode()) {
       const node = selectedCell as Node;
       const attrs = node.getAttrs();
       
@@ -261,8 +283,8 @@ export function PropertiesPanel() {
       const data = node.getData() || {};
       setPrefixDecoration((data.prefixDecoration as string) || '');
       setSuffixDecoration((data.suffixDecoration as string) || '');
-    } else if (selectedCell && isEdge) {
-      const edge = selectedCell as Edge;
+    } else if (activeEdge) {
+      const edge = activeEdge as Edge;
       const attrs = edge.getAttrs();
       
       setEdgeColor((attrs.line?.stroke as string) || '#5F95FF');
@@ -280,7 +302,7 @@ export function PropertiesPanel() {
       else if (router === 'manhattan') setEdgeConnector('ortho');
       else setEdgeConnector('normal');
     }
-  }, [selectedCell, isNode, isEdge]);
+  }, [selectedCell, activeEdge]);
 
   // Listen for shape change event from context menu
   const [showShapeDialog, setShowShapeDialog] = useState(false);
@@ -375,7 +397,7 @@ export function PropertiesPanel() {
   const handleLabelChange = (value: string) => {
     setLabel(value);
     if (selectedCell && isNode) {
-      (selectedCell as Node).setAttrs({ label: { text: value } });
+      setNodeLabelWithAutoSize(selectedCell as Node, value);
     }
   };
 
@@ -603,22 +625,22 @@ export function PropertiesPanel() {
 
   const handleEdgeColorChange = (color: string) => {
     setEdgeColor(color);
-    if (selectedCell && isEdge) {
-      (selectedCell as Edge).setAttrs({ line: { stroke: color } });
-    }
+    getEdgeTargets().forEach(edge => {
+      edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), stroke: color } });
+    });
   };
 
   const handleEdgeWidthChange = (width: number) => {
     setEdgeWidth(width);
-    if (selectedCell && isEdge) {
-      (selectedCell as Edge).setAttrs({ line: { strokeWidth: width } });
-    }
+    getEdgeTargets().forEach(edge => {
+      edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), strokeWidth: width } });
+    });
   };
 
   const handleApplyEdgesToAll = () => {
     if (!graph) return;
     const dashArray = edgeStyle === 'dashed' ? '5 5' : edgeStyle === 'dotted' ? '2 2' : '0';
-    const sourceMarker = sourceArrow === 'none' ? null : { name: sourceArrow, width: 10, height: 6 };
+    const sourceMarker = sourceArrow === 'none' ? null : { name: sourceArrow, width: 12, height: 8 };
     const targetMarker = targetArrow === 'none' ? null : { name: targetArrow, width: 12, height: 8 };
 
     graph.getEdges().forEach(edge => {
@@ -660,16 +682,15 @@ export function PropertiesPanel() {
 
   const handleEdgeStyleChange = (style: 'solid' | 'dashed' | 'dotted') => {
     setEdgeStyle(style);
-    if (selectedCell && isEdge) {
-      const dashArray = style === 'dashed' ? '5 5' : style === 'dotted' ? '2 2' : '0';
-      (selectedCell as Edge).setAttrs({ line: { strokeDasharray: dashArray } });
-    }
+    const dashArray = style === 'dashed' ? '5 5' : style === 'dotted' ? '2 2' : '0';
+    getEdgeTargets().forEach(edge => {
+      edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), strokeDasharray: dashArray } });
+    });
   };
 
   const handleEdgeConnectorChange = (type: 'normal' | 'rounded' | 'smooth' | 'ortho') => {
     setEdgeConnector(type);
-    if (selectedCell && isEdge) {
-      const edge = selectedCell as Edge;
+    getEdgeTargets().forEach(edge => {
       if (type === 'smooth') {
         edge.setConnector('smooth');
         edge.setRouter('normal');
@@ -683,43 +704,38 @@ export function PropertiesPanel() {
         edge.setConnector('normal');
         edge.setRouter('normal');
       }
-    }
+    });
   };
 
   const handleSourceArrowChange = (type: 'block' | 'classic' | 'diamond' | 'circle' | 'circlePlus' | 'ellipse' | 'cross' | 'none') => {
     setSourceArrow(type);
-    if (selectedCell && isEdge) {
-      const edge = selectedCell as Edge;
+    getEdgeTargets().forEach(edge => {
       if (type === 'none') {
-        // Remove the source marker entirely
-        edge.setAttrs({ line: { sourceMarker: '' } });
+        edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), sourceMarker: '' } });
       } else {
-        edge.setAttrs({ line: { sourceMarker: { name: type, width: 10, height: 6 } } });
+        edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), sourceMarker: { name: type, width: 12, height: 8 } } });
       }
-    }
+    });
   };
 
   const handleTargetArrowChange = (type: 'block' | 'classic' | 'diamond' | 'circle' | 'circlePlus' | 'ellipse' | 'cross' | 'none') => {
     setTargetArrow(type);
-    if (selectedCell && isEdge) {
-      const edge = selectedCell as Edge;
+    getEdgeTargets().forEach(edge => {
       if (type === 'none') {
-        // Remove the target marker entirely
-        edge.setAttrs({ line: { targetMarker: '' } });
+        edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), targetMarker: '' } });
       } else {
-        edge.setAttrs({ line: { targetMarker: { name: type, width: 12, height: 8 } } });
+        edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), targetMarker: { name: type, width: 12, height: 8 } } });
       }
-    }
+    });
   };
 
   const handleEdgeLabelChange = (value: string) => {
     setEdgeLabel(value);
-    if (selectedCell && isEdge) {
-      const edge = selectedCell as Edge;
+    getEdgeTargets().forEach(edge => {
       if (value) {
         edge.setLabels([{
           attrs: {
-            text: { text: value, fill: '#333', fontSize: 12 },
+            text: { text: value, fill: '#333', fontSize: 12, lineHeight: 1.3, whiteSpace: 'pre-wrap' },
             rect: { fill: '#fff', stroke: '#ddd', strokeWidth: 1 },
           },
           position: 0.5,
@@ -727,10 +743,11 @@ export function PropertiesPanel() {
       } else {
         edge.setLabels([]);
       }
-    }
+    });
   };
 
-  if (!selectedCell && selectedNodes.length === 0) {
+  // Show Canvas Properties only when nothing is selected
+  if (!selectedCell && selectedNodes.length === 0 && selectedEdges.length === 0) {
     const handleBackgroundColorChange = (color: string) => {
       setCanvasBackground({ type: 'color', color });
       if (graph) {
@@ -1034,6 +1051,279 @@ export function PropertiesPanel() {
                 <span className="text-xs text-red-500">Delete</span>
               </button>
             </div>
+          </Section>
+        </div>
+      </div>
+    );
+  }
+
+  // Multi-edge selection panel (when only edges are selected, no nodes)
+  if (selectedEdges.length > 1 && selectedNodes.length === 0) {
+    const arrowTypes = ['none', 'block', 'classic', 'diamond', 'circle'] as const;
+    
+    return (
+      <div className="w-72 bg-white dark:bg-gray-800 flex flex-col h-full overflow-hidden">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wide">
+            🔗 {selectedEdges.length} Connections Selected
+          </h2>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-5">
+          <Section title="Line Style">
+            <div className="grid grid-cols-3 gap-2">
+              {(['solid', 'dashed', 'dotted'] as const).map((style) => (
+                <button
+                  key={style}
+                  onClick={() => {
+                    selectedEdges.forEach(edge => {
+                      edge.setAttrs({
+                        line: {
+                          strokeDasharray: style === 'dashed' ? '8 4' : style === 'dotted' ? '2 2' : '',
+                        },
+                      });
+                    });
+                  }}
+                  className="flex flex-col items-center gap-1 p-2 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400 transition-colors"
+                >
+                  <div className="w-8 h-0.5 bg-gray-600 dark:bg-gray-400" style={{
+                    backgroundImage: style === 'dashed' ? 'repeating-linear-gradient(90deg, currentColor 0, currentColor 8px, transparent 8px, transparent 12px)' : 
+                                    style === 'dotted' ? 'repeating-linear-gradient(90deg, currentColor 0, currentColor 2px, transparent 2px, transparent 4px)' : 'none',
+                    backgroundColor: style === 'solid' ? 'currentColor' : 'transparent',
+                  }} />
+                  <span className="text-xs text-gray-600 dark:text-gray-400 capitalize">{style}</span>
+                </button>
+              ))}
+            </div>
+          </Section>
+
+          <Section title="Line Color">
+            <ColorPalette 
+              selectedColor={selectedEdges[0]?.getAttrs()?.line?.stroke as string || '#333'} 
+              onColorSelect={(color) => {
+                selectedEdges.forEach(edge => {
+                  edge.setAttrs({ line: { stroke: color } });
+                });
+              }} 
+            />
+          </Section>
+
+          <Section title="Line Width">
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min="1"
+                max="8"
+                step="0.5"
+                defaultValue="2"
+                onChange={(e) => {
+                  const width = parseFloat(e.target.value);
+                  selectedEdges.forEach(edge => {
+                    edge.setAttrs({ line: { strokeWidth: width } });
+                  });
+                }}
+                className="flex-1"
+              />
+              <span className="text-xs text-gray-500 w-8">px</span>
+            </div>
+          </Section>
+
+          <Section title="Source Arrow (Start)">
+            <div className="grid grid-cols-5 gap-1">
+              {arrowTypes.map((type) => (
+                <button
+                  key={type}
+                  onClick={() => {
+                    selectedEdges.forEach(edge => {
+                      if (type === 'none') {
+                        edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), sourceMarker: '' } });
+                      } else {
+                        edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), sourceMarker: { name: type, width: 12, height: 8 } } });
+                      }
+                    });
+                  }}
+                  className="flex flex-col items-center gap-0.5 p-1.5 rounded border border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400 transition-colors"
+                  title={type}
+                >
+                  <span className="text-[10px] text-gray-600 dark:text-gray-400 capitalize">{type === 'none' ? '—' : type.slice(0, 3)}</span>
+                </button>
+              ))}
+            </div>
+          </Section>
+
+          <Section title="Target Arrow (End)">
+            <div className="grid grid-cols-5 gap-1">
+              {arrowTypes.map((type) => (
+                <button
+                  key={type}
+                  onClick={() => {
+                    selectedEdges.forEach(edge => {
+                      if (type === 'none') {
+                        edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), targetMarker: '' } });
+                      } else {
+                        edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), targetMarker: { name: type, width: 12, height: 8 } } });
+                      }
+                    });
+                  }}
+                  className="flex flex-col items-center gap-0.5 p-1.5 rounded border border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400 transition-colors"
+                  title={type}
+                >
+                  <span className="text-[10px] text-gray-600 dark:text-gray-400 capitalize">{type === 'none' ? '—' : type.slice(0, 3)}</span>
+                </button>
+              ))}
+            </div>
+          </Section>
+
+          <Section title="Actions">
+            <button
+              onClick={handleDeleteSelected}
+              className="w-full flex items-center justify-center gap-2 p-2 rounded-lg border border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/30 hover:border-red-400 transition-colors"
+              title="Delete (Del)"
+            >
+              <Trash2 size={16} className="text-red-500" />
+              <span className="text-xs text-red-500">Delete All</span>
+            </button>
+          </Section>
+        </div>
+      </div>
+    );
+  }
+
+  // Single edge selected (or 1 edge with nodes) - handled by main return
+  // Also handles case when 1 edge is in selectedEdges but no selectedCell
+  if (selectedEdges.length === 1 && selectedNodes.length === 0 && !selectedCell) {
+    // Force show edge properties
+    const edge = selectedEdges[0];
+    const edgeAttrs = edge.getAttrs();
+    const lineAttrs = (edgeAttrs.line || {}) as Record<string, any>;
+    const arrowTypes = ['none', 'block', 'classic', 'diamond', 'circle'] as const;
+    const currentSourceMarker = lineAttrs.sourceMarker?.name || 'none';
+    const currentTargetMarker = lineAttrs.targetMarker?.name || (lineAttrs.targetMarker === '' ? 'none' : 'classic');
+    
+    return (
+      <div className="w-72 bg-white dark:bg-gray-800 flex flex-col h-full overflow-hidden">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wide">
+            🔗 Connection Properties
+          </h2>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-5">
+          <Section title="Line Style">
+            <div className="grid grid-cols-3 gap-2">
+              {(['solid', 'dashed', 'dotted'] as const).map((style) => (
+                <button
+                  key={style}
+                  onClick={() => {
+                    edge.setAttrs({
+                      line: {
+                        strokeDasharray: style === 'dashed' ? '8 4' : style === 'dotted' ? '2 2' : '',
+                      },
+                    });
+                  }}
+                  className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-colors ${
+                    (lineAttrs.strokeDasharray === '8 4' && style === 'dashed') ||
+                    (lineAttrs.strokeDasharray === '2 2' && style === 'dotted') ||
+                    (!lineAttrs.strokeDasharray && style === 'solid')
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30'
+                      : 'border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400'
+                  }`}
+                >
+                  <div className="w-8 h-0.5 bg-gray-600 dark:bg-gray-400" style={{
+                    backgroundImage: style === 'dashed' ? 'repeating-linear-gradient(90deg, currentColor 0, currentColor 8px, transparent 8px, transparent 12px)' : 
+                                    style === 'dotted' ? 'repeating-linear-gradient(90deg, currentColor 0, currentColor 2px, transparent 2px, transparent 4px)' : 'none',
+                    backgroundColor: style === 'solid' ? 'currentColor' : 'transparent',
+                  }} />
+                  <span className="text-xs text-gray-600 dark:text-gray-400 capitalize">{style}</span>
+                </button>
+              ))}
+            </div>
+          </Section>
+
+          <Section title="Line Color">
+            <ColorRow 
+              color={lineAttrs.stroke as string || '#333'} 
+              onChange={(color) => edge.setAttrs({ line: { stroke: color } })} 
+            />
+            <ColorPalette 
+              selectedColor={lineAttrs.stroke as string || '#333'} 
+              onColorSelect={(color) => edge.setAttrs({ line: { stroke: color } })} 
+            />
+          </Section>
+
+          <Section title="Line Width">
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min="1"
+                max="8"
+                step="0.5"
+                value={lineAttrs.strokeWidth || 2}
+                onChange={(e) => edge.setAttrs({ line: { strokeWidth: parseFloat(e.target.value) } })}
+                className="flex-1"
+              />
+              <span className="text-xs text-gray-500 w-8">{lineAttrs.strokeWidth || 2}px</span>
+            </div>
+          </Section>
+
+          <Section title="Source Arrow (Start)">
+            <div className="grid grid-cols-5 gap-1">
+              {arrowTypes.map((type) => (
+                <button
+                  key={type}
+                  onClick={() => {
+                    if (type === 'none') {
+                      edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), sourceMarker: '' } });
+                    } else {
+                      edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), sourceMarker: { name: type, width: 12, height: 8 } } });
+                    }
+                  }}
+                  className={`flex flex-col items-center gap-0.5 p-1.5 rounded border transition-colors ${
+                    currentSourceMarker === type || (type === 'none' && !lineAttrs.sourceMarker)
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30'
+                      : 'border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400'
+                  }`}
+                  title={type}
+                >
+                  <span className="text-[10px] text-gray-600 dark:text-gray-400 capitalize">{type === 'none' ? '—' : type.slice(0, 3)}</span>
+                </button>
+              ))}
+            </div>
+          </Section>
+
+          <Section title="Target Arrow (End)">
+            <div className="grid grid-cols-5 gap-1">
+              {arrowTypes.map((type) => (
+                <button
+                  key={type}
+                  onClick={() => {
+                    if (type === 'none') {
+                      edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), targetMarker: '' } });
+                    } else {
+                      edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), targetMarker: { name: type, width: 12, height: 8 } } });
+                    }
+                  }}
+                  className={`flex flex-col items-center gap-0.5 p-1.5 rounded border transition-colors ${
+                    currentTargetMarker === type
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30'
+                      : 'border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400'
+                  }`}
+                  title={type}
+                >
+                  <span className="text-[10px] text-gray-600 dark:text-gray-400 capitalize">{type === 'none' ? '—' : type.slice(0, 3)}</span>
+                </button>
+              ))}
+            </div>
+          </Section>
+
+          <Section title="Actions">
+            <button
+              onClick={handleDeleteSelected}
+              className="w-full flex items-center justify-center gap-2 p-2 rounded-lg border border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/30 hover:border-red-400 transition-colors"
+              title="Delete (Del)"
+            >
+              <Trash2 size={16} className="text-red-500" />
+              <span className="text-xs text-red-500">Delete</span>
+            </button>
           </Section>
         </div>
       </div>

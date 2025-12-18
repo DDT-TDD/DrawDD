@@ -6,8 +6,53 @@ All notable changes to this project will be documented in this file.
 
 | Version | Status | Release Date | Notes |
 |---------|--------|--------------|-------|
+| 1.1.1 | Stable | Dec 17, 2025 | Bug fixes and improvements |
 | 1.1.0 | Stable | Dec 15, 2025 | **First Official Release** |
 | 1.0.0 | Alpha | N/A | Development version, not publicly released |
+
+---
+
+## [1.1.1] - 2025-12-17
+
+### New Features ✨
+
+#### Edge/Line Manipulation (like draw.io)
+- **Edges are now fully draggable** while keeping anchor points connected to shapes
+- **Added vertex tools**: Click on an edge to add waypoints, drag vertices to reshape the connection path
+- **Added segment tools**: Manipulate edge segments by dragging
+- Changed default router from 'manhattan' to 'normal' to allow manual vertex positioning
+- Edges now show vertex/segment handles when selected
+
+### Bug Fixes 🐛
+
+#### Critical Fixes
+- **Fixed shapes disappearing on theme change**: Removed `colorScheme` from the graph initialization dependency array that was causing the entire canvas to be recreated when changing themes
+- **Fixed edge selection showing wrong properties**: When selecting edges only (no nodes), the Properties Panel now correctly shows "Connection Properties" instead of "Canvas Properties"
+- **Fixed arrow marker size inconsistency**: Source and target arrows now both use 12x8 dimensions (was 10x6 for source, 12x8 for target)
+
+#### Properties Panel Improvements
+- Added dedicated multi-edge selection panel when multiple connections are selected
+- Shows controls for line style, color, and width that apply to all selected edges
+- **Added source/target arrow controls** (none, block, classic, diamond, circle) for bulk edge editing
+- Added single-edge fallback panel for edge-only selections with full arrow controls
+- Fixed condition `selectedEdges.length === 0` in panel visibility logic
+
+#### Spellcheck in Electron Desktop App
+- **Fixed right-click spelling suggestions not appearing** in packaged .exe
+- Enabled spellcheck in Electron webPreferences
+- Added custom context-menu handler with spelling suggestions
+- Added "Add to Dictionary" option for custom words
+- Included Cut/Copy/Paste/Select All in context menu
+
+#### Text & Shape Fixes
+- Text shapes (transparent background) now correctly preserve their styling when theme changes
+- Double-click on canvas now creates proper transparent text nodes
+- Sidebar correctly creates transparent shapes without applying theme colors
+
+### Changed
+- Centralized version number in `src/version.ts` - now all components import from single source
+- HelpDialog and AboutDialog now use the centralized VERSION constant
+- APP_VERSION in types re-exports from version.ts for backward compatibility
 
 ---
 

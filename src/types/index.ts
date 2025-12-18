@@ -1,7 +1,8 @@
 import type { Graph, Node, Edge } from '@antv/x6';
+import { VERSION } from '../version';
 
-// App version
-export const APP_VERSION = '1.0.0';
+// Re-export version for backward compatibility
+export const APP_VERSION = VERSION;
 
 export interface ShapeBodyAttrs {
   fill: string;

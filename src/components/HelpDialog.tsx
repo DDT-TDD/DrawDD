@@ -1,4 +1,5 @@
 import { X } from 'lucide-react';
+import { VERSION } from '../version';
 
 interface HelpDialogProps {
   isOpen: boolean;
@@ -149,7 +150,7 @@ export function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
             </h3>
             <div className="space-y-2 text-gray-700 dark:text-gray-300">
               <p>
-                <strong>Version:</strong> 1.1.0
+                <strong>Version:</strong> {VERSION}
               </p>
               <p>
                 <strong>License:</strong> MIT License - Free and open source

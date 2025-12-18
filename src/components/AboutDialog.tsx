@@ -1,4 +1,5 @@
 import { X, Github, Heart, Keyboard, ExternalLink } from 'lucide-react';
+import { VERSION } from '../version';
 
 interface AboutDialogProps {
   isOpen: boolean;
@@ -53,7 +54,7 @@ export function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
               <span className="text-4xl font-bold text-white">D</span>
             </div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">DRAWDD</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Version 1.1.0</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Version {VERSION}</p>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Open Source Diagramming Tool</p>
           </div>
 
