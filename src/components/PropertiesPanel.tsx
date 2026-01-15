@@ -357,11 +357,12 @@ export function PropertiesPanel() {
     } else if (activeEdge) {
       const edge = activeEdge as Edge;
       const attrs = edge.getAttrs();
+      const lineAttrs = (attrs.line || {}) as Record<string, any>;
 
       setEdgeColor((attrs.line?.stroke as string) || '#5F95FF');
       setEdgeWidth((attrs.line?.strokeWidth as number) || 2);
       const dashArray = attrs.line?.strokeDasharray as string;
-      if (dashArray?.includes('5 5')) setEdgeStyle('dashed');
+      if (dashArray?.includes('8 4')) setEdgeStyle('dashed');
       else if (dashArray?.includes('2 2')) setEdgeStyle('dotted');
       else setEdgeStyle('solid');
 
@@ -372,6 +373,11 @@ export function PropertiesPanel() {
       else if (connector === 'rounded' && router !== 'manhattan') setEdgeConnector('rounded');
       else if (router === 'manhattan') setEdgeConnector('ortho');
       else setEdgeConnector('normal');
+
+      const currentSourceMarker = lineAttrs.sourceMarker?.name || (lineAttrs.sourceMarker === '' ? 'none' : 'none');
+      const currentTargetMarker = lineAttrs.targetMarker?.name || (lineAttrs.targetMarker === '' ? 'none' : 'classic');
+      setSourceArrow(currentSourceMarker as typeof sourceArrow);
+      setTargetArrow(currentTargetMarker as typeof targetArrow);
     }
   }, [selectedCell, activeEdge]);
 
@@ -717,9 +723,9 @@ export function PropertiesPanel() {
 
   const handleApplyEdgesToAll = () => {
     if (!graph) return;
-    const dashArray = edgeStyle === 'dashed' ? '5 5' : edgeStyle === 'dotted' ? '2 2' : '0';
-    const sourceMarker = sourceArrow === 'none' ? null : { name: sourceArrow, width: 12, height: 8 };
-    const targetMarker = targetArrow === 'none' ? null : { name: targetArrow, width: 12, height: 8 };
+    const dashArray = edgeStyle === 'dashed' ? '8 4' : edgeStyle === 'dotted' ? '2 2' : '';
+    const sourceMarker = sourceArrow === 'none' ? '' : { name: sourceArrow, width: 12, height: 8 };
+    const targetMarker = targetArrow === 'none' ? '' : { name: targetArrow, width: 12, height: 8 };
 
     graph.getEdges().forEach(edge => {
       // Stroke/width/style
@@ -727,9 +733,9 @@ export function PropertiesPanel() {
         line: {
           stroke: edgeColor,
           strokeWidth: edgeWidth,
-          strokeDasharray: dashArray,
-          sourceMarker: sourceMarker ?? undefined,
-          targetMarker: targetMarker ?? undefined,
+          strokeDasharray: dashArray || undefined,
+          sourceMarker,
+          targetMarker,
         },
       });
 
@@ -760,9 +766,9 @@ export function PropertiesPanel() {
 
   const handleEdgeStyleChange = (style: 'solid' | 'dashed' | 'dotted') => {
     setEdgeStyle(style);
-    const dashArray = style === 'dashed' ? '5 5' : style === 'dotted' ? '2 2' : '0';
+    const dashArray = style === 'dashed' ? '8 4' : style === 'dotted' ? '2 2' : '';
     getEdgeTargets().forEach(edge => {
-      edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), strokeDasharray: dashArray } });
+      edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), strokeDasharray: dashArray || undefined } });
     });
   };
 
@@ -1242,6 +1248,7 @@ export function PropertiesPanel() {
                 <button
                   key={type}
                   onClick={() => {
+                    setSourceArrow(type);
                     selectedEdges.forEach(edge => {
                       if (type === 'none') {
                         edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), sourceMarker: '' } });
@@ -1265,6 +1272,7 @@ export function PropertiesPanel() {
                 <button
                   key={type}
                   onClick={() => {
+                    setTargetArrow(type);
                     selectedEdges.forEach(edge => {
                       if (type === 'none') {
                         edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), targetMarker: '' } });

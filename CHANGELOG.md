@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 | Version | Status | Release Date | Notes |
 |---------|--------|--------------|-------|
+| 1.1.2 | Stable | Jan 15, 2026 | Save/Save As and tab behavior fixes |
 | 1.1.1 | Stable | Dec 17, 2025 | Bug fixes and improvements |
 | 1.1.0 | Stable | Dec 15, 2025 | **First Official Release** |
 | 1.0.0 | Alpha | N/A | Development version, not publicly released |
@@ -53,6 +54,20 @@ All notable changes to this project will be documented in this file.
 - Centralized version number in `src/version.ts` - now all components import from single source
 - HelpDialog and AboutDialog now use the centralized VERSION constant
 - APP_VERSION in types re-exports from version.ts for backward compatibility
+
+---
+
+## [1.1.2] - 2026-01-15
+
+### Bug Fixes 🐛
+
+- **Electron Save/Save As**: Save now overwrites the existing file when a path is known; Save As uses a native dialog and stores the selected path
+- **Tab naming on Save As**: Tab title updates to the chosen filename after Save As
+- **Open file behavior**: Opening a file always creates a new tab instead of replacing the current tab
+
+### Changed
+
+- Added file path tracking per tab to support true overwrite in the EXE
 
 ---
 
