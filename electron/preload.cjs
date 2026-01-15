@@ -14,4 +14,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Check if running in Electron
   isElectron: true,
+
+  // Save directly to a known file path
+  saveFile: (filePath, content) => ipcRenderer.invoke('save-file', filePath, content),
+
+  // Save with a native Save As dialog
+  saveFileAs: (defaultName, content) => ipcRenderer.invoke('save-file-as', defaultName, content),
 });

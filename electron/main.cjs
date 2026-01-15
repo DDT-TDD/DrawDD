@@ -13,6 +13,12 @@ try {
 
 let mainWindow;
 
+function ensureDrawddExtension(filePath) {
+  if (filePath.toLowerCase().endsWith('.drawdd.json')) return filePath;
+  if (filePath.toLowerCase().endsWith('.json')) return filePath.replace(/\.json$/i, '.drawdd.json');
+  return `${filePath}.drawdd.json`;
+}
+
 function getIconPath() {
   const possiblePaths = [
     path.join(__dirname, '../public/icons/icon-256.ico'),
@@ -470,6 +476,37 @@ app.whenReady().then(() => {
       createWindow();
     }
   });
+});
+
+ipcMain.handle('save-file', async (_event, filePath, content) => {
+  try {
+    fs.writeFileSync(filePath, content, 'utf8');
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error?.message || String(error) };
+  }
+});
+
+ipcMain.handle('save-file-as', async (_event, defaultName, content) => {
+  try {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Save Diagram',
+      defaultPath: defaultName,
+      filters: [{ name: 'DRAWDD Files', extensions: ['json'] }],
+    });
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+    const finalPath = ensureDrawddExtension(result.filePath);
+    fs.writeFileSync(finalPath, content, 'utf8');
+    return {
+      success: true,
+      filePath: finalPath,
+      displayName: path.basename(finalPath).replace(/\.drawdd\.json$/i, '').replace(/\.json$/i, ''),
+    };
+  } catch (error) {
+    return { success: false, error: error?.message || String(error) };
+  }
 });
 
 app.on('window-all-closed', () => {

@@ -378,6 +378,15 @@ function AppContent() {
         f.id === activeFileId ? { ...f, name, isModified: false } : f
       ));
     };
+    (window as any).__drawdd_updateFilePath = (filePath: string) => {
+      setFiles(prev => prev.map(f => 
+        f.id === activeFileId ? { ...f, filePath } : f
+      ));
+    };
+    (window as any).__drawdd_getFilePath = () => {
+      const file = files.find(f => f.id === activeFileId);
+      return file?.filePath;
+    };
     // Mark current file as saved without changing name
     (window as any).__drawdd_markSaved = () => {
       setFiles(prev => prev.map(f => 
@@ -391,28 +400,15 @@ function AppContent() {
     };
     // Load entire file with all pages
     (window as any).__drawdd_loadFile = (fileData: DiagramFile) => {
-      // Check if current file is empty/unmodified "Untitled Diagram" - if so, replace it
-      const currentFileObj = files.find(f => f.id === activeFileId);
-      const shouldReplace = currentFileObj && 
-        !currentFileObj.isModified && 
-        currentFileObj.name === 'Untitled Diagram' &&
-        currentFileObj.pages.length === 1;
-      
-      // Create new file entry with the imported data
+      // Always open in a new tab
       const newFile: DiagramFile = {
         ...fileData,
-        id: shouldReplace ? activeFileId : `file-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        id: `file-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
         isModified: false
       };
       
-      if (shouldReplace) {
-        // Replace the current empty file
-        setFiles(prev => prev.map(f => f.id === activeFileId ? newFile : f));
-      } else {
-        // Add as new file
-        setFiles(prev => [...prev, newFile]);
-        setActiveFileId(newFile.id);
-      }
+      setFiles(prev => [...prev, newFile]);
+      setActiveFileId(newFile.id);
       
       // Load first page into graph
       if (graph && newFile.pages.length > 0) {
@@ -437,6 +433,8 @@ function AppContent() {
       delete (window as any).__drawdd_updateFileName;
       delete (window as any).__drawdd_markSaved;
       delete (window as any).__drawdd_getFileName;
+      delete (window as any).__drawdd_updateFilePath;
+      delete (window as any).__drawdd_getFilePath;
       delete (window as any).__drawdd_loadFile;
     };
   }, [handleNewFile, handleNewPage, activeFileId, graph, files]);

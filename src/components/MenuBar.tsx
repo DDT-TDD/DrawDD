@@ -49,6 +49,16 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
+  const isElectron = !!(window as any).electronAPI?.isElectron;
+
+  interface ElectronAPI {
+    isElectron: boolean;
+    saveFile: (filePath: string, content: string) => Promise<{ success: boolean; error?: string }>;
+    saveFileAs: (defaultName: string, content: string) => Promise<{ success: boolean; filePath?: string; displayName?: string; canceled?: boolean; error?: string }>;
+  }
+
+  const electronAPI = isElectron ? (window as any).electronAPI as ElectronAPI : null;
+
   type DrawddWindow = Window & {
     __currentDiagramFile?: DiagramFile;
     __drawdd_save?: () => void;
@@ -64,6 +74,8 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     __drawdd_markSaved?: () => void;
     __drawdd_getFileName?: () => string;
     __drawdd_updateFileName?: (name: string) => void;
+    __drawdd_updateFilePath?: (filePath: string) => void;
+    __drawdd_getFilePath?: () => string | undefined;
   };
 
   const drawddWindow = window as DrawddWindow;
@@ -179,7 +191,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     e.target.value = '';
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (graph) {
       // Get fresh graph data
       const currentGraphData = JSON.stringify(graph.toJSON());
@@ -187,7 +199,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
       // Get current file structure from window global (set by App.tsx)
       const currentFile = drawddWindow.__currentDiagramFile;
       if (currentFile) {
-        // Update file with fresh graph data for current page
+        const fileName = currentFile.name || 'Untitled Diagram';
         const fileToSave = {
           ...currentFile,
           pages: currentFile.pages.map(p => 
@@ -196,11 +208,45 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
               : p
           )
         };
-        const fileName = fileToSave.name || 'Untitled Diagram';
-        const blob = new Blob([JSON.stringify(fileToSave, null, 2)], { type: 'application/json' });
-        saveAs(blob, `${fileName}.drawdd.json`);
-        // Mark file as saved (not modified)
-        drawddWindow.__drawdd_markSaved?.();
+        const content = JSON.stringify(fileToSave, null, 2);
+
+        if (isElectron && electronAPI) {
+          const currentPath = currentFile.filePath || drawddWindow.__drawdd_getFilePath?.();
+          if (currentPath && fileName !== 'Untitled Diagram') {
+            const result = await electronAPI.saveFile(currentPath, content);
+            if (result.success) {
+              drawddWindow.__drawdd_markSaved?.();
+            } else if (result.error) {
+              alert('Failed to save file: ' + result.error);
+            }
+          } else {
+            const result = await electronAPI.saveFileAs(`${fileName}.drawdd.json`, content);
+            if (result.success && result.filePath) {
+              const displayName = result.displayName || fileName;
+              drawddWindow.__drawdd_updateFileName?.(displayName);
+              drawddWindow.__drawdd_updateFilePath?.(result.filePath);
+              drawddWindow.__drawdd_markSaved?.();
+            } else if (!result.canceled && result.error) {
+              alert('Failed to save file: ' + result.error);
+            }
+          }
+        } else {
+          if (fileName === 'Untitled Diagram') {
+            const newName = prompt('Save as:', fileName);
+            if (!newName) {
+              setActiveMenu(null);
+              return;
+            }
+            fileToSave.name = newName;
+            const blob = new Blob([JSON.stringify(fileToSave, null, 2)], { type: 'application/json' });
+            saveAs(blob, `${newName}.drawdd.json`);
+            drawddWindow.__drawdd_updateFileName?.(newName);
+          } else {
+            const blob = new Blob([content], { type: 'application/json' });
+            saveAs(blob, `${fileName}.drawdd.json`);
+            drawddWindow.__drawdd_markSaved?.();
+          }
+        }
       } else {
         // Fallback: save just current graph (old format)
         const doc = exportToJSON(graph, {
@@ -216,7 +262,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     setActiveMenu(null);
   };
 
-  const handleSaveAs = () => {
+  const handleSaveAs = async () => {
     if (graph) {
       // Get fresh graph data
       const currentGraphData = JSON.stringify(graph.toJSON());
@@ -224,39 +270,58 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
       const currentFile = drawddWindow.__currentDiagramFile;
       const currentName = currentFile?.name || drawddWindow.__drawdd_getFileName?.() || 'Untitled Diagram';
       
-      // Prompt for new name
-      const newName = prompt('Save as:', currentName);
-      if (!newName) {
-        setActiveMenu(null);
-        return; // User cancelled
-      }
-      
-      if (currentFile) {
-        // Update file with new name and fresh graph data
-        const fileToSave = {
+      if (isElectron && electronAPI) {
+        const fileToSave = currentFile ? {
           ...currentFile,
-          name: newName,
           pages: currentFile.pages.map(p => 
             p.id === currentFile.activePageId 
               ? { ...p, data: currentGraphData }
               : p
           )
-        };
-        const blob = new Blob([JSON.stringify(fileToSave, null, 2)], { type: 'application/json' });
-        saveAs(blob, `${newName}.drawdd.json`);
-        // Update file name in the app state
-        drawddWindow.__drawdd_updateFileName?.(newName);
+        } : null;
+        const content = fileToSave
+          ? JSON.stringify(fileToSave, null, 2)
+          : JSON.stringify(exportToJSON(graph, { canvasBackground, showGrid, mindmapDirection, timelineDirection }), null, 2);
+        const result = await electronAPI.saveFileAs(`${currentName}.drawdd.json`, content);
+        if (result.success && result.filePath) {
+          const displayName = result.displayName || currentName;
+          drawddWindow.__drawdd_updateFileName?.(displayName);
+          drawddWindow.__drawdd_updateFilePath?.(result.filePath);
+          drawddWindow.__drawdd_markSaved?.();
+        } else if (!result.canceled && result.error) {
+          alert('Failed to save file: ' + result.error);
+        }
       } else {
-        // Fallback: save just current graph (old format)
-        const doc = exportToJSON(graph, {
-          canvasBackground,
-          showGrid,
-          mindmapDirection,
-          timelineDirection
-        });
-        const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' });
-        saveAs(blob, `${newName}.drawdd.json`);
-        drawddWindow.__drawdd_updateFileName?.(newName);
+        const newName = prompt('Save as:', currentName);
+        if (!newName) {
+          setActiveMenu(null);
+          return; // User cancelled
+        }
+        
+        if (currentFile) {
+          const fileToSave = {
+            ...currentFile,
+            name: newName,
+            pages: currentFile.pages.map(p => 
+              p.id === currentFile.activePageId 
+                ? { ...p, data: currentGraphData }
+                : p
+            )
+          };
+          const blob = new Blob([JSON.stringify(fileToSave, null, 2)], { type: 'application/json' });
+          saveAs(blob, `${newName}.drawdd.json`);
+          drawddWindow.__drawdd_updateFileName?.(newName);
+        } else {
+          const doc = exportToJSON(graph, {
+            canvasBackground,
+            showGrid,
+            mindmapDirection,
+            timelineDirection
+          });
+          const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' });
+          saveAs(blob, `${newName}.drawdd.json`);
+          drawddWindow.__drawdd_updateFileName?.(newName);
+        }
       }
     }
     setActiveMenu(null);

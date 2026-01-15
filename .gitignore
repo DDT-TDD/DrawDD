@@ -15,6 +15,7 @@ dist
 dist-ssr
 *.local
 release-builds
+release-builds_old
 release
 
 # Build cache and temporary directories
