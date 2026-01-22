@@ -85,7 +85,7 @@ export function PropertiesPanel() {
   const [edgeStyle, setEdgeStyle] = useState<'solid' | 'dashed' | 'dotted'>('solid');
   const [edgeConnector, setEdgeConnector] = useState<'normal' | 'rounded' | 'smooth' | 'ortho'>('normal');
   const [sourceArrow, setSourceArrow] = useState<'block' | 'classic' | 'diamond' | 'circle' | 'circlePlus' | 'ellipse' | 'cross' | 'none'>('none');
-  const [targetArrow, setTargetArrow] = useState<'block' | 'classic' | 'diamond' | 'circle' | 'circlePlus' | 'ellipse' | 'cross' | 'none'>('classic');
+  const [targetArrow, setTargetArrow] = useState<'block' | 'classic' | 'diamond' | 'circle' | 'circlePlus' | 'ellipse' | 'cross' | 'none'>('none');
   const [edgeLabel, setEdgeLabel] = useState('');
 
   // Clipboard State
@@ -374,8 +374,8 @@ export function PropertiesPanel() {
       else if (router === 'manhattan') setEdgeConnector('ortho');
       else setEdgeConnector('normal');
 
-      const currentSourceMarker = lineAttrs.sourceMarker?.name || (lineAttrs.sourceMarker === '' ? 'none' : 'none');
-      const currentTargetMarker = lineAttrs.targetMarker?.name || (lineAttrs.targetMarker === '' ? 'none' : 'classic');
+      const currentSourceMarker = lineAttrs.sourceMarker?.name || 'none';
+      const currentTargetMarker = lineAttrs.targetMarker?.name || 'none';
       setSourceArrow(currentSourceMarker as typeof sourceArrow);
       setTargetArrow(currentTargetMarker as typeof targetArrow);
     }
@@ -402,12 +402,16 @@ export function PropertiesPanel() {
   const handleReplaceShape = (shapeLabel: string) => {
     if (!graph || !shapeChangeTarget) return;
 
-    const oldNode = shapeChangeTarget;
-    const oldPos = oldNode.getPosition();
-    const oldAttrs = oldNode.getAttrs();
-    const oldData = oldNode.getData();
+    // Use batch/history to make this a single undo-able operation
+    graph.startBatch('replace-shape');
+    
+    try {
+      const oldNode = shapeChangeTarget;
+      const oldPos = oldNode.getPosition();
+      const oldAttrs = oldNode.getAttrs();
+      const oldData = oldNode.getData();
 
-    const allShapes = [
+      const allShapes = [
       ...FLOWCHART_SHAPES,
       ...MINDMAP_SHAPES,
       ...TIMELINE_SHAPES,
@@ -466,6 +470,9 @@ export function PropertiesPanel() {
     // Remove old node and select new one
     graph.removeNode(oldNode);
     graph.select(newNode);
+    } finally {
+      graph.stopBatch('replace-shape');
+    }
 
     setShowShapeDialog(false);
     setShapeChangeTarget(null);
@@ -724,11 +731,13 @@ export function PropertiesPanel() {
   const handleApplyEdgesToAll = () => {
     if (!graph) return;
     const dashArray = edgeStyle === 'dashed' ? '8 4' : edgeStyle === 'dotted' ? '2 2' : '';
+    
+    // Always use the user's arrow selection - this is an explicit "Apply to All" action
     const sourceMarker = sourceArrow === 'none' ? '' : { name: sourceArrow, width: 12, height: 8 };
     const targetMarker = targetArrow === 'none' ? '' : { name: targetArrow, width: 12, height: 8 };
 
     graph.getEdges().forEach(edge => {
-      // Stroke/width/style
+      // Stroke/width/style/arrows
       edge.setAttrs({
         line: {
           stroke: edgeColor,
@@ -739,17 +748,20 @@ export function PropertiesPanel() {
         },
       });
 
-      // Connector / router
+      // Connector / router - must match handleEdgeConnectorChange logic
       if (edgeConnector === 'smooth') {
         edge.setConnector('smooth');
         edge.setRouter('normal');
       } else if (edgeConnector === 'rounded') {
-        edge.setConnector('rounded');
-        edge.setRouter('normal');
+        // Rounded = orthogonal with rounded corners (manhattan router)
+        edge.setConnector({ name: 'rounded', args: { radius: 10 } });
+        edge.setRouter('manhattan');
       } else if (edgeConnector === 'ortho') {
-        edge.setConnector('rounded');
+        // Orthogonal = sharp 90° corners (manhattan router)
+        edge.setConnector('normal');
         edge.setRouter('manhattan');
       } else {
+        // Straight = direct line
         edge.setConnector('normal');
         edge.setRouter('normal');
       }
@@ -774,15 +786,18 @@ export function PropertiesPanel() {
 
   const handleEdgeConnectorChange = (type: 'normal' | 'rounded' | 'smooth' | 'ortho') => {
     setEdgeConnector(type);
+    // v1.1.2 original logic restored
     getEdgeTargets().forEach(edge => {
       if (type === 'smooth') {
         edge.setConnector('smooth');
         edge.setRouter('normal');
       } else if (type === 'rounded') {
-        edge.setConnector('rounded');
-        edge.setRouter('normal');
+        // Rounded = orthogonal with rounded corners to be distinct from Straight
+        edge.setConnector({ name: 'rounded', args: { radius: 10 } });
+        edge.setRouter('manhattan');
       } else if (type === 'ortho') {
-        edge.setConnector('rounded');
+        // Orthogonal = sharp 90° corners for better alignment
+        edge.setConnector('normal');
         edge.setRouter('manhattan');
       } else {
         edge.setConnector('normal');

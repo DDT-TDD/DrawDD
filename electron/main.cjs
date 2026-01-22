@@ -499,11 +499,49 @@ ipcMain.handle('save-file-as', async (_event, defaultName, content) => {
     }
     const finalPath = ensureDrawddExtension(result.filePath);
     fs.writeFileSync(finalPath, content, 'utf8');
+    
+    // Add to recent documents
+    app.addRecentDocument(finalPath);
+    
     return {
       success: true,
       filePath: finalPath,
       displayName: path.basename(finalPath).replace(/\.drawdd\.json$/i, '').replace(/\.json$/i, ''),
     };
+  } catch (error) {
+    return { success: false, error: error?.message || String(error) };
+  }
+});
+
+// Open a file by path (for recent files)
+ipcMain.handle('open-file-by-path', async (_event, filePath) => {
+  try {
+    if (!fs.existsSync(filePath)) {
+      return { success: false, error: 'File not found' };
+    }
+    const content = fs.readFileSync(filePath, 'utf8');
+    const fileName = path.basename(filePath);
+    
+    // Add to recent documents
+    app.addRecentDocument(filePath);
+    
+    return { 
+      success: true, 
+      content, 
+      fileName,
+      filePath 
+    };
+  } catch (error) {
+    return { success: false, error: error?.message || String(error) };
+  }
+});
+
+// Get recent files (returns recent documents from Electron)
+ipcMain.handle('get-recent-files', async () => {
+  try {
+    // Electron's app.getRecentDocuments() only works on Windows and macOS
+    // We'll return the recent files from localStorage through the renderer
+    return { success: true, recentFiles: [] };
   } catch (error) {
     return { success: false, error: error?.message || String(error) };
   }

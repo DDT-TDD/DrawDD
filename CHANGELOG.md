@@ -6,10 +6,56 @@ All notable changes to this project will be documented in this file.
 
 | Version | Status | Release Date | Notes |
 |---------|--------|--------------|-------|
+| 1.1.3 | Stable | Jan 22, 2026 | Enhanced Mindmap Experience |
 | 1.1.2 | Stable | Jan 15, 2026 | Save/Save As and tab behavior fixes |
 | 1.1.1 | Stable | Dec 17, 2025 | Bug fixes and improvements |
 | 1.1.0 | Stable | Dec 15, 2025 | **First Official Release** |
 | 1.0.0 | Alpha | N/A | Development version, not publicly released |
+
+---
+
+## [1.1.3] - 2026-01-22
+
+### New Features ✨
+
+#### Enhanced Mindmap Experience
+- **Default: No arrows** on mindmap edges - cleaner, more modern look
+- **Default: 1px thin lines** instead of 2px
+- **3 Connector Styles**: Curved (smooth), Orthogonal (90° angles), Straight
+- **24 Color Schemes** including 11 new premium themes (Aurora Borealis, Sakura, Nordic, etc.)
+- **Right-click context menus** for canvas and cells
+- **Recent Files menu** - tracks last 10 opened files
+- **Paste list to create branches** - paste multi-line text to create child nodes
+- **Level-based node colors** - automatically color nodes by depth
+
+#### Mindmap Direction Selector
+- Redesigned with 3 tabs: Direction, Style, Order
+- Style tab includes: Color theme, color by level, show arrows, line thickness, line style
+- Sort order options: Top-to-bottom, Left-to-right, Clockwise, Counter-clockwise
+
+### Bug Fixes 🐛
+
+- **Fixed arrows showing by default** on mindmap edges (now disabled by default)
+- **Fixed mindmap rearrangement** - proper ordering based on selected sort order
+- **Fixed paste-as-children** - now respects mindmap settings for arrows and line style
+- **Fixed background color** - context menu background color option now works correctly
+- **Fixed Recent Files in Electron** - clicking recent files now opens them properly
+- **Fixed "Apply Style to All"** - no longer adds arrows to mindmap edges when arrows are disabled
+- **Fixed line type distinction** - all 4 connector styles are now visually different:
+  - Curved: Smooth bezier curves
+  - Rounded: 90° corners with radius
+  - Jumpover: Lines jump over intersections
+  - Straight: Direct straight lines
+
+### Technical Improvements 🔧
+
+- Removed auto-restore prompt on startup
+- Compact context menus with consistent styling
+- Improved edge routing for cleaner diagrams
+
+---
+
+## [1.1.2] - 2026-01-15
 
 ---
 

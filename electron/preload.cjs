@@ -20,4 +20,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Save with a native Save As dialog
   saveFileAs: (defaultName, content) => ipcRenderer.invoke('save-file-as', defaultName, content),
+
+  // Open a file by path (for recent files)
+  openFile: (filePath) => ipcRenderer.invoke('open-file-by-path', filePath),
+
+  // Get recent files from OS
+  getRecentFiles: () => ipcRenderer.invoke('get-recent-files'),
 });

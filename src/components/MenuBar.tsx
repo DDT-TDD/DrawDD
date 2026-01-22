@@ -5,6 +5,7 @@ import { saveAs } from 'file-saver';
 import { jsPDF } from 'jspdf';
 import { exportToJSON, exportToHTML, importFromJSON, importXMind, importMindManager, importKityMinder, importFreeMind, importVisio, mindmapToGraph, visioToGraph } from '../utils/importExport';
 import { applyTreeLayout, applyFishboneLayout, applyTimelineLayout, type LayoutDirection } from '../utils/layout';
+import { getRecentFiles, addRecentFile, clearRecentFiles, type RecentFile } from '../utils/recentFiles';
 import { KeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
 import { HelpDialog } from './HelpDialog';
 import { VERSION } from '../version';
@@ -45,11 +46,33 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [recentFiles, setRecentFiles] = useState<RecentFile[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   const isElectron = !!(window as any).electronAPI?.isElectron;
+
+  // Load recent files on mount, when menu opens, and when files change
+  useEffect(() => {
+    setRecentFiles(getRecentFiles());
+    
+    const handleRecentFilesChanged = () => {
+      setRecentFiles(getRecentFiles());
+    };
+    
+    window.addEventListener('drawdd:recent-files-changed', handleRecentFilesChanged);
+    return () => {
+      window.removeEventListener('drawdd:recent-files-changed', handleRecentFilesChanged);
+    };
+  }, []);
+  
+  // Also reload when menu opens
+  useEffect(() => {
+    if (activeMenu === 'File') {
+      setRecentFiles(getRecentFiles());
+    }
+  }, [activeMenu]);
 
   interface ElectronAPI {
     isElectron: boolean;
@@ -184,11 +207,58 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
       } else {
         alert('Unsupported file format. Supported: .json, .xmind, .mmap, .km, .mm, .vsdx');
       }
+      
+      // Add to recent files after successful import
+      const fileType = ext as 'json' | 'xmind' | 'mmap' | 'km' | 'mm' | 'vsdx';
+      addRecentFile({ name: file.name, type: fileType });
+      setRecentFiles(getRecentFiles());
+      
     } catch (error) {
       console.error('Import error:', error);
       alert('Failed to import file: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
     e.target.value = '';
+  };
+
+  // Handle opening a recent file (for Electron only - web doesn't have file path access)
+  const handleOpenRecentFile = async (recentFile: RecentFile) => {
+    if (isElectron && (window as any).electronAPI?.openFile && recentFile.path) {
+      try {
+        // In Electron, we can open by file path
+        const result = await (window as any).electronAPI.openFile(recentFile.path);
+        if (result.success && result.content && graph) {
+          const doc = JSON.parse(result.content);
+          importFromJSON(graph, doc, {
+            setMindmapDirection,
+            setTimelineDirection,
+            setCanvasBackground,
+          });
+          if ((window as any).__drawdd_updateFileName) {
+            (window as any).__drawdd_updateFileName(result.fileName || recentFile.name);
+          }
+          // Store the file path for future saves
+          if ((window as any).__drawdd_setFilePath) {
+            (window as any).__drawdd_setFilePath(result.filePath);
+          }
+        } else if (!result.success) {
+          alert(`Failed to open file: ${result.error || 'Unknown error'}`);
+        }
+      } catch (error) {
+        console.error('Error opening recent file:', error);
+        alert('Failed to open file: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      }
+    } else {
+      // In web, we can't directly access previous files
+      alert(`File: ${recentFile.name}\nPlease use "Open..." to select the file again.\n(Web apps cannot access previous files for security reasons)`);
+      handleOpen();
+    }
+    setActiveMenu(null);
+  };
+
+  const handleClearRecentFiles = () => {
+    clearRecentFiles();
+    setRecentFiles([]);
+    setActiveMenu(null);
   };
 
   const handleSave = async () => {
@@ -226,6 +296,9 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
               drawddWindow.__drawdd_updateFileName?.(displayName);
               drawddWindow.__drawdd_updateFilePath?.(result.filePath);
               drawddWindow.__drawdd_markSaved?.();
+              // Add to recent files with path for Electron
+              addRecentFile({ name: displayName, type: 'json', path: result.filePath });
+              setRecentFiles(getRecentFiles());
             } else if (!result.canceled && result.error) {
               alert('Failed to save file: ' + result.error);
             }
@@ -803,6 +876,18 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     setActiveMenu(null);
   };
 
+  // Build recent files submenu dynamically
+  const recentFilesSubmenu: MenuItem[] = recentFiles.length > 0
+    ? [
+        ...recentFiles.map((rf, index) => ({
+          label: `${index + 1}. ${rf.name}`,
+          action: () => handleOpenRecentFile(rf)
+        })),
+        { separator: true, label: '' },
+        { label: 'Clear Recent Files', action: handleClearRecentFiles }
+      ]
+    : [{ label: 'No Recent Files', disabled: true }];
+
   const menus: MenuGroup[] = [
     {
       label: 'File',
@@ -811,6 +896,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
         { label: 'New Page', shortcut: 'Ctrl+T', action: () => { drawddWindow.__drawdd_newPage?.(); setActiveMenu(null); } },
         { separator: true, label: '' },
         { label: 'Open...', shortcut: 'Ctrl+O', action: handleOpen },
+        { label: 'Open Recent', submenu: recentFilesSubmenu },
         { separator: true, label: '' },
         { label: 'Save', shortcut: 'Ctrl+S', action: handleSave },
         { label: 'Save As...', shortcut: 'Ctrl+Shift+S', action: handleSaveAs },
@@ -956,6 +1042,33 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
                 {menu.items.map((item, index) =>
                   item.separator ? (
                     <div key={index} className="h-px bg-gray-200 dark:bg-gray-600 my-2 mx-4" />
+                  ) : item.submenu ? (
+                    <div key={index} className="relative group">
+                      <button
+                        className="w-full px-5 py-2.5 text-left flex items-center justify-between text-gray-700 dark:text-gray-200 hover:bg-blue-500 hover:text-white transition-colors"
+                      >
+                        <span>{item.label}</span>
+                        <span className="text-xs">▶</span>
+                      </button>
+                      <div className="absolute left-full top-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-2xl min-w-[200px] py-2 hidden group-hover:block">
+                        {item.submenu.map((subItem, subIndex) =>
+                          subItem.separator ? (
+                            <div key={subIndex} className="h-px bg-gray-200 dark:bg-gray-600 my-2 mx-4" />
+                          ) : (
+                            <button
+                              key={subIndex}
+                              className={`w-full px-5 py-2.5 text-left text-gray-700 dark:text-gray-200 hover:bg-blue-500 hover:text-white transition-colors ${
+                                subItem.disabled ? 'opacity-40 cursor-not-allowed' : ''
+                              }`}
+                              onClick={() => !subItem.disabled && subItem.action?.()}
+                              disabled={subItem.disabled}
+                            >
+                              {subItem.label}
+                            </button>
+                          )
+                        )}
+                      </div>
+                    </div>
                   ) : (
                     <button
                       key={index}

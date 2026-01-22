@@ -2,6 +2,7 @@ import { Graph, Node } from '@antv/x6';
 import type { MindmapLayoutDirection } from '../types';
 
 export type LayoutDirection = 'LR' | 'RL' | 'TB' | 'BT';
+export type MindmapSortOrder = 'clockwise' | 'counter-clockwise' | 'top-to-bottom' | 'left-to-right';
 
 interface TreeNode {
   node: Node;
@@ -14,6 +15,12 @@ interface TreeNode {
   // Used by radial layout
   _leaves?: number;
   _angle?: number;
+}
+
+// Get the sort order from global settings
+function getSortOrder(): MindmapSortOrder {
+  const settings = (window as any).__drawdd_mindmapSettings;
+  return settings?.sortOrder || 'top-to-bottom';
 }
 
 export function applyMindmapLayout(graph: Graph, direction: MindmapLayoutDirection, startNode?: Node) {
@@ -66,8 +73,9 @@ export function applyTreeLayout(graph: Graph, direction: LayoutDirection = 'LR',
   
   const root = startNode || nodes.find(n => graph.getIncomingEdges(n)?.length === 0) || nodes[0];
   
-  const LEVEL_GAP = 100;
-  const SIBLING_GAP = 40;
+  // Increased gaps to prevent overlapping
+  const LEVEL_GAP = 140;
+  const SIBLING_GAP = 50;
   
   const rootPos = root.getPosition();
   const tree = buildTree(graph, root);
@@ -103,8 +111,9 @@ function applyBalancedLayout(graph: Graph, root: Node) {
   });
 
   const rootPos = root.getPosition();
-  const LEVEL_GAP = 100;
-  const SIBLING_GAP = 40;
+  // Increased gaps to prevent overlapping
+  const LEVEL_GAP = 140;
+  const SIBLING_GAP = 50;
 
   if (rightChildren.length > 0) {
     const rightTree = {
@@ -139,16 +148,27 @@ function applyRadialLayout(graph: Graph, root: Node) {
     y: rootPos.y + tree.height / 2 
   };
 
+  const sortOrder = getSortOrder();
+  
+  // Determine start angle and direction based on sortOrder
+  // In standard math coordinates: 0 = right (3 o'clock), π/2 = down (6 o'clock), π = left, -π/2 = up (12 o'clock)
+  // We want to start from top (12 o'clock) = -π/2
+  const startAngle = -Math.PI / 2;
+  
+  // clockwise in screen coordinates (y increases downward) means increasing angle
+  // counter-clockwise means decreasing angle
+  const isClockwise = sortOrder !== 'counter-clockwise';
+  
+  const endAngle = isClockwise ? startAngle + Math.PI * 2 : startAngle - Math.PI * 2;
+
   // Two-pass radial layout:
   // 1) allocate angular spans based on leaf counts (stable)
   // 2) position nodes at radius proportional to depth
-  const start = 0;
-  const end = Math.PI * 2;
-  assignRadialAngles(tree, start, end);
+  assignRadialAngles(tree, startAngle, endAngle, isClockwise);
   positionRadialNodes(tree, 0, rootCenter.x, rootCenter.y);
 }
 
-function assignRadialAngles(node: TreeNode, startAngle: number, endAngle: number) {
+function assignRadialAngles(node: TreeNode, startAngle: number, endAngle: number, isClockwise: boolean = true) {
   node._leaves ??= countLeaves(node);
   node._angle = (startAngle + endAngle) / 2;
 
@@ -156,12 +176,15 @@ function assignRadialAngles(node: TreeNode, startAngle: number, endAngle: number
 
   const totalLeaves = node.children.reduce((sum, c) => sum + (c._leaves ?? (c._leaves = countLeaves(c))), 0);
   let current = startAngle;
+  const spanDirection = isClockwise ? 1 : -1;
+  const totalSpan = Math.abs(endAngle - startAngle);
 
   node.children.forEach((child) => {
     const childLeaves = child._leaves ?? (child._leaves = countLeaves(child));
-    const span = totalLeaves > 0 ? ((endAngle - startAngle) * (childLeaves / totalLeaves)) : 0;
-    assignRadialAngles(child, current, current + span);
-    current += span;
+    const span = totalLeaves > 0 ? (totalSpan * (childLeaves / totalLeaves)) : 0;
+    const childEnd = current + span * spanDirection;
+    assignRadialAngles(child, current, childEnd, isClockwise);
+    current = childEnd;
   });
 }
 
@@ -185,6 +208,7 @@ function countLeaves(t: TreeNode): number {
 function buildTree(graph: Graph, node: Node): TreeNode {
   const size = node.getSize();
   const outgoing = graph.getOutgoingEdges(node) || [];
+  const sortOrder = getSortOrder();
   
   const childrenNodes = outgoing
     .map(edge => {
@@ -197,13 +221,25 @@ function buildTree(graph: Graph, node: Node): TreeNode {
       const db = b.getData() as any;
       const oa = typeof da?.mmOrder === 'number' ? da.mmOrder : null;
       const ob = typeof db?.mmOrder === 'number' ? db.mmOrder : null;
-      if (oa != null && ob != null) return oa - ob;
-      if (oa != null) return -1;
-      if (ob != null) return 1;
+      
+      // Primary sort by mmOrder (insertion order)
+      if (oa != null && ob != null) {
+        const orderDiff = oa - ob;
+        if (orderDiff !== 0) return orderDiff;
+      }
+      if (oa != null && ob == null) return -1;
+      if (oa == null && ob != null) return 1;
 
+      // Secondary sort based on sortOrder preference
       const posA = a.getPosition();
       const posB = b.getPosition();
-      return posA.y - posB.y || posA.x - posB.x;
+      
+      if (sortOrder === 'left-to-right') {
+        return posA.x - posB.x || posA.y - posB.y;
+      } else {
+        // Default: top-to-bottom
+        return posA.y - posB.y || posA.x - posB.x;
+      }
     });
 
   return {
@@ -345,7 +381,8 @@ function positionNode(
 }
 
 // Fix mindmap edge endpoints based on direction using ports (fixed points)
-function fixMindmapAnchors(graph: Graph, root: Node, direction: MindmapLayoutDirection) {
+// EXPORTED so it can be called after edge creation to force router recalculation
+export function fixMindmapAnchors(graph: Graph, root: Node, direction: MindmapLayoutDirection) {
   const outgoingEdges = graph.getOutgoingEdges(root) || [];
   
   outgoingEdges.forEach(edge => {
@@ -355,6 +392,11 @@ function fixMindmapAnchors(graph: Graph, root: Node, direction: MindmapLayoutDir
     const setPorts = (sourcePort: 'left' | 'right' | 'top' | 'bottom', targetPort: 'left' | 'right' | 'top' | 'bottom') => {
       edge.setSource({ cell: root.id, port: sourcePort });
       edge.setTarget({ cell: target.id, port: targetPort });
+      // Force router recalculation by re-setting the router
+      const currentRouter = edge.getRouter();
+      if (currentRouter) {
+        edge.setRouter(currentRouter);
+      }
     };
 
     if (direction === 'right') {

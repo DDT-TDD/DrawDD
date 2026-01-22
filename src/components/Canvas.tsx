@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { Graph, type Edge, type Cell, type Node as X6Node } from '@antv/x6';
 import { applyMindmapLayout } from '../utils/layout';
 import { History } from '@antv/x6-plugin-history';
@@ -13,469 +13,98 @@ import { Transform } from '@antv/x6-plugin-transform';
 import { useGraph } from '../context/GraphContext';
 import { ZoomControls } from './ZoomControls';
 import { QuickActions } from './QuickActions';
-import { useAutoSave, getAutoSaveInfo } from '../utils/autoSave';
+import { useAutoSave } from '../utils/autoSave';
 import { registerLogicGateShapes } from '../config/logicGateShapes';
 import { FULL_PORTS_CONFIG } from '../config/shapes';
 import { getNextThemeColors, getLineColor } from '../utils/theme';
 import { setNodeLabelWithAutoSize } from '../utils/text';
+import { showCellContextMenu, showEmptyCanvasContextMenu, handlePasteAsChildren } from '../utils/contextMenu';
+import { getMindmapLevelColor } from '../config/enhancedStyles';
 
 // Register custom shapes on module load
 registerLogicGateShapes();
 
-let mindmapOrderCounter = 1;
+// Helper to get router/connector config based on style
+type ConnectorStyle = 'smooth' | 'orthogonal-rounded' | 'orthogonal-sharp' | 'straight';
 
-// Context Menu Helper
-function showContextMenu(graph: Graph, cell: Cell, x: number, y: number, mode: 'flowchart' | 'mindmap' | 'timeline') {
-  // Remove existing menu
-  const existingMenu = document.getElementById('drawdd-context-menu');
-  if (existingMenu) existingMenu.remove();
-
-  // Check if dark mode is enabled
-  const isDark = document.documentElement.classList.contains('dark');
-
-  const menu = document.createElement('div');
-  menu.id = 'drawdd-context-menu';
-  menu.style.cssText = `
-    position: fixed;
-    left: ${x}px;
-    top: ${y}px;
-    background: ${isDark ? '#1e293b' : 'white'};
-    border: 1px solid ${isDark ? '#334155' : '#e2e8f0'};
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,${isDark ? '0.4' : '0.15'});
-    z-index: 10000;
-    min-width: 180px;
-    padding: 4px 0;
-    font-family: system-ui, sans-serif;
-    font-size: 13px;
-    color: ${isDark ? '#f1f5f9' : '#1e293b'};
-  `;
-
-  const isNode = cell.isNode();
-
-  interface MenuItem {
-    label: string;
-    action?: () => void;
+function getEdgeRouting(style: ConnectorStyle): { router: any; connector: any } {
+  // For mindmaps: smooth/rounded use normal router, straight/ortho use manhattan for clean alignment
+  switch (style) {
+    case 'smooth':
+      // Curved bezier lines (like XMind)
+      return { router: { name: 'normal' }, connector: { name: 'smooth' } };
+    case 'orthogonal-rounded':
+      // 90° orthogonal with rounded corners (manhattan router)
+      return { router: { name: 'manhattan' }, connector: { name: 'rounded', args: { radius: 10 } } };
+    case 'orthogonal-sharp':
+      // 90° orthogonal with sharp corners (manhattan router)
+      return { router: { name: 'manhattan' }, connector: { name: 'normal' } };
+    case 'straight':
+    default:
+      // Elbow lines (horizontal + vertical segments only) for clean mindmap alignment
+      // Uses manhattan router to ensure 90° angles, with normal connector for sharp corners
+      return { router: { name: 'manhattan' }, connector: { name: 'normal' } };
   }
-
-  const menuItems: MenuItem[] = [];
-
-  const data = isNode ? (cell as any).getData?.() : null;
-  const isMindmapNode = isNode && data?.isMindmap === true;
-  const allowMindmapActions = (isMindmapNode || mode === 'mindmap' || mode === undefined) && mode !== 'timeline';
-
-  if (isNode && allowMindmapActions) {
-    // Mindmap-specific options for nodes
-    menuItems.push(
-      {
-        label: '➕ Add Child Node', action: () => {
-          const parentNode = cell;
-
-          // Get direction from context (captured at render time)
-          const dir = (window as any).__mindmapDirection || 'right';
-          const ctxLineColor = (window as any).__drawdd_lineColor || '#5F95FF';
-          const ctxScheme = (window as any).__drawdd_colorScheme || 'default';
-          const ctxColors = getNextThemeColors(ctxScheme);
-
-          const parentPos = (parentNode as any).getPosition?.() || { x: 0, y: 0 };
-          const parentSize = (parentNode as any).getSize?.() || { width: 120, height: 40 };
-          const incoming = graph.getIncomingEdges(parentNode as any);
-          const parentData = (parentNode as any).getData?.() || {};
-          const level = (typeof parentData.level === 'number' ? parentData.level : (incoming?.length ? 1 : 0)) + 1;
-
-          // Place near parent to keep ordering stable before layout
-          const x0 = dir === 'left' ? parentPos.x - 200 : parentPos.x + parentSize.width + 120;
-          const y0 = dir === 'top' ? parentPos.y - 120 : dir === 'bottom' ? parentPos.y + parentSize.height + 80 : parentPos.y;
-
-          const childNode = graph.addNode({
-            x: x0,
-            y: y0,
-            width: 120,
-            height: 40,
-            attrs: {
-              body: {
-                fill: ctxColors.fill,
-                stroke: ctxColors.stroke,
-                strokeWidth: 2,
-                rx: 6,
-                ry: 6,
-              },
-              label: {
-                text: 'New Topic',
-                fill: ctxColors.text,
-                fontSize: 12,
-              },
-            },
-            data: { isMindmap: true, level, mmOrder: mindmapOrderCounter++ },
-            ports: FULL_PORTS_CONFIG as any,
-          });
-
-          graph.addEdge({
-            source: { cell: parentNode.id },
-            target: { cell: childNode.id },
-            attrs: {
-              line: {
-                stroke: ctxLineColor,
-                strokeWidth: 2,
-                targetMarker: {
-                  name: 'block',
-                  width: 12,
-                  height: 8,
-                },
-              },
-            },
-            router: { name: 'normal' },
-            connector: { name: 'smooth' },
-          });
-
-          // Find root node by traversing up
-          const traverseUp = (node: typeof parentNode): typeof parentNode => {
-            const incomingEdges = graph.getIncomingEdges(node);
-            if (!incomingEdges || incomingEdges.length === 0) return node;
-            const source = graph.getCellById(incomingEdges[0].getSourceCellId() || '');
-            return source?.isNode() ? traverseUp(source) : node;
-          };
-          const rootNode = traverseUp(parentNode);
-
-          // Apply layout to prevent overlap
-          applyMindmapLayout(graph, dir, rootNode);
-
-          graph.select(childNode);
-        }
-      },
-      {
-        label: '➡️ Add Sibling Node', action: () => {
-          if (!cell.isNode()) return;
-          const currentNode = cell as X6Node;
-          const currentSize = currentNode.getSize();
-
-          const incomingEdges = graph.getIncomingEdges(currentNode);
-          const parentEdge = incomingEdges?.[0];
-          const parentNode = parentEdge ? graph.getCellById(parentEdge.getSourceCellId() || '') : null;
-
-          // Get direction and theme from context
-          const dir = (window as any).__mindmapDirection || 'right';
-          const sibLineColor = (window as any).__drawdd_lineColor || '#5F95FF';
-          const sibScheme = (window as any).__drawdd_colorScheme || 'default';
-          const sibColors = getNextThemeColors(sibScheme);
-
-          const currentPos = currentNode.getPosition();
-          const currentData = (currentNode as any).getData?.() || {};
-          const level = typeof currentData.level === 'number' ? currentData.level : 1;
-
-          const siblingNode = graph.addNode({
-            x: currentPos.x,
-            y: currentPos.y + currentSize.height + 60,
-            width: currentSize.width,
-            height: currentSize.height,
-            attrs: {
-              body: {
-                fill: sibColors.fill,
-                stroke: sibColors.stroke,
-                strokeWidth: 2,
-                rx: 6,
-                ry: 6,
-              },
-              label: {
-                text: 'New Topic',
-                fill: sibColors.text,
-                fontSize: 12,
-              },
-            },
-            data: { isMindmap: true, level, mmOrder: mindmapOrderCounter++ },
-            ports: FULL_PORTS_CONFIG as any,
-          });
-
-          if (parentNode && parentNode.isNode()) {
-            graph.addEdge({
-              source: { cell: parentNode.id },
-              target: { cell: siblingNode.id },
-              attrs: {
-                line: {
-                  stroke: sibLineColor,
-                  strokeWidth: 2,
-                  targetMarker: {
-                    name: 'block',
-                    width: 12,
-                    height: 8,
-                  },
-                },
-              },
-              router: { name: 'normal' },
-              connector: { name: 'smooth' },
-            });
-
-            // Find root node by traversing up
-            const traverseUp = (node: typeof parentNode): typeof parentNode => {
-              const incomingSibling = graph.getIncomingEdges(node);
-              if (!incomingSibling || incomingSibling.length === 0) return node;
-              const source = graph.getCellById(incomingSibling[0].getSourceCellId() || '');
-              return source?.isNode() ? traverseUp(source) : node;
-            };
-            const rootNode = traverseUp(parentNode);
-
-            // Apply layout to prevent overlap
-            applyMindmapLayout(graph, dir, rootNode);
-          }
-
-          graph.select(siblingNode);
-        }
-      },
-      {
-        label: '✏️ Edit Text', action: () => {
-          const currentLabel = cell.getAttrs()?.label?.text || '';
-
-          const input = document.createElement('input');
-          input.type = 'text';
-          input.value = String(currentLabel);
-
-          const inputIsDark = document.documentElement.classList.contains('dark');
-          input.style.cssText = `
-          position: fixed;
-          left: ${x}px;
-          top: ${y - 40}px;
-          padding: 8px 12px;
-          font-size: 14px;
-          border: 2px solid #5F95FF;
-          border-radius: 6px;
-          outline: none;
-          box-shadow: 0 4px 12px rgba(0,0,0,${inputIsDark ? '0.4' : '0.15'});
-          z-index: 10001;
-          min-width: 150px;
-          background: ${inputIsDark ? '#1e293b' : 'white'};
-          color: ${inputIsDark ? '#f1f5f9' : '#1e293b'};
-        `;
-          document.body.appendChild(input);
-          input.focus();
-          input.select();
-
-          const handleBlur = () => {
-            cell.setAttrs({ label: { text: input.value } });
-            input.remove();
-          };
-
-          const handleKeyDown = (ev: KeyboardEvent) => {
-            if (ev.key === 'Enter') {
-              handleBlur();
-            } else if (ev.key === 'Escape') {
-              input.remove();
-            }
-          };
-
-          input.addEventListener('blur', handleBlur);
-          input.addEventListener('keydown', handleKeyDown);
-        }
-      },
-      { label: '---' }
-    );
-  }
-
-  // Timeline-specific options for timeline mode
-  if (isNode && mode === 'timeline') {
-    menuItems.push(
-      {
-        label: '📅 Add Timeline Event', action: () => {
-          const nodePos = (cell as any).getPosition?.() || { x: 0, y: 0 };
-          const nodeSize = (cell as any).getSize?.() || { width: 140, height: 50 };
-          const dir = (window as any).__timelineDirection || 'horizontal';
-          const tlLineColor = (window as any).__drawdd_lineColor || '#5F95FF';
-          const tlScheme = (window as any).__drawdd_colorScheme || 'default';
-          const tlColors = getNextThemeColors(tlScheme);
-
-          const x0 = dir === 'horizontal' ? nodePos.x + nodeSize.width + 120 : nodePos.x;
-          const y0 = dir === 'horizontal' ? nodePos.y : nodePos.y + nodeSize.height + 80;
-
-          const newEvent = graph.addNode({
-            x: x0,
-            y: y0,
-            width: 140,
-            height: 50,
-            attrs: {
-              body: {
-                fill: tlColors.fill,
-                stroke: tlColors.stroke,
-                strokeWidth: 2,
-                rx: 8,
-                ry: 8,
-              },
-              label: {
-                text: 'New Event',
-                fill: tlColors.text,
-                fontSize: 14,
-              },
-            },
-            data: { isTimeline: true, eventType: 'event' },
-            ports: graph.getNodes()[0]?.getPorts() || [],
-          });
-
-          graph.addEdge({
-            source: cell.id,
-            target: newEvent.id,
-            attrs: { line: { stroke: tlLineColor, strokeWidth: 2 } },
-          });
-
-          graph.select(newEvent);
-        }
-      },
-      {
-        label: '✏️ Edit Text', action: () => {
-          const currentLabel = cell.getAttrs()?.label?.text || '';
-
-          const input = document.createElement('input');
-          input.type = 'text';
-          input.value = String(currentLabel);
-
-          const inputIsDark = document.documentElement.classList.contains('dark');
-          input.style.cssText = `
-          position: fixed;
-          left: ${x}px;
-          top: ${y - 40}px;
-          padding: 8px 12px;
-          font-size: 14px;
-          border: 2px solid #5F95FF;
-          border-radius: 6px;
-          outline: none;
-          box-shadow: 0 4px 12px rgba(0,0,0,${inputIsDark ? '0.4' : '0.15'});
-          z-index: 10001;
-          min-width: 150px;
-          background: ${inputIsDark ? '#1e293b' : 'white'};
-          color: ${inputIsDark ? '#f1f5f9' : '#1e293b'};
-        `;
-          document.body.appendChild(input);
-          input.focus();
-          input.select();
-
-          const handleBlur = () => {
-            cell.setAttrs({ label: { text: input.value } });
-            input.remove();
-          };
-
-          const handleKeyDown = (ev: KeyboardEvent) => {
-            if (ev.key === 'Enter') {
-              handleBlur();
-            } else if (ev.key === 'Escape') {
-              input.remove();
-            }
-          };
-
-          input.addEventListener('blur', handleBlur);
-          input.addEventListener('keydown', handleKeyDown);
-        }
-      },
-      { label: '---' }
-    );
-  }
-
-  // Common options for all nodes
-  if (isNode) {
-    menuItems.push(
-      {
-        label: '🔄 Change Shape', action: () => {
-          // Trigger a custom event that PropertiesPanel will listen to
-          const event = new CustomEvent('drawdd:change-shape', { detail: { cell } });
-          window.dispatchEvent(event);
-        }
-      }
-    );
-
-    // Add "Change Image" option for image nodes
-    if ((cell as any).shape === 'image') {
-      menuItems.push(
-        {
-          label: '🖼️ Change Image', action: () => {
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = 'image/*';
-            input.onchange = (e) => {
-              const file = (e.target as HTMLInputElement).files?.[0];
-              if (file) {
-                const reader = new FileReader();
-                reader.onload = (evt) => {
-                  const dataUrl = evt.target?.result as string;
-                  const imgEl = new Image();
-                  imgEl.onload = () => {
-                    const maxDim = 320;
-                    const minDim = 60;
-                    const scale = Math.min(maxDim / imgEl.width, maxDim / imgEl.height, 1);
-                    const width = Math.max(minDim, Math.round(imgEl.width * scale));
-                    const height = Math.max(minDim, Math.round(imgEl.height * scale));
-
-                    (cell as any).resize(width, height);
-                    (cell as any).setAttrs({
-                      image: { xlinkHref: dataUrl, width, height, preserveAspectRatio: 'xMidYMid meet' },
-                    });
-                    (cell as any).setData({ imageUrl: dataUrl, naturalWidth: imgEl.width, naturalHeight: imgEl.height });
-                  };
-                  imgEl.src = dataUrl;
-                };
-                reader.readAsDataURL(file);
-              }
-            };
-            input.click();
-          }
-        }
-      );
-    }
-  }
-
-  menuItems.push(
-    {
-      label: '📄 Duplicate', action: () => {
-        const clone = cell.clone();
-        clone.translate(30, 30);
-        graph.addCell(clone);
-      }
-    },
-    { label: '---' },
-    { label: '⬆️ Bring to Front', action: () => { cell.toFront(); } },
-    { label: '⬇️ Send to Back', action: () => { cell.toBack(); } },
-    { label: '---' },
-    { label: '🗑️ Delete', action: () => { graph.removeCell(cell); } }
-  );
-
-  menuItems.forEach(item => {
-    if (item.label === '---') {
-      const separator = document.createElement('div');
-      separator.style.cssText = `height: 1px; background: ${isDark ? '#334155' : '#e2e8f0'}; margin: 4px 0;`;
-      menu.appendChild(separator);
-    } else {
-      const menuItem = document.createElement('div');
-      menuItem.textContent = item.label;
-      menuItem.style.cssText = `
-        padding: 8px 16px;
-        cursor: pointer;
-        transition: background 0.1s;
-      `;
-      const hoverBg = isDark ? '#334155' : '#f1f5f9';
-      menuItem.onmouseenter = () => { menuItem.style.background = hoverBg; };
-      menuItem.onmouseleave = () => { menuItem.style.background = 'transparent'; };
-      menuItem.onclick = () => {
-        item.action?.();
-        menu.remove();
-      };
-      menu.appendChild(menuItem);
-    }
-  });
-
-  document.body.appendChild(menu);
-
-  // Close on click outside
-  const handleClickOutside = (e: MouseEvent) => {
-    if (!menu.contains(e.target as globalThis.Node)) {
-      menu.remove();
-      document.removeEventListener('click', handleClickOutside);
-    }
-  };
-  setTimeout(() => document.addEventListener('click', handleClickOutside), 0);
 }
+
+// Mindmap order counter for keyboard shortcuts
+let localMindmapOrderCounter = 1;
+
+function getLocalMindmapOrder(): number {
+  return localMindmapOrderCounter++;
+}
+
 export function Canvas() {
   const containerRef = useRef<HTMLDivElement>(null);
   const minimapRef = useRef<HTMLDivElement>(null);
-  const { graph: contextGraph, setGraph, setSelectedCell, setZoom, showGrid, mindmapDirection, timelineDirection, mode, gridSize, colorScheme } = useGraph();
+  const { 
+    graph: contextGraph, 
+    setGraph, 
+    setSelectedCell, 
+    setZoom, 
+    showGrid, 
+    mindmapDirection, 
+    timelineDirection, 
+    mode, 
+    gridSize, 
+    colorScheme,
+    mindmapTheme,
+    mindmapShowArrows,
+    mindmapStrokeWidth,
+    mindmapColorByLevel,
+    mindmapBranchNumbering,
+    mindmapSortOrder,
+    mindmapConnectorStyle,
+    setCanvasBackground
+  } = useGraph();
   const graphRef = useRef<Graph | null>(null);
-  const [showRestorePrompt, setShowRestorePrompt] = useState(false);
-  const hasCheckedAutoSave = useRef(false);
   const lineColorRef = useRef<string>(getLineColor(colorScheme));
+
+  // Mindmap settings ref for use in callbacks
+  const mindmapSettingsRef = useRef({
+    showArrows: mindmapShowArrows,
+    strokeWidth: mindmapStrokeWidth,
+    colorByLevel: mindmapColorByLevel,
+    theme: mindmapTheme,
+    branchNumbering: mindmapBranchNumbering,
+    sortOrder: mindmapSortOrder,
+    connectorStyle: mindmapConnectorStyle
+  });
+
+  // Keep mindmap settings ref in sync
+  useEffect(() => {
+    mindmapSettingsRef.current = {
+      showArrows: mindmapShowArrows,
+      strokeWidth: mindmapStrokeWidth,
+      colorByLevel: mindmapColorByLevel,
+      theme: mindmapTheme,
+      branchNumbering: mindmapBranchNumbering,
+      sortOrder: mindmapSortOrder,
+      connectorStyle: mindmapConnectorStyle
+    };
+    // Also expose to window for context menu
+    (window as any).__drawdd_mindmapSettings = mindmapSettingsRef.current;
+  }, [mindmapShowArrows, mindmapStrokeWidth, mindmapColorByLevel, mindmapTheme, mindmapBranchNumbering, mindmapSortOrder, mindmapConnectorStyle]);
 
   // Keep lineColorRef in sync with colorScheme
   useEffect(() => {
@@ -498,19 +127,8 @@ export function Canvas() {
     };
   }, [mindmapDirection, timelineDirection, mode]);
 
-  // Setup auto-save
-  const { loadFromStorage, clearStorage } = useAutoSave(contextGraph);
-
-  // Check for saved data when graph is ready
-  useEffect(() => {
-    if (contextGraph && !hasCheckedAutoSave.current) {
-      hasCheckedAutoSave.current = true;
-      const info = getAutoSaveInfo();
-      if (info && info.nodeCount > 0) {
-        setShowRestorePrompt(true);
-      }
-    }
-  }, [contextGraph]);
+  // Setup auto-save (saves automatically, no restore prompt)
+  useAutoSave(contextGraph);
 
   // Handle container resize
   useEffect(() => {
@@ -529,16 +147,6 @@ export function Canvas() {
       resizeObserver.disconnect();
     };
   }, [contextGraph]);
-
-  const handleRestore = () => {
-    loadFromStorage();
-    setShowRestorePrompt(false);
-  };
-
-  const handleDismiss = () => {
-    clearStorage();
-    setShowRestorePrompt(false);
-  };
 
   // Helper to update node label with auto-resize
   const updateNodeLabel = (node: X6Node, text: string) => {
@@ -676,18 +284,31 @@ export function Canvas() {
           radius: 20,
         },
         createEdge(): Edge {
+          // Check if we're in mindmap mode and respect settings
+          const currentMode = (window as any).__drawdd_mode;
+          const mmSettings = (window as any).__drawdd_mindmapSettings || { showArrows: false, strokeWidth: 1 };
+          const isMindmap = currentMode === 'mindmap';
+          
+          const lineAttrs: Record<string, unknown> = {
+            stroke: '#5F95FF',
+            strokeWidth: isMindmap ? (mmSettings.strokeWidth || 1) : 2,
+          };
+          
+          // Only add arrows for non-mindmap or if mindmap arrows enabled
+          if (!isMindmap || mmSettings.showArrows) {
+            lineAttrs.targetMarker = {
+              name: 'block',
+              width: 12,
+              height: 8,
+            };
+          } else {
+            lineAttrs.targetMarker = null;
+          }
+          
           return this.createEdge({
-            attrs: {
-              line: {
-                stroke: '#5F95FF',
-                strokeWidth: 2,
-                targetMarker: {
-                  name: 'block',
-                  width: 12,
-                  height: 8,
-                },
-              },
-            },
+            attrs: { line: lineAttrs },
+            router: isMindmap ? { name: 'normal' } : undefined,
+            connector: isMindmap ? { name: 'smooth' } : undefined,
             zIndex: 0,
           });
         },
@@ -914,6 +535,7 @@ export function Canvas() {
       const cells = graph.getSelectedCells();
       const insLineColor = lineColorRef.current;
       const insColors = getNextThemeColors(colorScheme);
+      const mmSettings = (window as any).__drawdd_mindmapSettings || mindmapSettingsRef.current;
 
       if (currentMode === 'timeline') {
         if (cells.length === 1 && cells[0].isNode()) {
@@ -956,11 +578,15 @@ export function Canvas() {
         if (!allowMindmap) return false;
 
         const dir = (window as any).__mindmapDirection || 'right';
-        const mmColors = getNextThemeColors(colorScheme);
+        const level = (typeof parentData.level === 'number' ? parentData.level : 0) + 1;
+        
+        // Use level-based colors if enabled
+        const mmColors = mmSettings.colorByLevel 
+          ? getMindmapLevelColor(level, mmSettings.theme)
+          : getNextThemeColors(colorScheme);
 
         const parentPos = parentNode.getPosition();
         const parentSize = parentNode.getSize();
-        const level = (typeof parentData.level === 'number' ? parentData.level : 0) + 1;
 
         const initialX = dir === 'left' ? parentPos.x - 220 : parentPos.x + parentSize.width + 120;
         const initialY = dir === 'top'
@@ -988,28 +614,43 @@ export function Canvas() {
               fontSize: 12,
             },
           },
-          data: { isMindmap: true, level, mmOrder: mindmapOrderCounter++ },
+          data: { isMindmap: true, level, mmOrder: getLocalMindmapOrder() },
           ports: FULL_PORTS_CONFIG as any,
         });
 
-        graph.addEdge({
-          source: { cell: parentNode.id },
-          target: { cell: childNode.id },
-          attrs: {
-            line: {
-              stroke: lineColorRef.current,
-              strokeWidth: 2,
-              targetMarker: {
-                name: 'block',
-                width: 12,
-                height: 8,
-              },
-            },
+        // Create edge with mindmap defaults
+        const edgeAttrs: any = {
+          line: {
+            stroke: lineColorRef.current,
+            strokeWidth: mmSettings.strokeWidth || 1,
           },
-          router: { name: 'normal' },
-          connector: { name: 'smooth' },
+        };
+        
+        if (mmSettings.showArrows) {
+          edgeAttrs.line.targetMarker = {
+            name: 'block',
+            width: 8,
+            height: 6,
+          };
+        } else {
+          edgeAttrs.line.targetMarker = null;
+        }
+
+        const routing = getEdgeRouting(mmSettings.connectorStyle || 'straight');
+        
+        // Determine ports based on direction for proper alignment
+        const sourcePort = dir === 'left' ? 'left' : dir === 'top' ? 'top' : dir === 'bottom' ? 'bottom' : 'right';
+        const targetPort = dir === 'left' ? 'right' : dir === 'top' ? 'bottom' : dir === 'bottom' ? 'top' : 'left';
+        
+        graph.addEdge({
+          source: { cell: parentNode.id, port: sourcePort },
+          target: { cell: childNode.id, port: targetPort },
+          attrs: edgeAttrs,
+          router: routing.router,
+          connector: routing.connector,
         });
 
+        // Find root and apply layout
         const traverseUp = (node: typeof parentNode): typeof parentNode => {
           const incoming = graph.getIncomingEdges(node);
           if (!incoming || incoming.length === 0) return node;
@@ -1017,8 +658,11 @@ export function Canvas() {
           return source?.isNode() ? traverseUp(source) : node;
         };
         const rootNode = traverseUp(parentNode);
-
-        applyMindmapLayout(graph, dir, rootNode);
+        
+        // Use setTimeout to ensure all DOM updates settle before layout recalculation
+        setTimeout(() => {
+          applyMindmapLayout(graph, dir, rootNode);
+        }, 0);
 
         graph.unselect(childNode);
         graph.cleanSelection();
@@ -1037,6 +681,8 @@ export function Canvas() {
         const allowMindmap = currentData.isMindmap === true || mode === 'mindmap' || mode === undefined;
         if (!allowMindmap) return false;
         const currentSize = currentNode.getSize();
+        
+        const mmSettings = (window as any).__drawdd_mindmapSettings || mindmapSettingsRef.current;
 
         // Find incoming edges to find parent
         const incomingEdges = graph.getIncomingEdges(currentNode);
@@ -1045,10 +691,14 @@ export function Canvas() {
 
         // Get direction and theme from context
         const dir = (window as any).__mindmapDirection || 'right';
-        const enterColors = getNextThemeColors(colorScheme);
 
         const currentPos = currentNode.getPosition();
         const level = typeof currentData.level === 'number' ? currentData.level : 1;
+        
+        // Use level-based colors if enabled
+        const enterColors = mmSettings.colorByLevel 
+          ? getMindmapLevelColor(level, mmSettings.theme)
+          : getNextThemeColors(colorScheme);
 
         // Create sibling near current - layout will position it
         const siblingNode = graph.addNode({
@@ -1070,28 +720,42 @@ export function Canvas() {
               fontSize: 12,
             },
           },
-          data: { isMindmap: true, level, mmOrder: mindmapOrderCounter++ },
+          data: { isMindmap: true, level, mmOrder: getLocalMindmapOrder() },
           ports: FULL_PORTS_CONFIG as any,
         });
 
         // Connect to same parent if exists
         if (parentNode && parentNode.isNode()) {
-          graph.addEdge({
-            source: { cell: parentNode.id },
-            target: { cell: siblingNode.id },
-            attrs: {
-              line: {
-                stroke: lineColorRef.current,
-                strokeWidth: 2,
-                targetMarker: {
-                  name: 'block',
-                  width: 12,
-                  height: 8,
-                },
-              },
+          // Create edge with new mindmap defaults (thinner lines, optional arrows)
+          const edgeAttrs: any = {
+            line: {
+              stroke: lineColorRef.current,
+              strokeWidth: mmSettings.strokeWidth || 1,
             },
-            router: { name: 'normal' },
-            connector: { name: 'smooth' },
+          };
+          
+          if (mmSettings.showArrows) {
+            edgeAttrs.line.targetMarker = {
+              name: 'block',
+              width: 8,
+              height: 6,
+            };
+          } else {
+            edgeAttrs.line.targetMarker = null;
+          }
+
+          const routing = getEdgeRouting(mmSettings.connectorStyle || 'straight');
+
+          // Determine ports based on direction for proper alignment
+          const sourcePort = dir === 'left' ? 'left' : dir === 'top' ? 'top' : dir === 'bottom' ? 'bottom' : 'right';
+          const targetPort = dir === 'left' ? 'right' : dir === 'top' ? 'bottom' : dir === 'bottom' ? 'top' : 'left';
+
+          graph.addEdge({
+            source: { cell: parentNode.id, port: sourcePort },
+            target: { cell: siblingNode.id, port: targetPort },
+            attrs: edgeAttrs,
+            router: routing.router,
+            connector: routing.connector,
           });
 
           // Find root node by traversing up
@@ -1102,7 +766,11 @@ export function Canvas() {
             return source?.isNode() ? traverseUp(source) : node;
           };
           const rootNode = traverseUp(parentNode);
-          applyMindmapLayout(graph, dir, rootNode);
+          
+          // Use setTimeout to ensure all DOM updates settle before layout recalculation
+          setTimeout(() => {
+            applyMindmapLayout(graph, dir, rootNode);
+          }, 0);
         }
 
         // Keep ONLY current node selected (clear selection first)
@@ -1397,11 +1065,58 @@ export function Canvas() {
       });
     });
 
-    // Right-click context menu
+    // Right-click context menu for cells
     graph.on('cell:contextmenu', ({ cell, e }) => {
       e.preventDefault();
-      showContextMenu(graph, cell, e.clientX, e.clientY, mode);
+      const mmSettings = (window as any).__drawdd_mindmapSettings || {
+        showArrows: false,
+        strokeWidth: 1,
+        colorByLevel: false,
+        theme: 'blue'
+      };
+      showCellContextMenu(graph, cell, e.clientX, e.clientY, {
+        mode,
+        mindmapSettings: mmSettings
+      });
     });
+
+    // Right-click context menu for empty canvas
+    graph.on('blank:contextmenu', ({ e, x, y }) => {
+      e.preventDefault();
+      const mmSettings = (window as any).__drawdd_mindmapSettings || {
+        showArrows: false,
+        strokeWidth: 1,
+        colorByLevel: false,
+        theme: 'blue'
+      };
+      showEmptyCanvasContextMenu(graph, x, y, e.clientX, e.clientY, {
+        mode,
+        mindmapSettings: mmSettings
+      });
+    });
+
+    // Listen for edit-cell-text event from context menu
+    const handleEditCellText = (event: CustomEvent) => {
+      const { cell } = event.detail;
+      if (cell && cell.isNode()) {
+        const pos = cell.getBBox();
+        const currentLabel = cell.getAttrs()?.label?.text || '';
+        const containerRect = containerRef.current?.getBoundingClientRect();
+        const graphPos = graph.localToGraph({ x: pos.x + pos.width / 2, y: pos.y + pos.height / 2 });
+        
+        openTextEditor({
+          initial: String(currentLabel),
+          clientX: (containerRect?.left || 0) + graphPos.x,
+          clientY: (containerRect?.top || 0) + graphPos.y,
+          onSubmit: (value) => {
+            if (graph.hasCell(cell.id)) {
+              updateNodeLabel(cell as X6Node, value || '');
+            }
+          },
+        });
+      }
+    };
+    window.addEventListener('drawdd:edit-cell-text', handleEditCellText as EventListener);
 
     graphRef.current = graph;
     setGraph(graph);
@@ -1421,6 +1136,170 @@ export function Canvas() {
       }
     };
   }, [initGraph]);
+
+  // Handle paste-as-children: when pasting text on a mindmap node, create child branches
+  useEffect(() => {
+    const handleBrowserPaste = (e: ClipboardEvent) => {
+      const currentMode = (window as any).__drawdd_mode;
+      const graph = graphRef.current;
+      if (!graph || currentMode !== 'mindmap') return;
+      
+      // Only intercept if focus is on the canvas (not in a text input)
+      if (document.activeElement && 
+          (document.activeElement.tagName === 'INPUT' || 
+           document.activeElement.tagName === 'TEXTAREA' ||
+           document.activeElement.getAttribute('contenteditable') === 'true')) {
+        return;
+      }
+      
+      const cells = graph.getSelectedCells();
+      if (cells.length !== 1 || !cells[0].isNode()) return;
+      
+      const clipboardText = e.clipboardData?.getData('text');
+      if (!clipboardText) return;
+      
+      // Check if clipboard contains multi-line text or tab-separated values
+      const lines = clipboardText.split(/[\r\n]+/).filter(line => line.trim());
+      if (lines.length <= 1 && !clipboardText.includes('\t')) {
+        // Single line without tabs - let default paste handle it
+        return;
+      }
+      
+      // Prevent default paste behavior
+      e.preventDefault();
+      
+      const parentNode = cells[0] as X6Node;
+      const mmSettings = mindmapSettingsRef.current;
+      const dir = (window as any).__mindmapDirection || 'right';
+      
+      handlePasteAsChildren(
+        graph,
+        parentNode,
+        dir,
+        lineColorRef.current,
+        colorScheme,
+        mmSettings,
+        clipboardText
+      );
+    };
+    
+    document.addEventListener('paste', handleBrowserPaste);
+    return () => {
+      document.removeEventListener('paste', handleBrowserPaste);
+    };
+  }, [colorScheme]);
+
+  // Handle background color changes from context menu
+  useEffect(() => {
+    const handleSetBackground = (e: CustomEvent<{ color: string }>) => {
+      if (e.detail?.color && graphRef.current) {
+        const newBg = { type: 'color' as const, color: e.detail.color };
+        setCanvasBackground(newBg);
+        // Also update the visual graph background immediately
+        graphRef.current.drawBackground({ color: e.detail.color });
+      }
+    };
+    
+    window.addEventListener('drawdd:set-background', handleSetBackground as EventListener);
+    return () => {
+      window.removeEventListener('drawdd:set-background', handleSetBackground as EventListener);
+    };
+  }, [setCanvasBackground]);
+
+  // Apply connector style changes to existing mindmap edges
+  useEffect(() => {
+    if (!graphRef.current) return;
+    const graph = graphRef.current;
+    const edges = graph.getEdges();
+    
+    edges.forEach(edge => {
+      // Only update mindmap edges (check if source/target have isMindmap data)
+      const sourceNode = graph.getCellById(edge.getSourceCellId() || '');
+      const sourceData = sourceNode?.isNode() ? (sourceNode as any).getData?.() : null;
+      if (sourceData?.isMindmap) {
+        // Update router and connector based on style
+        const routing = getEdgeRouting(mindmapConnectorStyle);
+        edge.setRouter(routing.router);
+        edge.setConnector(routing.connector);
+      }
+    });
+  }, [mindmapConnectorStyle]);
+
+  // Apply arrow visibility changes to existing mindmap edges
+  useEffect(() => {
+    if (!graphRef.current) return;
+    const graph = graphRef.current;
+    const edges = graph.getEdges();
+    
+    edges.forEach(edge => {
+      const sourceNode = graph.getCellById(edge.getSourceCellId() || '');
+      const sourceData = sourceNode?.isNode() ? (sourceNode as any).getData?.() : null;
+      if (sourceData?.isMindmap) {
+        const currentAttrs = edge.getAttrs() || {};
+        const lineAttrs = { ...(currentAttrs.line || {}) };
+        
+        if (mindmapShowArrows) {
+          lineAttrs.targetMarker = { name: 'block', width: 8, height: 6 };
+        } else {
+          // Use empty string to properly remove the marker
+          lineAttrs.targetMarker = '';
+          lineAttrs.sourceMarker = '';
+        }
+        
+        edge.setAttrs({ line: lineAttrs });
+      }
+    });
+  }, [mindmapShowArrows]);
+
+  // Apply stroke width changes to existing mindmap edges
+  useEffect(() => {
+    if (!graphRef.current) return;
+    const graph = graphRef.current;
+    const edges = graph.getEdges();
+    
+    edges.forEach(edge => {
+      const sourceNode = graph.getCellById(edge.getSourceCellId() || '');
+      const sourceData = sourceNode?.isNode() ? (sourceNode as any).getData?.() : null;
+      if (sourceData?.isMindmap) {
+        edge.setAttrs({
+          line: {
+            strokeWidth: mindmapStrokeWidth
+          }
+        });
+      }
+    });
+  }, [mindmapStrokeWidth]);
+
+  // Handle clean exit - mark session as cleanly closed
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      localStorage.removeItem('drawdd-session-active');
+    };
+    
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        // Page is being hidden, could be closing
+        localStorage.setItem('drawdd-unclean-exit', 'true');
+      } else {
+        // Page is visible again, clear unclean exit flag
+        localStorage.removeItem('drawdd-unclean-exit');
+      }
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    // Set unclean exit flag on mount (will be cleared if page closes cleanly)
+    localStorage.setItem('drawdd-unclean-exit', 'true');
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      // Clean exit - remove the flag
+      localStorage.removeItem('drawdd-unclean-exit');
+      localStorage.removeItem('drawdd-session-active');
+    };
+  }, []);
 
   // Toggle grid visibility
   useEffect(() => {
@@ -1453,37 +1332,6 @@ export function Canvas() {
         ref={containerRef}
         className="w-full h-full"
       />
-
-      {/* Auto-save restore prompt */}
-      {showRestorePrompt && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-4 z-50 max-w-md">
-          <div className="flex items-start gap-3">
-            <div className="text-2xl">💾</div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-gray-900 dark:text-white mb-1">
-                Restore previous work?
-              </h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-                You have unsaved work from a previous session. Would you like to restore it?
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleRestore}
-                  className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  Restore
-                </button>
-                <button
-                  onClick={handleDismiss}
-                  className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                >
-                  Start Fresh
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       <ZoomControls />
       <QuickActions />

@@ -151,6 +151,21 @@ export interface GraphContextType {
   setExportGrid?: (show: boolean) => void;
   spellcheckLanguage: string;
   setSpellcheckLanguage: (lang: string) => void;
+  // Mindmap settings
+  mindmapTheme: string;
+  setMindmapTheme: (theme: string) => void;
+  mindmapShowArrows: boolean;
+  setMindmapShowArrows: (show: boolean) => void;
+  mindmapStrokeWidth: number;
+  setMindmapStrokeWidth: (width: number) => void;
+  mindmapColorByLevel: boolean;
+  setMindmapColorByLevel: (enabled: boolean) => void;
+  mindmapBranchNumbering: boolean;
+  setMindmapBranchNumbering: (enabled: boolean) => void;
+  mindmapSortOrder: 'clockwise' | 'counter-clockwise' | 'top-to-bottom' | 'left-to-right';
+  setMindmapSortOrder: (order: 'clockwise' | 'counter-clockwise' | 'top-to-bottom' | 'left-to-right') => void;
+  mindmapConnectorStyle: 'smooth' | 'orthogonal-rounded' | 'orthogonal-sharp' | 'straight';
+  setMindmapConnectorStyle: (style: 'smooth' | 'orthogonal-rounded' | 'orthogonal-sharp' | 'straight') => void;
 }
 
 export interface CanvasBackground {

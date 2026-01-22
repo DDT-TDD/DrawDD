@@ -30,6 +30,34 @@ export function GraphProvider({ children }: { children: ReactNode }) {
     return localStorage.getItem('drawdd-spellcheck-lang') || 'en-GB';
   });
 
+  // Mindmap-specific settings
+  const [mindmapTheme, setMindmapTheme] = useState<string>(() => {
+    return localStorage.getItem('drawdd-mindmap-theme') || 'blue';
+  });
+  const [mindmapShowArrows, setMindmapShowArrows] = useState<boolean>(() => {
+    // Default: no arrows (false). Only show arrows if explicitly set to 'true'
+    return localStorage.getItem('drawdd-mindmap-arrows') === 'true';
+  });
+  const [mindmapStrokeWidth, setMindmapStrokeWidth] = useState<number>(() => {
+    const stored = localStorage.getItem('drawdd-mindmap-stroke-width');
+    return stored ? parseInt(stored, 10) : 1; // Default: thin lines (1px)
+  });
+  const [mindmapColorByLevel, setMindmapColorByLevel] = useState<boolean>(() => {
+    return localStorage.getItem('drawdd-mindmap-color-by-level') === 'true';
+  });
+  const [mindmapBranchNumbering, setMindmapBranchNumbering] = useState<boolean>(() => {
+    return localStorage.getItem('drawdd-mindmap-numbering') === 'true';
+  });
+  const [mindmapSortOrder, setMindmapSortOrder] = useState<'clockwise' | 'counter-clockwise' | 'top-to-bottom' | 'left-to-right'>(() => {
+    return (localStorage.getItem('drawdd-mindmap-sort-order') as any) || 'clockwise';
+  });
+  const [mindmapConnectorStyle, setMindmapConnectorStyle] = useState<'smooth' | 'orthogonal-rounded' | 'orthogonal-sharp' | 'straight'>(() => {
+    const saved = localStorage.getItem('drawdd-mindmap-connector') as any;
+    // Migrate old 'orthogonal' to 'orthogonal-rounded'
+    if (saved === 'orthogonal') return 'orthogonal-rounded';
+    return saved || 'smooth';
+  });
+
   return (
     <GraphContext.Provider
       value={{
@@ -67,6 +95,42 @@ export function GraphProvider({ children }: { children: ReactNode }) {
         setSpellcheckLanguage: (lang: string) => {
           setSpellcheckLanguage(lang);
           localStorage.setItem('drawdd-spellcheck-lang', lang);
+        },
+        // Mindmap settings
+        mindmapTheme,
+        setMindmapTheme: (theme: string) => {
+          setMindmapTheme(theme);
+          localStorage.setItem('drawdd-mindmap-theme', theme);
+        },
+        mindmapShowArrows,
+        setMindmapShowArrows: (show: boolean) => {
+          setMindmapShowArrows(show);
+          localStorage.setItem('drawdd-mindmap-arrows', show ? 'true' : 'false');
+        },
+        mindmapStrokeWidth,
+        setMindmapStrokeWidth: (width: number) => {
+          setMindmapStrokeWidth(width);
+          localStorage.setItem('drawdd-mindmap-stroke-width', width.toString());
+        },
+        mindmapColorByLevel,
+        setMindmapColorByLevel: (enabled: boolean) => {
+          setMindmapColorByLevel(enabled);
+          localStorage.setItem('drawdd-mindmap-color-by-level', enabled ? 'true' : 'false');
+        },
+        mindmapBranchNumbering,
+        setMindmapBranchNumbering: (enabled: boolean) => {
+          setMindmapBranchNumbering(enabled);
+          localStorage.setItem('drawdd-mindmap-numbering', enabled ? 'true' : 'false');
+        },
+        mindmapSortOrder,
+        setMindmapSortOrder: (order: 'clockwise' | 'counter-clockwise' | 'top-to-bottom' | 'left-to-right') => {
+          setMindmapSortOrder(order);
+          localStorage.setItem('drawdd-mindmap-sort-order', order);
+        },
+        mindmapConnectorStyle,
+        setMindmapConnectorStyle: (style: 'smooth' | 'orthogonal-rounded' | 'orthogonal-sharp' | 'straight') => {
+          setMindmapConnectorStyle(style);
+          localStorage.setItem('drawdd-mindmap-connector', style);
         },
       }}
     >

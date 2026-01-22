@@ -30,7 +30,10 @@ interface DiagramTypeSelectorProps {
 }
 
 export function DiagramTypeSelector({ onLoadTemplate }: DiagramTypeSelectorProps) {
-  const { graph, setMode } = useGraph();
+  const { 
+    graph, setMode,
+    mindmapShowArrows, mindmapStrokeWidth, mindmapConnectorStyle
+  } = useGraph();
   const [isOpen, setIsOpen] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [selectedType, setSelectedType] = useState<DiagramType | null>(null);
@@ -132,22 +135,53 @@ export function DiagramTypeSelector({ onLoadTemplate }: DiagramTypeSelectorProps
       graph.addNode(cellConfig);
     });
     
-    // Add edges from template
+    // Add edges from template - respect mindmap settings for mindmap templates
+    const isMindmapTemplate = template.diagramType === 'mindmap' || template.diagramType === 'concept-map';
     template.data.edges.forEach(edge => {
+      // Build edge attributes based on diagram type
+      const lineAttrs: Record<string, unknown> = {
+        stroke: '#333',
+        strokeWidth: isMindmapTemplate ? (mindmapStrokeWidth || 1) : 2,
+      };
+      
+      // Only add arrows if not a mindmap, or if mindmap arrows are enabled
+      if (!isMindmapTemplate || mindmapShowArrows) {
+        lineAttrs.targetMarker = {
+          name: 'block',
+          width: 12,
+          height: 8,
+        };
+      } else {
+        lineAttrs.targetMarker = null;
+      }
+      
+      // Compute router and connector for mindmaps based on connector style
+      // Uses manhattan router for orthogonal and straight styles for clean alignment
+      let routerConfig = undefined;
+      let connectorConfig = undefined;
+      if (isMindmapTemplate) {
+        if (mindmapConnectorStyle === 'smooth') {
+          routerConfig = { name: 'normal' };
+          connectorConfig = { name: 'smooth' };
+        } else if (mindmapConnectorStyle === 'orthogonal-rounded') {
+          routerConfig = { name: 'manhattan' };
+          connectorConfig = { name: 'rounded', args: { radius: 10 } };
+        } else if (mindmapConnectorStyle === 'orthogonal-sharp') {
+          routerConfig = { name: 'manhattan' };
+          connectorConfig = { name: 'normal' };
+        } else {
+          // straight - use manhattan for clean elbow lines
+          routerConfig = { name: 'manhattan' };
+          connectorConfig = { name: 'normal' };
+        }
+      }
+      
       graph.addEdge({
         source: edge.source,
         target: edge.target,
-        attrs: {
-          line: {
-            stroke: '#333',
-            strokeWidth: 2,
-            targetMarker: {
-              name: 'block',
-              width: 12,
-              height: 8,
-            },
-          },
-        },
+        attrs: { line: lineAttrs },
+        router: routerConfig,
+        connector: connectorConfig,
         labels: edge.label ? [{
           attrs: {
             text: { text: edge.label, fill: '#333', fontSize: 12 },

@@ -14,6 +14,8 @@ import { APP_VERSION } from './types';
 import type { DiagramFile, DiagramPage } from './types';
 import { PanelLeftClose, PanelRightClose, PanelLeft, PanelRight } from 'lucide-react';
 import { applyTreeLayout, applyFishboneLayout, applyTimelineLayout } from './utils/layout';
+import { importFromJSON } from './utils/importExport';
+import { addRecentFile } from './utils/recentFiles';
 
 // Default page colors
 const PAGE_COLORS = [
@@ -59,7 +61,12 @@ interface ElectronAPI {
 }
 
 function AppContent() {
-  const { showLeftSidebar, setShowLeftSidebar, showRightSidebar, setShowRightSidebar, graph, zoom, setZoom, showGrid, setShowGrid } = useGraph();
+  const { 
+    showLeftSidebar, setShowLeftSidebar, 
+    showRightSidebar, setShowRightSidebar, 
+    graph, zoom, setZoom, showGrid, setShowGrid,
+    setMindmapDirection, setTimelineDirection, setCanvasBackground
+  } = useGraph();
   const [showFindReplace, setShowFindReplace] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showExamples, setShowExamples] = useState(false);
@@ -527,6 +534,40 @@ function AppContent() {
           break;
         case 'toggle-grid':
           setShowGrid(!showGrid);
+          break;
+        case 'open-file':
+          // Electron sends file path as arg, open it directly
+          if (arg && graph) {
+            (async () => {
+              try {
+                const electronAPI = (window as any).electronAPI;
+                if (electronAPI?.openFile) {
+                  const result = await electronAPI.openFile(arg);
+                  if (result.success && result.content) {
+                    const doc = JSON.parse(result.content);
+                    importFromJSON(graph, doc, {
+                      setMindmapDirection,
+                      setTimelineDirection,
+                      setCanvasBackground,
+                    });
+                    if ((window as any).__drawdd_updateFileName) {
+                      (window as any).__drawdd_updateFileName(result.fileName);
+                    }
+                    if ((window as any).__drawdd_setFilePath) {
+                      (window as any).__drawdd_setFilePath(result.filePath);
+                    }
+                    // Add to recent files
+                    const ext = result.fileName.split('.').pop()?.toLowerCase() || 'json';
+                    addRecentFile({ name: result.fileName, type: ext as any, path: result.filePath });
+                  } else {
+                    console.error('Failed to open file:', result.error);
+                  }
+                }
+              } catch (error) {
+                console.error('Error opening file from Electron:', error);
+              }
+            })();
+          }
           break;
         case 'toggle-left-sidebar':
           setShowLeftSidebar(!showLeftSidebar);
