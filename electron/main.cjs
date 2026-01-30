@@ -157,7 +157,7 @@ function createMenu() {
                 { name: 'XMind', extensions: ['xmind'] },
                 { name: 'MindManager', extensions: ['mmap'] },
                 { name: 'KityMinder', extensions: ['km'] },
-                { name: 'FreeMind', extensions: ['mm'] },
+                { name: 'FreeMind/FreePlan', extensions: ['mm'] },
                 { name: 'Visio', extensions: ['vsdx'] },
               ],
               properties: ['openFile']
@@ -542,6 +542,115 @@ ipcMain.handle('get-recent-files', async () => {
     // Electron's app.getRecentDocuments() only works on Windows and macOS
     // We'll return the recent files from localStorage through the renderer
     return { success: true, recentFiles: [] };
+  } catch (error) {
+    return { success: false, error: error?.message || String(error) };
+  }
+});
+
+// Open external URL in default browser
+ipcMain.handle('open-external', async (_event, url) => {
+  try {
+    await shell.openExternal(url);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error?.message || String(error) };
+  }
+});
+
+// Folder Explorer: Select folder dialog
+ipcMain.handle('select-folder', async () => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory']
+    });
+    if (result.canceled || !result.filePaths.length) {
+      return { success: false, canceled: true };
+    }
+    return { success: true, folderPath: result.filePaths[0] };
+  } catch (error) {
+    return { success: false, error: error?.message || String(error) };
+  }
+});
+
+// Folder Explorer: Open file with default application
+ipcMain.handle('open-file', async (_event, filePath) => {
+  try {
+    const result = await shell.openPath(filePath);
+    if (result) {
+      // shell.openPath returns empty string on success, error message on failure
+      return { success: false, error: `Failed to open file: ${result}` };
+    }
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error?.message || String(error) };
+  }
+});
+
+// Folder Explorer: Scan directory recursively
+ipcMain.handle('scan-directory', async (_event, dirPath, includeHidden = false) => {
+  try {
+    const scanDir = async (currentPath, depth = 0) => {
+      const stats = await fs.promises.stat(currentPath);
+      const name = path.basename(currentPath);
+      
+      // Check if hidden (starts with . on Unix or has hidden attribute on Windows)
+      const isHidden = name.startsWith('.');
+      
+      if (!stats.isDirectory()) {
+        // It's a file
+        return {
+          name,
+          path: currentPath,
+          isDirectory: false,
+          isHidden
+        };
+      }
+      
+      // It's a directory
+      const node = {
+        name,
+        path: currentPath,
+        isDirectory: true,
+        isHidden,
+        children: []
+      };
+      
+      try {
+        const entries = await fs.promises.readdir(currentPath, { withFileTypes: true });
+        
+        for (const entry of entries) {
+          const entryPath = path.join(currentPath, entry.name);
+          
+          // Skip hidden files/folders if not included
+          if (!includeHidden && entry.name.startsWith('.')) {
+            continue;
+          }
+          
+          try {
+            // Check for circular symlinks
+            const realPath = await fs.promises.realpath(entryPath);
+            if (realPath.startsWith(currentPath) && realPath !== entryPath) {
+              // Potential circular reference, skip
+              continue;
+            }
+            
+            const childNode = await scanDir(entryPath, depth + 1);
+            node.children.push(childNode);
+          } catch (err) {
+            // Skip files/folders we can't access (permission errors, etc.)
+            console.warn(`Skipping ${entryPath}: ${err.message}`);
+          }
+        }
+      } catch (err) {
+        // Can't read directory (permission error), return directory node without children
+        console.warn(`Cannot read directory ${currentPath}: ${err.message}`);
+      }
+      
+      return node;
+    };
+    
+    const fileTree = await scanDir(dirPath);
+    return { success: true, fileTree };
   } catch (error) {
     return { success: false, error: error?.message || String(error) };
   }

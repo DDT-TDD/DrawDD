@@ -11,7 +11,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<'flowchart' | 'mindmap' | 'timeline'>('flowchart');
   const [zoom, setZoom] = useState(1);
   const [showGrid, setShowGrid] = useState(true);
-  
+
   // New settings
   const [showLeftSidebar, setShowLeftSidebar] = useState(true);
   const [showRightSidebar, setShowRightSidebar] = useState(true);
@@ -55,7 +55,19 @@ export function GraphProvider({ children }: { children: ReactNode }) {
     const saved = localStorage.getItem('drawdd-mindmap-connector') as any;
     // Migrate old 'orthogonal' to 'orthogonal-rounded'
     if (saved === 'orthogonal') return 'orthogonal-rounded';
-    return saved || 'smooth';
+    return saved || 'smooth'; // Default to smooth curved lines
+  });
+
+  // New layout and feature settings
+  const [mindmapLayoutMode, setMindmapLayoutMode] = useState<'standard' | 'compact'>(() => {
+    return (localStorage.getItem('drawdd-mindmap-layout-mode') as any) || 'standard';
+  });
+  const [markdownEnabled, setMarkdownEnabled] = useState<boolean>(() => {
+    const stored = localStorage.getItem('drawdd-markdown-enabled');
+    return stored === null ? true : stored === 'true'; // Default: true
+  });
+  const [includeHiddenFiles, setIncludeHiddenFiles] = useState<boolean>(() => {
+    return localStorage.getItem('drawdd-include-hidden-files') === 'true';
   });
 
   return (
@@ -131,6 +143,24 @@ export function GraphProvider({ children }: { children: ReactNode }) {
         setMindmapConnectorStyle: (style: 'smooth' | 'orthogonal-rounded' | 'orthogonal-sharp' | 'straight') => {
           setMindmapConnectorStyle(style);
           localStorage.setItem('drawdd-mindmap-connector', style);
+        },
+        // New layout and feature settings
+        mindmapLayoutMode,
+        setMindmapLayoutMode: (mode: 'standard' | 'compact') => {
+          setMindmapLayoutMode(mode);
+          localStorage.setItem('drawdd-mindmap-layout-mode', mode);
+          // Dispatch event to trigger layout refresh
+          window.dispatchEvent(new CustomEvent('drawdd:layout-mode-changed', { detail: { mode } }));
+        },
+        markdownEnabled,
+        setMarkdownEnabled: (enabled: boolean) => {
+          setMarkdownEnabled(enabled);
+          localStorage.setItem('drawdd-markdown-enabled', enabled ? 'true' : 'false');
+        },
+        includeHiddenFiles,
+        setIncludeHiddenFiles: (include: boolean) => {
+          setIncludeHiddenFiles(include);
+          localStorage.setItem('drawdd-include-hidden-files', include ? 'true' : 'false');
         },
       }}
     >

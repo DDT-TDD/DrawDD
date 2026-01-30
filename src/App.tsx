@@ -16,6 +16,16 @@ import { PanelLeftClose, PanelRightClose, PanelLeft, PanelRight } from 'lucide-r
 import { applyTreeLayout, applyFishboneLayout, applyTimelineLayout } from './utils/layout';
 import { importFromJSON } from './utils/importExport';
 import { addRecentFile } from './utils/recentFiles';
+import { injectKatexCSS } from './utils/markdown';
+import { registerHtmlNode } from './config/htmlNode';
+import { initializeCollapseIndicators } from './utils/collapse';
+
+// Inject KaTeX CSS for equation rendering
+injectKatexCSS();
+// Register custom HTML node for rich content
+registerHtmlNode();
+// Clear localStorage autoSave so app starts with empty canvas
+localStorage.removeItem('drawdd-autosave');
 
 // Default page colors
 const PAGE_COLORS = [
@@ -61,9 +71,9 @@ interface ElectronAPI {
 }
 
 function AppContent() {
-  const { 
-    showLeftSidebar, setShowLeftSidebar, 
-    showRightSidebar, setShowRightSidebar, 
+  const {
+    showLeftSidebar, setShowLeftSidebar,
+    showRightSidebar, setShowRightSidebar,
     graph, zoom, setZoom, showGrid, setShowGrid,
     setMindmapDirection, setTimelineDirection, setCanvasBackground
   } = useGraph();
@@ -73,7 +83,7 @@ function AppContent() {
   const [showAbout, setShowAbout] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showNewDiagramDialog, setShowNewDiagramDialog] = useState(false);
-  
+
   // File and Page management
   const [files, setFiles] = useState<DiagramFile[]>(() => [createNewFile()]);
   const [activeFileId, setActiveFileId] = useState(() => files[0]?.id || '');
@@ -86,16 +96,16 @@ function AppContent() {
   const saveCurrentPageData = useCallback(() => {
     if (!graph || !currentFile || !currentPage) return;
     const currentData = JSON.stringify(graph.toJSON());
-    setFiles(prev => prev.map(f => 
-      f.id === activeFileId 
+    setFiles(prev => prev.map(f =>
+      f.id === activeFileId
         ? {
-            ...f,
-            pages: f.pages.map(p => 
-              p.id === f.activePageId 
-                ? { ...p, data: currentData }
-                : p
-            )
-          }
+          ...f,
+          pages: f.pages.map(p =>
+            p.id === f.activePageId
+              ? { ...p, data: currentData }
+              : p
+          )
+        }
         : f
     ));
   }, [graph, activeFileId, currentFile, currentPage]);
@@ -106,6 +116,19 @@ function AppContent() {
     if (pageData) {
       try {
         graph.fromJSON(JSON.parse(pageData));
+
+        // CRITICAL FIX: Ensure all nodes are visible after loading
+        // This fixes the issue where nodes beyond level 2 disappear
+        const nodes = graph.getNodes();
+        nodes.forEach(node => {
+          // Make node visible unless it's explicitly part of a collapsed branch
+          if (!node.isVisible()) {
+            node.setVisible(true);
+          }
+        });
+
+        // Initialize collapse indicators for loaded nodes
+        initializeCollapseIndicators(graph);
       } catch (e) {
         console.error('Failed to load page data:', e);
         graph.clearCells();
@@ -142,7 +165,7 @@ function AppContent() {
         return;
       }
     }
-    
+
     setFiles(prev => {
       const newFiles = prev.filter(f => f.id !== fileId);
       if (newFiles.length === 0) {
@@ -151,7 +174,7 @@ function AppContent() {
       }
       return newFiles;
     });
-    
+
     if (fileId === activeFileId) {
       const remainingFiles = files.filter(f => f.id !== fileId);
       if (remainingFiles.length > 0) {
@@ -164,7 +187,7 @@ function AppContent() {
   }, [files, activeFileId, graph, handleFileSelect]);
 
   const handleFileRename = useCallback((fileId: string, newName: string) => {
-    setFiles(prev => prev.map(f => 
+    setFiles(prev => prev.map(f =>
       f.id === fileId ? { ...f, name: newName } : f
     ));
   }, []);
@@ -174,8 +197,8 @@ function AppContent() {
     if (!currentFile) return;
     saveCurrentPageData();
     const newPage = createNewPage(currentFile.pages.length);
-    setFiles(prev => prev.map(f => 
-      f.id === activeFileId 
+    setFiles(prev => prev.map(f =>
+      f.id === activeFileId
         ? { ...f, pages: [...f.pages, newPage], activePageId: newPage.id, isModified: true }
         : f
     ));
@@ -185,7 +208,7 @@ function AppContent() {
   const handlePageSelect = useCallback((pageId: string) => {
     if (!currentFile || pageId === currentFile.activePageId) return;
     saveCurrentPageData();
-    setFiles(prev => prev.map(f => 
+    setFiles(prev => prev.map(f =>
       f.id === activeFileId ? { ...f, activePageId: pageId } : f
     ));
     const targetPage = currentFile.pages.find(p => p.id === pageId);
@@ -194,23 +217,23 @@ function AppContent() {
 
   const handlePageClose = useCallback((pageId: string) => {
     if (!currentFile || currentFile.pages.length <= 1) return;
-    
+
     const pageIndex = currentFile.pages.findIndex(p => p.id === pageId);
     const newPages = currentFile.pages.filter(p => p.id !== pageId);
-    
+
     // If closing active page, switch to adjacent page
     let newActivePageId = currentFile.activePageId;
     if (pageId === currentFile.activePageId) {
       const newIndex = Math.min(pageIndex, newPages.length - 1);
       newActivePageId = newPages[newIndex].id;
     }
-    
-    setFiles(prev => prev.map(f => 
-      f.id === activeFileId 
+
+    setFiles(prev => prev.map(f =>
+      f.id === activeFileId
         ? { ...f, pages: newPages, activePageId: newActivePageId, isModified: true }
         : f
     ));
-    
+
     // Load the new active page if we switched
     if (pageId === currentFile.activePageId) {
       const newActivePage = newPages.find(p => p.id === newActivePageId);
@@ -219,7 +242,7 @@ function AppContent() {
   }, [activeFileId, currentFile, loadPageData]);
 
   const handlePageRename = useCallback((pageId: string, newName: string) => {
-    setFiles(prev => prev.map(f => 
+    setFiles(prev => prev.map(f =>
       f.id === activeFileId
         ? { ...f, pages: f.pages.map(p => p.id === pageId ? { ...p, name: newName } : p), isModified: true }
         : f
@@ -230,15 +253,15 @@ function AppContent() {
     if (!currentFile) return;
     const sourcePage = currentFile.pages.find(p => p.id === pageId);
     if (!sourcePage) return;
-    
+
     saveCurrentPageData();
     const newPage: DiagramPage = {
       ...createNewPage(currentFile.pages.length),
       name: `${sourcePage.name} (Copy)`,
       data: sourcePage.data
     };
-    
-    setFiles(prev => prev.map(f => 
+
+    setFiles(prev => prev.map(f =>
       f.id === activeFileId
         ? { ...f, pages: [...f.pages, newPage], activePageId: newPage.id, isModified: true }
         : f
@@ -247,7 +270,7 @@ function AppContent() {
   }, [activeFileId, currentFile, saveCurrentPageData, loadPageData]);
 
   const handlePageColorChange = useCallback((pageId: string, color: string) => {
-    setFiles(prev => prev.map(f => 
+    setFiles(prev => prev.map(f =>
       f.id === activeFileId
         ? { ...f, pages: f.pages.map(p => p.id === pageId ? { ...p, color } : p) }
         : f
@@ -262,8 +285,8 @@ function AppContent() {
       // Create updated file with current page data
       const updatedFile = {
         ...currentFile,
-        pages: currentFile.pages.map(p => 
-          p.id === currentFile.activePageId 
+        pages: currentFile.pages.map(p =>
+          p.id === currentFile.activePageId
             ? { ...p, data: currentData }
             : p
         )
@@ -275,17 +298,17 @@ function AppContent() {
   // Mark file as modified when graph changes
   useEffect(() => {
     if (!graph) return;
-    
+
     const handleChange = () => {
-      setFiles(prev => prev.map(f => 
+      setFiles(prev => prev.map(f =>
         f.id === activeFileId ? { ...f, isModified: true } : f
       ));
     };
-    
+
     graph.on('cell:added', handleChange);
     graph.on('cell:removed', handleChange);
     graph.on('cell:changed', handleChange);
-    
+
     return () => {
       graph.off('cell:added', handleChange);
       graph.off('cell:removed', handleChange);
@@ -381,12 +404,12 @@ function AppContent() {
     (window as any).__drawdd_newPage = handleNewPage;
     // File operations for imports
     (window as any).__drawdd_updateFileName = (name: string) => {
-      setFiles(prev => prev.map(f => 
+      setFiles(prev => prev.map(f =>
         f.id === activeFileId ? { ...f, name, isModified: false } : f
       ));
     };
     (window as any).__drawdd_updateFilePath = (filePath: string) => {
-      setFiles(prev => prev.map(f => 
+      setFiles(prev => prev.map(f =>
         f.id === activeFileId ? { ...f, filePath } : f
       ));
     };
@@ -396,7 +419,7 @@ function AppContent() {
     };
     // Mark current file as saved without changing name
     (window as any).__drawdd_markSaved = () => {
-      setFiles(prev => prev.map(f => 
+      setFiles(prev => prev.map(f =>
         f.id === activeFileId ? { ...f, isModified: false } : f
       ));
     };
@@ -413,16 +436,24 @@ function AppContent() {
         id: `file-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
         isModified: false
       };
-      
+
       setFiles(prev => [...prev, newFile]);
       setActiveFileId(newFile.id);
-      
+
       // Load first page into graph
       if (graph && newFile.pages.length > 0) {
         const firstPage = newFile.pages.find(p => p.id === newFile.activePageId) || newFile.pages[0];
         if (firstPage.data) {
           try {
             graph.fromJSON(JSON.parse(firstPage.data));
+
+            // CRITICAL FIX: Ensure all nodes are visible after loading
+            const nodes = graph.getNodes();
+            nodes.forEach(node => {
+              if (!node.isVisible()) {
+                node.setVisible(true);
+              }
+            });
           } catch (e) {
             console.error('Failed to load page data:', e);
             graph.clearCells();
@@ -449,9 +480,9 @@ function AppContent() {
   // Handle Electron menu commands
   useEffect(() => {
     if (!isElectron) return;
-    
+
     const electronAPI = (window as any).electronAPI as ElectronAPI;
-    
+
     electronAPI.onMenuCommand((command: string, arg?: string) => {
       switch (command) {
         case 'new':
@@ -613,7 +644,7 @@ function AppContent() {
           console.log('Unhandled menu command:', command, arg);
       }
     });
-    
+
     return () => {
       electronAPI.removeMenuCommandListener();
     };
@@ -622,12 +653,12 @@ function AppContent() {
   return (
     <div className="flex flex-col h-screen bg-[var(--bg-primary)] text-[var(--text-primary)]">
       {/* Menu Bar - Always visible (native Electron menu is disabled) */}
-      <MenuBar 
+      <MenuBar
         onShowSettings={() => setShowSettings(true)}
         onShowExamples={() => setShowExamples(true)}
         onShowAbout={() => setShowAbout(true)}
       />
-      
+
       {/* File Tab Bar (Top) */}
       <TabBar
         files={files}
@@ -644,7 +675,7 @@ function AppContent() {
       {/* Main Content - Sidebars push canvas, not overlay */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar */}
-        <div 
+        <div
           className={`flex flex-col bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 transition-all duration-200 ease-in-out overflow-hidden`}
           style={{ width: showLeftSidebar ? '240px' : '0px' }}
         >
@@ -662,7 +693,7 @@ function AppContent() {
             <Sidebar />
           </div>
         </div>
-        
+
         {/* Left Toggle Button */}
         <button
           className="flex-shrink-0 w-6 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
@@ -671,12 +702,12 @@ function AppContent() {
         >
           {showLeftSidebar ? <PanelLeftClose size={14} className="text-gray-500" /> : <PanelLeft size={14} className="text-gray-500" />}
         </button>
-        
+
         {/* Canvas - Takes remaining space, properly sized */}
         <div className="flex-1 relative overflow-hidden">
           <Canvas />
         </div>
-        
+
         {/* Right Toggle Button */}
         <button
           className="flex-shrink-0 w-6 bg-gray-50 dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
@@ -685,9 +716,9 @@ function AppContent() {
         >
           {showRightSidebar ? <PanelRightClose size={14} className="text-gray-500" /> : <PanelRight size={14} className="text-gray-500" />}
         </button>
-        
+
         {/* Right Sidebar */}
-        <div 
+        <div
           className={`flex flex-col bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 transition-all duration-200 ease-in-out overflow-hidden`}
           style={{ width: showRightSidebar ? '288px' : '0px' }}
         >
@@ -705,11 +736,11 @@ function AppContent() {
             <PropertiesPanel />
           </div>
         </div>
-        
+
         {/* Find & Replace Panel */}
-        <FindReplace 
-          isOpen={showFindReplace} 
-          onClose={() => setShowFindReplace(false)} 
+        <FindReplace
+          isOpen={showFindReplace}
+          onClose={() => setShowFindReplace(false)}
         />
       </div>
 
@@ -732,14 +763,14 @@ function AppContent() {
         <span>DRAWDD v{APP_VERSION} — Open Source Diagramming Tool</span>
         <span>MIT License</span>
       </footer>
-      
+
       {/* Dialogs */}
       <SettingsDialog isOpen={showSettings} onClose={() => setShowSettings(false)} />
       <ExamplesDialog isOpen={showExamples} onClose={() => setShowExamples(false)} />
       <AboutDialog isOpen={showAbout} onClose={() => setShowAbout(false)} />
       <HelpDialog isOpen={showHelp} onClose={() => setShowHelp(false)} />
-      <NewDiagramDialog 
-        isOpen={showNewDiagramDialog} 
+      <NewDiagramDialog
+        isOpen={showNewDiagramDialog}
         onClose={() => setShowNewDiagramDialog(false)}
         onNewFile={handleNewFile}
         onNewPage={handleNewPage}

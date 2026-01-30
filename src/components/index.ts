@@ -7,3 +7,4 @@ export { KeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
 export { MindmapDirectionSelector } from './MindmapDirectionSelector';
 export { PageTabBar } from './PageTabBar';
 export { NewDiagramDialog } from './NewDiagramDialog';
+export { MarkdownRenderer } from './MarkdownRenderer';

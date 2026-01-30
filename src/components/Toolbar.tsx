@@ -32,7 +32,7 @@ import { applyTreeLayout, applyFishboneLayout, applyTimelineLayout, type LayoutD
 import type { DrawddDocument } from '../types';
 
 export function Toolbar() {
-  const { graph, mode, setMode, zoom, setZoom, canvasBackground, showGrid, mindmapDirection, timelineDirection, setCanvasBackground, setShowGrid, setMindmapDirection, setTimelineDirection, exportConnectionPoints, exportGrid } = useGraph();
+  const { graph, mode, setMode, zoom, setZoom, canvasBackground, showGrid, mindmapDirection, timelineDirection, mindmapLayoutMode, setCanvasBackground, setShowGrid, setMindmapDirection, setTimelineDirection, setMindmapLayoutMode, exportConnectionPoints, exportGrid } = useGraph();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectionCount, setSelectionCount] = useState(0);
@@ -93,7 +93,10 @@ export function Toolbar() {
     if (graph) {
       const cells = graph.getSelectedCells();
       if (cells.length) {
-        graph.removeCells(cells);
+        // Use setTimeout to avoid React unmount race condition
+        setTimeout(() => {
+          graph.removeCells(cells);
+        }, 0);
       }
     }
   };
@@ -386,6 +389,32 @@ export function Toolbar() {
 
       {/* Direction Selectors - mode-specific */}
       {mode === 'mindmap' && <MindmapDirectionSelector />}
+      {mode === 'mindmap' && (
+        <div className="flex items-center gap-1 p-1 bg-gray-100 dark:bg-gray-700 rounded-lg">
+          <button
+            onClick={() => setMindmapLayoutMode('standard')}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              mindmapLayoutMode === 'standard'
+                ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm'
+                : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+            }`}
+            title="Standard spacing (more room)"
+          >
+            Standard
+          </button>
+          <button
+            onClick={() => setMindmapLayoutMode('compact')}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              mindmapLayoutMode === 'compact'
+                ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm'
+                : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+            }`}
+            title="Compact spacing (30% tighter)"
+          >
+            Compact
+          </button>
+        </div>
+      )}
       {mode === 'timeline' && <TimelineDirectionSelector />}
 
       {(mode === 'mindmap' || mode === 'timeline') && <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-2" />}

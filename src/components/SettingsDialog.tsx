@@ -1,17 +1,19 @@
 import { useState } from 'react';
-import { 
-  X, 
-  Palette, 
-  Layout, 
-  Image as ImageIcon, 
-  Grid, 
+import {
+  X,
+  Palette,
+  Layout,
+  Image as ImageIcon,
+  Grid,
   Monitor,
   Check,
-  Languages
+  Languages,
+  Sparkles
 } from 'lucide-react';
 import { useGraph } from '../context/GraphContext';
 import { COLOR_SCHEMES, getColorScheme } from '../config/colorSchemes';
 import { resetThemeCycle } from '../utils/theme';
+import { AISettings } from './AISettings';
 import type { MindmapLayoutDirection } from '../types';
 
 // Available spellcheck languages
@@ -38,10 +40,10 @@ interface SettingsDialogProps {
 }
 
 export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
-  const { 
-    canvasBackground, 
-    setCanvasBackground, 
-    pageLayout, 
+  const {
+    canvasBackground,
+    setCanvasBackground,
+    pageLayout,
     setPageLayout,
     colorScheme,
     setColorScheme,
@@ -58,9 +60,13 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
     setExportConnectionPoints,
     spellcheckLanguage,
     setSpellcheckLanguage,
+    markdownEnabled,
+    setMarkdownEnabled,
+    includeHiddenFiles,
+    setIncludeHiddenFiles,
   } = useGraph();
 
-  const [activeTab, setActiveTab] = useState<'canvas' | 'style' | 'mindmap' | 'language'>('canvas');
+  const [activeTab, setActiveTab] = useState<'canvas' | 'style' | 'mindmap' | 'language' | 'ai'>('canvas');
   const [bgColor, setBgColor] = useState(canvasBackground.color);
   const [bgImageUrl, setBgImageUrl] = useState(canvasBackground.imageUrl || '');
 
@@ -78,11 +84,11 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
     setColorScheme(schemeId);
     const scheme = getColorScheme(schemeId);
     resetThemeCycle(schemeId);
-    
+
     // Apply to canvas background
     setCanvasBackground({ type: 'color', color: scheme.backgroundColor });
     setBgColor(scheme.backgroundColor);
-    
+
     // Apply to existing nodes if graph exists
     if (graph) {
       const nodes = graph.getNodes();
@@ -90,14 +96,14 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
         const currentBodyAttrs = node.getAttrs().body || {};
         const currentFill = (currentBodyAttrs as any).fill;
         const currentStroke = (currentBodyAttrs as any).stroke;
-        
+
         // Skip nodes with transparent backgrounds (text shapes, labels)
         // These should not have theme colors applied
-        if (currentFill === 'transparent' || currentFill === 'none' || 
-            (currentStroke === 'transparent' && currentFill === 'transparent')) {
+        if (currentFill === 'transparent' || currentFill === 'none' ||
+          (currentStroke === 'transparent' && currentFill === 'transparent')) {
           return;
         }
-        
+
         const colorType = index % 3 === 0 ? 'primary' : index % 3 === 1 ? 'secondary' : 'accent';
         const colors = scheme.nodeColors[colorType];
         node.setAttrs({
@@ -105,7 +111,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
           label: { fill: colors.text }
         });
       });
-      
+
       // Apply to edges
       const edges = graph.getEdges();
       edges.forEach((edge) => {
@@ -152,47 +158,53 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
         <div className="flex border-b border-gray-200 dark:border-gray-700 px-6">
           <button
             onClick={() => setActiveTab('canvas')}
-            className={`flex items-center gap-2 px-4 py-3 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === 'canvas'
-                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-            }`}
+            className={`flex items-center gap-2 px-4 py-3 border-b-2 font-medium text-sm transition-colors ${activeTab === 'canvas'
+              ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+              : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
           >
             <Monitor size={16} />
             Canvas
           </button>
           <button
             onClick={() => setActiveTab('style')}
-            className={`flex items-center gap-2 px-4 py-3 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === 'style'
-                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-            }`}
+            className={`flex items-center gap-2 px-4 py-3 border-b-2 font-medium text-sm transition-colors ${activeTab === 'style'
+              ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+              : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
           >
             <Palette size={16} />
             Color Schemes
           </button>
           <button
             onClick={() => setActiveTab('mindmap')}
-            className={`flex items-center gap-2 px-4 py-3 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === 'mindmap'
-                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-            }`}
+            className={`flex items-center gap-2 px-4 py-3 border-b-2 font-medium text-sm transition-colors ${activeTab === 'mindmap'
+              ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+              : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
           >
             <Layout size={16} />
             Mindmap Layout
           </button>
           <button
             onClick={() => setActiveTab('language')}
-            className={`flex items-center gap-2 px-4 py-3 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === 'language'
-                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-            }`}
+            className={`flex items-center gap-2 px-4 py-3 border-b-2 font-medium text-sm transition-colors ${activeTab === 'language'
+              ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+              : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
           >
             <Languages size={16} />
             Language
+          </button>
+          <button
+            onClick={() => setActiveTab('ai')}
+            className={`flex items-center gap-2 px-4 py-3 border-b-2 font-medium text-sm transition-colors ${activeTab === 'ai'
+              ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+              : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
+          >
+            <Sparkles size={16} />
+            AI Assistant
           </button>
         </div>
 
@@ -207,22 +219,20 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                 <div className="flex gap-3">
                   <button
                     onClick={() => setPageLayout('landscape')}
-                    className={`flex-1 flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${
-                      pageLayout === 'landscape'
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                        : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'
-                    }`}
+                    className={`flex-1 flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${pageLayout === 'landscape'
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'
+                      }`}
                   >
                     <div className="w-16 h-10 border-2 border-current rounded" />
                     <span className="text-sm font-medium">Landscape</span>
                   </button>
                   <button
                     onClick={() => setPageLayout('portrait')}
-                    className={`flex-1 flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${
-                      pageLayout === 'portrait'
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                        : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'
-                    }`}
+                    className={`flex-1 flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${pageLayout === 'portrait'
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'
+                      }`}
                   >
                     <div className="w-10 h-16 border-2 border-current rounded" />
                     <span className="text-sm font-medium">Portrait</span>
@@ -236,22 +246,20 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                 <div className="flex gap-3 mb-4">
                   <button
                     onClick={() => setCanvasBackground({ ...canvasBackground, type: 'color' })}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition-colors ${
-                      canvasBackground.type === 'color'
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                        : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'
-                    }`}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition-colors ${canvasBackground.type === 'color'
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'
+                      }`}
                   >
                     <Palette size={16} />
                     Color
                   </button>
                   <button
                     onClick={() => setCanvasBackground({ ...canvasBackground, type: 'image' })}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition-colors ${
-                      canvasBackground.type === 'image'
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                        : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'
-                    }`}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition-colors ${canvasBackground.type === 'image'
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'
+                      }`}
                   >
                     <ImageIcon size={16} />
                     Image
@@ -267,9 +275,8 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                           setBgColor(color);
                           setCanvasBackground({ type: 'color', color });
                         }}
-                        className={`w-8 h-8 rounded-lg border-2 transition-transform hover:scale-110 ${
-                          bgColor === color ? 'border-blue-500 ring-2 ring-blue-300' : 'border-gray-200 dark:border-gray-600'
-                        }`}
+                        className={`w-8 h-8 rounded-lg border-2 transition-transform hover:scale-110 ${bgColor === color ? 'border-blue-500 ring-2 ring-blue-300' : 'border-gray-200 dark:border-gray-600'
+                          }`}
                         style={{ backgroundColor: color }}
                         title={color}
                       />
@@ -353,6 +360,40 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                   </div>
                 </label>
               </div>
+
+              {/* Markdown Rendering */}
+              <div>
+                <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-3">Markdown Rendering</h3>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={markdownEnabled}
+                    onChange={(e) => setMarkdownEnabled(e.target.checked)}
+                    className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-gray-900 dark:text-white">Enable markdown formatting in nodes</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">Apply markdown syntax (bold, italic, lists, etc.) to node text</span>
+                  </div>
+                </label>
+              </div>
+
+              {/* Folder Explorer */}
+              <div>
+                <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-3">Folder Explorer</h3>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={includeHiddenFiles}
+                    onChange={(e) => setIncludeHiddenFiles(e.target.checked)}
+                    className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-gray-900 dark:text-white">Include hidden files in folder explorer</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">Show files and folders starting with . (dot) when linking folders</span>
+                  </div>
+                </label>
+              </div>
             </div>
           )}
 
@@ -367,11 +408,10 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                   <button
                     key={scheme.id}
                     onClick={() => handleApplyColorScheme(scheme.id)}
-                    className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all hover:shadow-md ${
-                      colorScheme === scheme.id
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
-                    }`}
+                    className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all hover:shadow-md ${colorScheme === scheme.id
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                      }`}
                   >
                     <div className="flex gap-1">
                       {scheme.preview.map((color, i) => (
@@ -412,11 +452,10 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                   <button
                     key={dir.id}
                     onClick={() => handleMindmapDirection(dir.id)}
-                    className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
-                      mindmapDirection === dir.id
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
-                    }`}
+                    className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${mindmapDirection === dir.id
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                      }`}
                   >
                     <span className="text-3xl">{dir.icon}</span>
                     <span className="text-sm font-medium text-gray-900 dark:text-white">{dir.label}</span>
@@ -432,7 +471,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                 Select the language for spell checking in text inputs. The browser's native spell checker will be used.
               </p>
-              
+
               <div className="space-y-4">
                 <div>
                   <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-3">Spell Check Language</h3>
@@ -441,11 +480,10 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                       <button
                         key={lang.code}
                         onClick={() => setSpellcheckLanguage(lang.code)}
-                        className={`flex items-center gap-2 p-3 rounded-lg border-2 transition-all text-left ${
-                          spellcheckLanguage === lang.code
-                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                            : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
-                        }`}
+                        className={`flex items-center gap-2 p-3 rounded-lg border-2 transition-all text-left ${spellcheckLanguage === lang.code
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                          : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                          }`}
                       >
                         <span className="flex-1 text-sm font-medium text-gray-900 dark:text-white">
                           {lang.name}
@@ -457,15 +495,20 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                     ))}
                   </div>
                 </div>
-                
+
                 <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    <strong>Note:</strong> Spell checking uses your browser's built-in spell checker. 
+                    <strong>Note:</strong> Spell checking uses your browser's built-in spell checker.
                     Make sure the selected language dictionary is installed in your browser/system for best results.
                   </p>
                 </div>
               </div>
             </div>
+          )}
+
+          {/* AI Settings Tab */}
+          {activeTab === 'ai' && (
+            <AISettings />
           )}
         </div>
 

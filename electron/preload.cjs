@@ -26,4 +26,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Get recent files from OS
   getRecentFiles: () => ipcRenderer.invoke('get-recent-files'),
+
+  // Open external URL in default browser
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+
+  // Folder Explorer: Select folder dialog
+  selectFolder: () => ipcRenderer.invoke('select-folder'),
+
+  // Folder Explorer: Open file with default application
+  openFile: (filePath) => ipcRenderer.invoke('open-file', filePath),
+
+  // Folder Explorer: Scan directory recursively
+  scanDirectory: (dirPath, includeHidden) => ipcRenderer.invoke('scan-directory', dirPath, includeHidden),
 });

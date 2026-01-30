@@ -985,7 +985,7 @@ export const BASIC_SHAPES: ShapeConfig[] = [
 
 export const MINDMAP_SHAPES: ShapeConfig[] = [
   {
-    type: 'rect',
+    type: 'rich-content-node',
     label: 'Central Topic',
     icon: 'layout',
     width: 160,
@@ -1009,7 +1009,7 @@ export const MINDMAP_SHAPES: ShapeConfig[] = [
     ports: FULL_PORTS_CONFIG,
   },
   {
-    type: 'rect',
+    type: 'rich-content-node',
     label: 'Main Topic',
     icon: 'git-branch',
     width: 140,
@@ -1032,7 +1032,7 @@ export const MINDMAP_SHAPES: ShapeConfig[] = [
     ports: FULL_PORTS_CONFIG,
   },
   {
-    type: 'rect',
+    type: 'rich-content-node',
     label: 'Subtopic',
     icon: 'minus',
     width: 120,
@@ -1057,25 +1057,27 @@ export const MINDMAP_SHAPES: ShapeConfig[] = [
 ];
 
 // Timeline Shapes - for creating timelines and chronological diagrams
+// Enhanced with vibrant colors and distinct styling
 export const TIMELINE_SHAPES: ShapeConfig[] = [
   {
     type: 'rect',
-    label: 'Event',
+    label: '📅 Event',
     icon: 'clock',
-    width: 140,
-    height: 50,
+    width: 150,
+    height: 55,
     attrs: {
       body: {
-        fill: '#e3f2fd',
-        stroke: '#2196f3',
-        strokeWidth: 2,
-        rx: 8,
-        ry: 8,
+        fill: '#1e88e5',
+        stroke: '#0d47a1',
+        strokeWidth: 3,
+        rx: 10,
+        ry: 10,
       },
       label: {
-        text: 'Event',
-        fill: '#333333',
+        text: '📅 Event',
+        fill: '#ffffff',
         fontSize: 14,
+        fontWeight: 'bold',
       },
     },
     data: { isTimeline: true, eventType: 'event' },
@@ -1083,20 +1085,21 @@ export const TIMELINE_SHAPES: ShapeConfig[] = [
   },
   {
     type: 'ellipse',
-    label: 'Milestone',
+    label: '⭐ Milestone',
     icon: 'star',
-    width: 80,
-    height: 80,
+    width: 90,
+    height: 90,
     attrs: {
       body: {
-        fill: '#fff3e0',
-        stroke: '#ff9800',
-        strokeWidth: 2,
+        fill: '#ff9800',
+        stroke: '#e65100',
+        strokeWidth: 3,
       },
       label: {
-        text: 'Milestone',
-        fill: '#333333',
-        fontSize: 12,
+        text: '⭐ Milestone',
+        fill: '#ffffff',
+        fontSize: 13,
+        fontWeight: 'bold',
       },
     },
     data: { isTimeline: true, eventType: 'milestone' },
@@ -1104,22 +1107,23 @@ export const TIMELINE_SHAPES: ShapeConfig[] = [
   },
   {
     type: 'rect',
-    label: 'Period',
+    label: '📊 Period',
     icon: 'move-horizontal',
-    width: 180,
-    height: 60,
+    width: 200,
+    height: 65,
     attrs: {
       body: {
-        fill: '#f3e5f5',
-        stroke: '#9c27b0',
-        strokeWidth: 2,
-        rx: 4,
-        ry: 4,
+        fill: '#7b1fa2',
+        stroke: '#4a0072',
+        strokeWidth: 3,
+        rx: 6,
+        ry: 6,
       },
       label: {
-        text: 'Period',
-        fill: '#333333',
+        text: '📊 Period',
+        fill: '#ffffff',
         fontSize: 14,
+        fontWeight: 'bold',
       },
     },
     data: { isTimeline: true, eventType: 'period' },
@@ -1127,21 +1131,21 @@ export const TIMELINE_SHAPES: ShapeConfig[] = [
   },
   {
     type: 'polygon',
-    label: 'Decision Point',
+    label: '❓ Decision',
     icon: 'diamond',
-    width: 90,
-    height: 90,
+    width: 95,
+    height: 95,
     attrs: {
       body: {
-        fill: '#ffebee',
-        stroke: '#f44336',
-        strokeWidth: 2,
+        fill: '#d32f2f',
+        stroke: '#b71c1c',
+        strokeWidth: 3,
         refPoints: '0.5,0 1,0.5 0.5,1 0,0.5',
       },
       label: {
-        text: 'Decision',
-        fill: '#333333',
-        fontSize: 12,
+        text: '❓',
+        fill: '#ffffff',
+        fontSize: 18,
       },
     },
     data: { isTimeline: true, eventType: 'decision' },
@@ -1149,22 +1153,22 @@ export const TIMELINE_SHAPES: ShapeConfig[] = [
   },
   {
     type: 'rect',
-    label: 'Phase',
+    label: '🏁 Phase',
     icon: 'layers',
-    width: 150,
-    height: 70,
+    width: 160,
+    height: 75,
     attrs: {
       body: {
-        fill: '#e8f5e9',
-        stroke: '#4caf50',
-        strokeWidth: 2,
-        rx: 10,
-        ry: 10,
+        fill: '#2e7d32',
+        stroke: '#1b5e20',
+        strokeWidth: 3,
+        rx: 12,
+        ry: 12,
       },
       label: {
-        text: 'Phase',
-        fill: '#333333',
-        fontSize: 14,
+        text: '🏁 Phase',
+        fill: '#ffffff',
+        fontSize: 15,
         fontWeight: 'bold',
       },
     },
@@ -1173,22 +1177,23 @@ export const TIMELINE_SHAPES: ShapeConfig[] = [
   },
   {
     type: 'rect',
-    label: 'Task',
+    label: '✅ Task',
     icon: 'check-circle',
-    width: 120,
-    height: 45,
+    width: 130,
+    height: 50,
     attrs: {
       body: {
-        fill: '#ffffff',
-        stroke: '#666666',
+        fill: '#00897b',
+        stroke: '#004d40',
         strokeWidth: 2,
-        rx: 6,
-        ry: 6,
+        rx: 8,
+        ry: 8,
       },
       label: {
-        text: 'Task',
-        fill: '#333333',
+        text: '✅ Task',
+        fill: '#ffffff',
         fontSize: 13,
+        fontWeight: 'bold',
       },
     },
     data: { isTimeline: true, eventType: 'task' },
@@ -1288,7 +1293,7 @@ export const LOGIC_SHAPES: ShapeConfig[] = [
       label: { text: '', fill: '#000000', fontSize: 12 },
     },
   },
-  
+
   // ====== Fault Tree Analysis (FTA) Events ======
   // Basic Event - Circle (IEC 61025)
   {

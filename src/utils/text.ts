@@ -104,6 +104,10 @@ export function measureWrappedText(text: string, wrapWidth: number, options: Par
 /**
  * Updates node label with proper text wrapping and auto-resize.
  * Preserves existing label attributes (like fill color) while updating text.
+ * 
+ * Strategy:
+ * - For short text (fits in one line): extend WIDTH to fit the text (never cuts text)
+ * - For long text (exceeds maxWidth): wraps text and extends HEIGHT
  */
 export function setNodeLabelWithAutoSize(node: Node, text: string, options: Partial<MeasureOptions> = {}) {
   const currentAttrs = node.getAttrs();
@@ -114,27 +118,46 @@ export function setNodeLabelWithAutoSize(node: Node, text: string, options: Part
   const fontWeight = (currentLabelAttrs.fontWeight as string) || DEFAULTS.fontWeight;
   const currentSize = node.size();
   const padding = options.padding ?? DEFAULTS.padding;
+  const maxWidth = options.maxWidth ?? DEFAULTS.maxWidth;
+  const minWidth = options.minWidth ?? DEFAULTS.minWidth;
+  const minHeight = options.minHeight ?? DEFAULTS.minHeight;
 
-  // Calculate new size based on text content
-  // Use a safety buffer for wrapping measurement to account for Canvas/SVG text metric discrepancies
-  // This ensures we allocate enough height even if X6 wraps slightly earlier than Canvas measureText
-  const safetyBuffer = 4;
-  const wrapWidth = Math.max(currentSize.width - padding - safetyBuffer, DEFAULTS.minWidth - padding);
-  const { width, height } = measureWrappedText(text, wrapWidth, {
-    fontSize,
-    fontFamily,
-    fontWeight,
-    minWidth: options.minWidth ?? Math.max(DEFAULTS.minWidth, currentSize.width || DEFAULTS.minWidth),
-    maxWidth: options.maxWidth ?? DEFAULTS.maxWidth,
-    minHeight: options.minHeight ?? DEFAULTS.minHeight,
-    padding,
-    lineHeight: options.lineHeight ?? DEFAULTS.lineHeight,
-  });
+  // Measure the natural single-line width of the text
+  if (!measureCtx) {
+    node.resize(currentSize.width, currentSize.height);
+    node.setAttrs({ label: { ...currentLabelAttrs, text } });
+    return;
+  }
+
+  measureCtx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+  const naturalWidth = measureCtx.measureText(text).width + padding;
+
+  let newWidth: number;
+  let newHeight: number;
+
+  if (naturalWidth <= maxWidth) {
+    // Text fits in one line - extend width to fit (never cut text)
+    newWidth = Math.max(currentSize.width, minWidth, Math.ceil(naturalWidth));
+    newHeight = Math.max(currentSize.height, minHeight);
+  } else {
+    // Text too long for one line - wrap within maxWidth and extend height
+    const wrapWidth = Math.max(maxWidth - padding, minWidth - padding);
+    const { height } = measureWrappedText(text, wrapWidth, {
+      fontSize,
+      fontFamily,
+      fontWeight,
+      minWidth,
+      maxWidth,
+      minHeight,
+      padding,
+      lineHeight: options.lineHeight ?? DEFAULTS.lineHeight,
+    });
+
+    newWidth = Math.max(currentSize.width, maxWidth);
+    newHeight = Math.max(currentSize.height, height);
+  }
 
   // Resize node to fit text
-  // Constraint: Width matches current width (text wraps), Height adjusts to content but NEVER shrinks below current height
-  const newWidth = Math.max(currentSize.width, width);
-  const newHeight = Math.max(currentSize.height, height);
   node.resize(newWidth, newHeight);
 
   // Update label - preserve existing attributes and add text wrapping
@@ -155,6 +178,7 @@ export function setNodeLabelWithAutoSize(node: Node, text: string, options: Part
     },
   });
 }
+
 
 /**
  * Redistributes text within the current node size (for manual resize).

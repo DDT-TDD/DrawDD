@@ -99,7 +99,10 @@ export function QuickActions() {
   const handleDelete = () => {
     if (!graph) return;
     const cells = graph.getSelectedCells();
-    graph.removeCells(cells);
+    // Use setTimeout to avoid React unmount race condition with rich-content-node
+    setTimeout(() => {
+      graph.removeCells(cells);
+    }, 0);
   };
 
   const handleDuplicate = () => {

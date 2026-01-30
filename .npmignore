@@ -1,0 +1,90 @@
+# Source files
+src/
+
+# Build tools and configs
+tsconfig*.json
+vite.config.ts
+jest.config.js
+eslint.config.js
+tailwind.config.js
+
+# Development directories
+.git/
+.github/
+.kiro/
+.vscode/
+release/
+release-builds/
+release-builds_old/
+
+# Documentation (keep only LICENSE and README.md)
+*.md
+!README.md
+!LICENSE.md
+CONTRIBUTING.md
+TROUBLESHOOTING.md
+CHANGELOG.md
+LICENSE_AUDIT.md
+RELEASE_CHECKLIST.md
+RELEASE_NOTES*.md
+*_SUMMARY.md
+*_CHECKPOINT.md
+*_PROGRESS.md
+*_CHECKLIST.md
+*_PLAN.md
+*_STATUS.md
+*_FIXES.md
+*_VERIFICATION.md
+
+# Test files
+**/*.test.ts
+**/*.test.tsx
+**/*.test.js
+**/*.test.jsx
+**/*.property.test.ts
+**/*.property.test.tsx
+**/*.integration.test.ts
+**/*.integration.test.tsx
+setupTests.ts
+
+# Development dependencies (these should be in devDependencies)
+node_modules/@types/
+node_modules/@testing-library/
+node_modules/@vitejs/
+node_modules/@vitest/
+node_modules/@eslint/
+node_modules/@eslint-community/
+node_modules/@rollup/
+node_modules/@tailwindcss/
+node_modules/vite/
+node_modules/vitest/
+node_modules/eslint/
+node_modules/jest/
+node_modules/typescript/
+node_modules/ts-jest/
+node_modules/electron-builder/
+node_modules/electron-packager/
+node_modules/fast-check/
+node_modules/rcedit/
+node_modules/.vite/
+node_modules/.vite-temp/
+node_modules/.tmp/
+node_modules/.cache/
+
+# Root index.html (use dist/index.html instead)
+/index.html
+
+# Lock files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

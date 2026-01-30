@@ -3,7 +3,7 @@ import { useGraph } from '../context/GraphContext';
 import { useTheme } from '../context/ThemeContext';
 import { saveAs } from 'file-saver';
 import { jsPDF } from 'jspdf';
-import { exportToJSON, exportToHTML, importFromJSON, importXMind, importMindManager, importKityMinder, importFreeMind, importVisio, mindmapToGraph, visioToGraph } from '../utils/importExport';
+import { exportToJSON, exportToHTML, exportToMarkdown, exportToTextOutline, importFromJSON, importXMind, importMindManager, importKityMinder, importFreeMind, importFreePlan, importVisio, mindmapToGraph, visioToGraph } from '../utils/importExport';
 import { applyTreeLayout, applyFishboneLayout, applyTimelineLayout, type LayoutDirection } from '../utils/layout';
 import { getRecentFiles, addRecentFile, clearRecentFiles, type RecentFile } from '../utils/recentFiles';
 import { KeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
@@ -191,7 +191,25 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
           (window as any).__drawdd_updateFileName(fileName);
         }
       } else if (ext === 'mm') {
-        const mindmap = await importFreeMind(file);
+        // .mm files can be FreeMind or FreePlan format
+        // Try to detect which one by checking for FreePlan-specific features
+        const text = await file.text();
+        const isFreePlan = text.includes('richcontent') || 
+                          text.includes('cloud') || 
+                          text.includes('arrowlink') ||
+                          text.includes('FREEPLANE');
+        
+        let mindmap;
+        if (isFreePlan) {
+          // Re-create file object for FreePlan parser
+          const freePlanFile = new File([text], file.name, { type: file.type });
+          mindmap = await importFreePlan(freePlanFile);
+        } else {
+          // Re-create file object for FreeMind parser
+          const freeMindFile = new File([text], file.name, { type: file.type });
+          mindmap = await importFreeMind(freeMindFile);
+        }
+        
         mindmapToGraph(graph, mindmap);
         setMode('mindmap');
         if ((window as any).__drawdd_updateFileName) {
@@ -557,6 +575,34 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     setActiveMenu(null);
   };
 
+  const handleExportMarkdown = () => {
+    if (graph) {
+      try {
+        const markdown = exportToMarkdown(graph);
+        const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+        saveAs(blob, 'diagram.md');
+      } catch (e) {
+        console.error('Markdown export error:', e);
+        alert('Failed to export Markdown: ' + (e instanceof Error ? e.message : 'Unknown error'));
+      }
+    }
+    setActiveMenu(null);
+  };
+
+  const handleExportTextOutline = () => {
+    if (graph) {
+      try {
+        const text = exportToTextOutline(graph);
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        saveAs(blob, 'diagram.txt');
+      } catch (e) {
+        console.error('Text export error:', e);
+        alert('Failed to export text outline: ' + (e instanceof Error ? e.message : 'Unknown error'));
+      }
+    }
+    setActiveMenu(null);
+  };
+
   // Expose export functions to window for Electron menu access
   useEffect(() => {
     drawddWindow.__drawdd_save = handleSave;
@@ -640,7 +686,10 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     if (graph) {
       const cells = graph.getSelectedCells();
       if (cells.length > 0) {
-        graph.removeCells(cells);
+        // Use setTimeout to avoid React unmount race condition
+        setTimeout(() => {
+          graph.removeCells(cells);
+        }, 0);
       }
     }
     setActiveMenu(null);
@@ -725,7 +774,10 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
               cell.removeChild(child);
               graph.addCell(child);
             });
-            graph.removeCell(cell);
+            // Use setTimeout to avoid React unmount race condition
+            setTimeout(() => {
+              graph.removeCell(cell);
+            }, 0);
           }
         }
       });
@@ -810,6 +862,104 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
         break;
       }
     }
+    setActiveMenu(null);
+  };
+
+  // ============ Folder Explorer Operations ============
+  const handleRefreshAllLinkedBranches = async () => {
+    if (!graph) return;
+    
+    try {
+      // Import required utilities
+      const { scanDirectory } = await import('../services/electron');
+      const { removeDescendants, generateChildNodes } = await import('../utils/folderExplorer');
+      const { applyMindmapLayout } = await import('../utils/layout');
+      
+      // Get all nodes in the graph
+      const allNodes = graph.getNodes();
+      
+      // Filter for linked folder explorer nodes
+      const linkedNodes = allNodes.filter(node => {
+        const data = node.getData();
+        return data?.folderExplorer?.explorerType === 'linked';
+      });
+      
+      if (linkedNodes.length === 0) {
+        alert('No linked folder branches found in the current document.');
+        setActiveMenu(null);
+        return;
+      }
+      
+      // Get includeHiddenFiles setting
+      const includeHidden = localStorage.getItem('drawdd-include-hidden-files') === 'true';
+      
+      // Refresh each linked branch
+      let successCount = 0;
+      let errorCount = 0;
+      
+      for (const node of linkedNodes) {
+        const metadata = node.getData().folderExplorer;
+        
+        try {
+          // Scan the directory
+          const scanResult = await scanDirectory(metadata.path, includeHidden);
+          
+          if (!scanResult.success || !scanResult.fileTree) {
+            console.error(`Failed to refresh ${metadata.path}:`, scanResult.error);
+            errorCount++;
+            continue;
+          }
+          
+          // Remove old children
+          removeDescendants(graph, node);
+          
+          // Generate new children
+          generateChildNodes(graph, node, scanResult.fileTree, metadata);
+          
+          // Update timestamp
+          node.setData({
+            ...node.getData(),
+            folderExplorer: {
+              ...metadata,
+              lastRefreshed: new Date().toISOString(),
+            },
+          });
+          
+          successCount++;
+        } catch (error) {
+          console.error(`Error refreshing ${metadata.path}:`, error);
+          errorCount++;
+        }
+      }
+      
+      // Apply layout to the entire graph
+      const direction = mindmapDirection || 'right';
+      const layoutMode = (localStorage.getItem('drawdd-mindmap-layout-mode') as 'standard' | 'compact') || 'standard';
+      
+      // Find all root nodes and apply layout
+      const rootNodes = allNodes.filter(node => {
+        const incoming = graph.getIncomingEdges(node);
+        return !incoming || incoming.length === 0;
+      });
+      
+      setTimeout(() => {
+        rootNodes.forEach(rootNode => {
+          applyMindmapLayout(graph, direction as any, rootNode, layoutMode);
+        });
+      }, 0);
+      
+      // Show result message
+      if (errorCount === 0) {
+        alert(`Successfully refreshed ${successCount} linked branch${successCount !== 1 ? 'es' : ''}.`);
+      } else {
+        alert(`Refreshed ${successCount} branch${successCount !== 1 ? 'es' : ''} with ${errorCount} error${errorCount !== 1 ? 's' : ''}.`);
+      }
+      
+    } catch (error) {
+      console.error('Refresh all linked branches error:', error);
+      alert(`Failed to refresh branches: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+    
     setActiveMenu(null);
   };
 
@@ -907,6 +1057,8 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
         { label: 'Export as SVG', action: handleExportSVG },
         { label: 'Export as PDF', action: handleExportPDF },
         { label: 'Export as JSON', action: handleExportJSON },
+        { label: 'Export as Markdown', action: handleExportMarkdown },
+        { label: 'Export as Text Outline', action: handleExportTextOutline },
       ],
     },
     {
@@ -937,6 +1089,8 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
         { separator: true, label: '' },
         { label: `${showLeftSidebar ? '✓ ' : ''}Left Sidebar`, action: () => { setShowLeftSidebar(!showLeftSidebar); setActiveMenu(null); } },
         { label: `${showRightSidebar ? '✓ ' : ''}Right Sidebar`, action: () => { setShowRightSidebar(!showRightSidebar); setActiveMenu(null); } },
+        { separator: true, label: '' },
+        { label: 'Refresh All Linked Branches', action: handleRefreshAllLinkedBranches },
         { separator: true, label: '' },
         { label: `Theme: Light${theme === 'light' ? ' ✓' : ''}`, action: () => { setTheme('light'); setActiveMenu(null); } },
         { label: `Theme: Dark${theme === 'dark' ? ' ✓' : ''}`, action: () => { setTheme('dark'); setActiveMenu(null); } },

@@ -79,6 +79,13 @@ export function PropertiesPanel() {
   const [prefixDecoration, setPrefixDecoration] = useState('');
   const [suffixDecoration, setSuffixDecoration] = useState('');
 
+  // Timeline properties
+  const [timelineDate, setTimelineDate] = useState('');
+  const [timelineEndDate, setTimelineEndDate] = useState('');
+  const [timelineDescription, setTimelineDescription] = useState('');
+  const [timelinePriority, setTimelinePriority] = useState<'low' | 'medium' | 'high'>('medium');
+  const [timelineStatus, setTimelineStatus] = useState<'planned' | 'in-progress' | 'completed' | 'cancelled'>('planned');
+
   // Edge properties
   const [edgeColor, setEdgeColor] = useState('#5F95FF');
   const [edgeWidth, setEdgeWidth] = useState(2);
@@ -240,14 +247,20 @@ export function PropertiesPanel() {
           node.removeChild(child);
           graph.addCell(child);
         });
-        graph.removeCell(node);
+        // Use setTimeout to avoid React unmount race condition
+        setTimeout(() => {
+          graph.removeCell(node);
+        }, 0);
       }
     });
   };
 
   const handleDeleteSelected = () => {
     if (!graph) return;
-    graph.removeCells(selectedNodes);
+    // Use setTimeout to avoid React unmount race condition
+    setTimeout(() => {
+      graph.removeCells(selectedNodes);
+    }, 0);
   };
 
   const handleCopySize = () => {
@@ -354,6 +367,22 @@ export function PropertiesPanel() {
       const data = node.getData() || {};
       setPrefixDecoration((data.prefixDecoration as string) || '');
       setSuffixDecoration((data.suffixDecoration as string) || '');
+      
+      // Load timeline data if it's a timeline node
+      if (data.isTimeline) {
+        setTimelineDate((data.date as string) || '');
+        setTimelineEndDate((data.endDate as string) || '');
+        setTimelineDescription((data.description as string) || '');
+        setTimelinePriority((data.priority as any) || 'medium');
+        setTimelineStatus((data.status as any) || 'planned');
+      } else {
+        // Reset timeline fields for non-timeline nodes
+        setTimelineDate('');
+        setTimelineEndDate('');
+        setTimelineDescription('');
+        setTimelinePriority('medium');
+        setTimelineStatus('planned');
+      }
     } else if (activeEdge) {
       const edge = activeEdge as Edge;
       const attrs = edge.getAttrs();
@@ -468,8 +497,11 @@ export function PropertiesPanel() {
     });
 
     // Remove old node and select new one
-    graph.removeNode(oldNode);
-    graph.select(newNode);
+    // Use setTimeout to avoid React unmount race condition
+    setTimeout(() => {
+      graph.removeNode(oldNode);
+      graph.select(newNode);
+    }, 0);
     } finally {
       graph.stopBatch('replace-shape');
     }
@@ -712,6 +744,90 @@ export function PropertiesPanel() {
       }
     });
     setNodeShape(shape);
+  };
+
+  // Timeline property handlers
+  const handleTimelineDateChange = (date: string) => {
+    setTimelineDate(date);
+    if (selectedCell && isNode) {
+      const node = selectedCell as Node;
+      const data = node.getData() || {};
+      node.setData({ ...data, date });
+      
+      // Trigger timeline re-layout if in timeline mode
+      if (graph && (window as any).__drawdd_mode === 'timeline') {
+        setTimeout(() => {
+          const { applyTimelineLayout } = require('../utils/layout');
+          const direction = (window as any).__timelineDirection || 'horizontal';
+          applyTimelineLayout(graph, direction, { sortByDate: true, showDateLabels: true });
+        }, 100);
+      }
+    }
+  };
+
+  const handleTimelineEndDateChange = (endDate: string) => {
+    setTimelineEndDate(endDate);
+    if (selectedCell && isNode) {
+      const node = selectedCell as Node;
+      const data = node.getData() || {};
+      node.setData({ ...data, endDate });
+    }
+  };
+
+  const handleTimelineDescriptionChange = (description: string) => {
+    setTimelineDescription(description);
+    if (selectedCell && isNode) {
+      const node = selectedCell as Node;
+      const data = node.getData() || {};
+      node.setData({ ...data, description });
+    }
+  };
+
+  const handleTimelinePriorityChange = (priority: 'low' | 'medium' | 'high') => {
+    setTimelinePriority(priority);
+    if (selectedCell && isNode) {
+      const node = selectedCell as Node;
+      const data = node.getData() || {};
+      node.setData({ ...data, priority });
+      
+      // Update node color based on priority
+      const priorityColors = {
+        low: { fill: '#e0f2fe', stroke: '#0284c7' },
+        medium: { fill: '#fef3c7', stroke: '#f59e0b' },
+        high: { fill: '#fee2e2', stroke: '#dc2626' }
+      };
+      const colors = priorityColors[priority];
+      node.setAttrs({
+        body: {
+          ...node.getAttrs().body,
+          fill: colors.fill,
+          stroke: colors.stroke
+        }
+      });
+    }
+  };
+
+  const handleTimelineStatusChange = (status: 'planned' | 'in-progress' | 'completed' | 'cancelled') => {
+    setTimelineStatus(status);
+    if (selectedCell && isNode) {
+      const node = selectedCell as Node;
+      const data = node.getData() || {};
+      node.setData({ ...data, status });
+      
+      // Update node opacity based on status
+      const statusOpacity = {
+        planned: 0.7,
+        'in-progress': 1.0,
+        completed: 0.5,
+        cancelled: 0.3
+      };
+      node.setAttrs({
+        body: {
+          ...node.getAttrs().body,
+          opacity: statusOpacity[status]
+        }
+      });
+    }
   };
 
   const handleEdgeColorChange = (color: string) => {
@@ -1790,6 +1906,94 @@ export function PropertiesPanel() {
                 </div>
               </div>
             </Section>
+
+            {/* Timeline Properties - Only show for timeline nodes */}
+            {selectedCell && isNode && (selectedCell as Node).getData()?.isTimeline && (
+              <Section title="Timeline Properties">
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                      Event Date
+                    </label>
+                    <input
+                      type="date"
+                      value={timelineDate}
+                      onChange={(e) => handleTimelineDateChange(e.target.value)}
+                      className="w-full px-2 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                    />
+                  </div>
+
+                  {((selectedCell as Node).getData()?.eventType === 'period' || (selectedCell as Node).getData()?.eventType === 'phase') && (
+                    <div>
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                        End Date (for periods/phases)
+                      </label>
+                      <input
+                        type="date"
+                        value={timelineEndDate}
+                        onChange={(e) => handleTimelineEndDateChange(e.target.value)}
+                        className="w-full px-2 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                      Description
+                    </label>
+                    <textarea
+                      value={timelineDescription}
+                      onChange={(e) => handleTimelineDescriptionChange(e.target.value)}
+                      placeholder="Event description..."
+                      rows={2}
+                      className="w-full px-2 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 resize-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                      Priority
+                    </label>
+                    <div className="grid grid-cols-3 gap-1">
+                      {(['low', 'medium', 'high'] as const).map(priority => (
+                        <button
+                          key={priority}
+                          onClick={() => handleTimelinePriorityChange(priority)}
+                          className={`px-2 py-1.5 text-xs rounded border ${
+                            timelinePriority === priority
+                              ? 'bg-blue-500 text-white border-blue-600'
+                              : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+                          }`}
+                        >
+                          {priority.charAt(0).toUpperCase() + priority.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                      Status
+                    </label>
+                    <div className="grid grid-cols-2 gap-1">
+                      {(['planned', 'in-progress', 'completed', 'cancelled'] as const).map(status => (
+                        <button
+                          key={status}
+                          onClick={() => handleTimelineStatusChange(status)}
+                          className={`px-2 py-1.5 text-xs rounded border ${
+                            timelineStatus === status
+                              ? 'bg-blue-500 text-white border-blue-600'
+                              : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+                          }`}
+                        >
+                          {status.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </Section>
+            )}
 
             {/* Fill */}
             <Section title="Fill">

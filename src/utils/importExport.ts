@@ -1,7 +1,8 @@
 import JSZip from 'jszip';
 import type { DrawddDocument, XMindSheet, XMindTopic, MindmapNode } from '../types';
-import type { Graph } from '@antv/x6';
+import type { Graph, Node } from '@antv/x6';
 import { applyMindmapLayout } from './layout';
+import { initializeCollapseIndicators } from './collapse';
 
 // ============ XMind Import ============
 
@@ -11,7 +12,7 @@ export async function importXMind(file: File): Promise<MindmapNode> {
 
   const fileList = Object.keys(contents.files);
   const findBySuffix = (re: RegExp) => fileList.find((p) => re.test(p));
-  
+
   // Try XMind 8+ format (content.json)
   let contentPath = findBySuffix(/(^|\/|\\)content\.json$/i);
   let contentFile = contentPath ? contents.file(contentPath) : contents.file('content.json');
@@ -33,7 +34,7 @@ export async function importXMind(file: File): Promise<MindmapNode> {
       console.warn('Failed to parse XMind JSON format:', e);
     }
   }
-  
+
   // Try legacy XMind format (content.xml)
   contentPath = findBySuffix(/(^|\/|\\)content\.xml$/i);
   contentFile = contentPath ? contents.file(contentPath) : contents.file('content.xml');
@@ -45,7 +46,7 @@ export async function importXMind(file: File): Promise<MindmapNode> {
       console.warn('Failed to parse XMind XML format:', e);
     }
   }
-  
+
   // Try manifest.json approach (XMind 2020+)
   const manifestPath = findBySuffix(/(^|\/|\\)manifest\.json$/i);
   const manifestFile = manifestPath ? contents.file(manifestPath) : contents.file('manifest.json');
@@ -53,7 +54,7 @@ export async function importXMind(file: File): Promise<MindmapNode> {
     try {
       const manifestText = await manifestFile.async('string');
       const manifest = JSON.parse(manifestText.replace(/^\uFEFF/, ''));
-      
+
       // Look for content file in manifest
       const entriesRaw = manifest?.['file-entries'];
       const entries = Array.isArray(entriesRaw)
@@ -82,7 +83,7 @@ export async function importXMind(file: File): Promise<MindmapNode> {
       console.warn('Failed to parse XMind manifest:', e);
     }
   }
-  
+
   // List all files for debugging
   console.log('XMind files found:', fileList);
 
@@ -114,7 +115,7 @@ export async function importXMind(file: File): Promise<MindmapNode> {
       // ignore and continue
     }
   }
-  
+
   throw new Error('Invalid or unsupported XMind file format. Files found: ' + fileList.join(', '));
 }
 
@@ -143,7 +144,7 @@ function parseXMindXML(xmlText: string): MindmapNode {
   if (parseError) {
     throw new Error('Failed to parse XMind XML content');
   }
-  
+
   // Find the root topic
   const rootTopic =
     xmlDoc.querySelector('sheet > topic') ||
@@ -152,20 +153,20 @@ function parseXMindXML(xmlText: string): MindmapNode {
   if (!rootTopic) {
     throw new Error('No root topic found in XMind XML');
   }
-  
+
   return convertXMindXMLTopic(rootTopic);
 }
 
 function convertXMindXMLTopic(element: Element): MindmapNode {
   const titleElement = element.querySelector(':scope > title');
   const topic = titleElement?.textContent || 'Untitled';
-  
+
   const node: MindmapNode = {
     id: element.getAttribute('id') || (globalThis.crypto?.randomUUID?.() ?? String(Date.now())),
     topic: topic,
     expanded: true,
   };
-  
+
   // Find children topics
   const childrenContainer = element.querySelector(':scope > children');
   if (childrenContainer) {
@@ -174,7 +175,7 @@ function convertXMindXMLTopic(element: Element): MindmapNode {
       node.children = Array.from(topics).map(convertXMindXMLTopic);
     }
   }
-  
+
   return node;
 }
 
@@ -190,7 +191,61 @@ function convertXMindTopic(topic: any): MindmapNode {
           : 'Untitled'),
     expanded: true,
   };
-  
+
+  // Extract markers/icons
+  if (topic.markers) {
+    const markers: string[] = [];
+    const markerList = Array.isArray(topic.markers) ? topic.markers : [topic.markers];
+    markerList.forEach((marker: any) => {
+      if (typeof marker === 'string') {
+        markers.push(marker);
+      } else if (marker?.markerId) {
+        markers.push(marker.markerId);
+      }
+    });
+    if (markers.length > 0) {
+      node.markers = markers;
+      // Map common XMind markers to emojis
+      node.icon = mapXMindMarkerToEmoji(markers[0]);
+    }
+  }
+
+  // Extract notes
+  if (topic.notes) {
+    if (typeof topic.notes === 'string') {
+      node.note = topic.notes;
+    } else if (topic.notes?.plain) {
+      node.note = topic.notes.plain;
+    } else if (topic.notes?.content) {
+      node.note = topic.notes.content;
+    }
+  }
+
+  // Extract hyperlink
+  if (topic.href) {
+    node.link = topic.href;
+  } else if (topic.hyperlink) {
+    node.link = topic.hyperlink;
+  }
+
+  // Extract labels (tags)
+  if (topic.labels && Array.isArray(topic.labels)) {
+    // Store labels in note if present
+    const labels = topic.labels.join(', ');
+    node.note = node.note ? `${node.note}\n\nLabels: ${labels}` : `Labels: ${labels}`;
+  }
+
+  // Extract style information
+  if (topic.style) {
+    node.style = {
+      backgroundColor: topic.style.backgroundColor || topic.style.bgColor,
+      textColor: topic.style.color || topic.style.textColor,
+      fontSize: topic.style.fontSize,
+      bold: topic.style.fontWeight === 'bold' || topic.style.bold === true,
+      italic: topic.style.fontStyle === 'italic' || topic.style.italic === true,
+    };
+  }
+
   const attached: unknown = topic.children?.attached;
   if (Array.isArray(attached) && attached.length > 0) {
     const first = attached[0] as any;
@@ -213,8 +268,71 @@ function convertXMindTopic(topic: any): MindmapNode {
       node.children = topic.children.map(convertXMindTopic);
     }
   }
-  
+
   return node;
+}
+
+/**
+ * Map XMind marker IDs to emoji equivalents
+ */
+function mapXMindMarkerToEmoji(markerId: string): string {
+  const markerMap: Record<string, string> = {
+    // Priority markers
+    'priority-1': '🔴',
+    'priority-2': '🟠',
+    'priority-3': '🟡',
+    'priority-4': '🟢',
+    'priority-5': '🔵',
+    // Task markers
+    'task-start': '▶️',
+    'task-quarter': '◔',
+    'task-half': '◑',
+    'task-3quar': '◕',
+    'task-done': '✅',
+    // Flag markers
+    'flag-red': '🚩',
+    'flag-orange': '🟠',
+    'flag-yellow': '🟡',
+    'flag-green': '🟢',
+    'flag-blue': '🔵',
+    'flag-purple': '🟣',
+    // Star markers
+    'star-red': '⭐',
+    'star-orange': '🌟',
+    'star-yellow': '✨',
+    // Smiley markers
+    'smiley-smile': '😊',
+    'smiley-laugh': '😁',
+    'smiley-angry': '😠',
+    'smiley-cry': '😢',
+    'smiley-surprise': '😲',
+    // Arrow markers
+    'arrow-up': '⬆️',
+    'arrow-down': '⬇️',
+    'arrow-left': '⬅️',
+    'arrow-right': '➡️',
+    // Symbol markers
+    'symbol-plus': '➕',
+    'symbol-minus': '➖',
+    'symbol-question': '❓',
+    'symbol-attention': '⚠️',
+    'symbol-exclamation': '❗',
+    // Month markers
+    'month-jan': '1️⃣',
+    'month-feb': '2️⃣',
+    'month-mar': '3️⃣',
+    'month-apr': '4️⃣',
+    'month-may': '5️⃣',
+    'month-jun': '6️⃣',
+    'month-jul': '7️⃣',
+    'month-aug': '8️⃣',
+    'month-sep': '9️⃣',
+    'month-oct': '🔟',
+    'month-nov': '1️⃣1️⃣',
+    'month-dec': '1️⃣2️⃣',
+  };
+
+  return markerMap[markerId] || '📌';
 }
 
 // ============ MindManager Import ============
@@ -222,41 +340,41 @@ function convertXMindTopic(topic: any): MindmapNode {
 export async function importMindManager(file: File): Promise<MindmapNode> {
   const zip = new JSZip();
   const contents = await zip.loadAsync(file);
-  
+
   // MindManager uses Document.xml
   const documentFile = contents.file('Document.xml');
   if (!documentFile) {
     throw new Error('Invalid MindManager file: Document.xml not found');
   }
-  
+
   const xmlText = await documentFile.async('string');
   const parser = new DOMParser();
   const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
-  
+
   // Find the central topic
   const centralTopic = xmlDoc.querySelector('OneTopic > Topic');
   if (!centralTopic) {
     throw new Error('No central topic found in MindManager file');
   }
-  
+
   return convertMindManagerNode(centralTopic);
 }
 
 function convertMindManagerNode(element: Element): MindmapNode {
   const textElement = element.querySelector(':scope > Text');
   const topic = textElement?.getAttribute('PlainText') || 'Untitled';
-  
+
   const node: MindmapNode = {
     id: element.getAttribute('OId') || crypto.randomUUID(),
     topic: topic,
     expanded: true,
   };
-  
+
   const subTopics = element.querySelectorAll(':scope > SubTopics > Topic');
   if (subTopics.length > 0) {
     node.children = Array.from(subTopics).map(convertMindManagerNode);
   }
-  
+
   return node;
 }
 
@@ -274,7 +392,7 @@ export function exportToJSON(
   const cells = graph.toJSON();
   const nodes = cells.cells?.filter((c: { shape?: string }) => c.shape !== 'edge') || [];
   const edges = cells.cells?.filter((c: { shape?: string }) => c.shape === 'edge') || [];
-  
+
   return {
     version: '1.0.0',
     type: 'flowchart',
@@ -304,21 +422,35 @@ export function importFromJSON(
   }
 ): void {
   graph.clearCells();
-  
+
   const cells = [...doc.nodes, ...doc.edges];
   graph.fromJSON({ cells });
+
+  // CRITICAL FIX: Ensure all nodes are visible by default after loading
+  // This fixes the issue where nodes beyond level 2 disappear
+  graph.getNodes().forEach(node => {
+    // Force all nodes to be visible initially
+    node.setVisible(true);
+  });
+
+  graph.getEdges().forEach(edge => {
+    edge.setVisible(true);
+  });
+
+  // Initialize collapse indicators for imported nodes
+  initializeCollapseIndicators(graph);
 
   // Restore image URLs and decorations from node data
   graph.getNodes().forEach(node => {
     const data = node.getData() as any;
-    
+
     // Restore image URL
     if (data?.imageUrl && node.shape === 'image') {
       node.setAttrs({
         image: { xlinkHref: data.imageUrl }
       });
     }
-    
+
     // Restore emoji decorations in label
     if (data?.prefixDecoration || data?.suffixDecoration) {
       const currentLabel = node.getAttrs().label?.text as string || '';
@@ -444,42 +576,59 @@ export function mindmapToGraph(graph: Graph, root: MindmapNode): void {
       { group: 'bottom', id: 'bottom' },
     ],
   });
-  
+
   const orderRef = { value: 1 };
 
-  // Create root node at origin
+  // Create root node at origin with imported styling
+  const rootAttrs: any = {
+    body: {
+      fill: root.style?.backgroundColor || '#1976d2',
+      stroke: '#0d47a1',
+      strokeWidth: 2,
+      rx: 10,
+      ry: 10,
+    },
+    label: {
+      text: root.icon ? `${root.icon} ${root.topic}` : root.topic,
+      fill: root.style?.textColor || '#ffffff',
+      fontSize: root.style?.fontSize || 16,
+      fontWeight: root.style?.bold ? 'bold' : 'normal',
+      fontStyle: root.style?.italic ? 'italic' : 'normal',
+    },
+  };
+
+  const rootData: any = {
+    isMindmap: true,
+    level: 0,
+    mmOrder: orderRef.value++
+  };
+
+  // Add metadata to root node data
+  if (root.note) rootData.note = root.note;
+  if (root.link) rootData.link = root.link;
+  if (root.markers) rootData.markers = root.markers;
+  if (root.priority) rootData.priority = root.priority;
+  if (root.progress) rootData.progress = root.progress;
+
   const rootNode = graph.addNode({
     id: root.id,
     x: 0,
     y: 0,
     width: 160,
     height: 80,
-    attrs: {
-      body: {
-        fill: '#1976d2',
-        stroke: '#0d47a1',
-        strokeWidth: 2,
-        rx: 10,
-        ry: 10,
-      },
-      label: {
-        text: root.topic,
-        fill: '#ffffff',
-        fontSize: 16,
-        fontWeight: 'bold',
-      },
-    },
-    data: { isMindmap: true, level: 0, mmOrder: orderRef.value++ },
+    attrs: rootAttrs,
+    data: rootData,
     ports: createMindmapPorts(),
   });
-  
+
   // Create all children nodes and edges (recursively)
   if (root.children) {
     createMindmapNodes(graph, rootNode.id, root.children, 1, orderRef);
   }
-  
+
   // Apply proper layout to prevent overlap
-  applyMindmapLayout(graph, 'both', rootNode);
+  const layoutMode = (localStorage.getItem('drawdd-mindmap-layout-mode') as 'standard' | 'compact') || 'standard';
+  applyMindmapLayout(graph, 'both', rootNode, layoutMode);
   graph.centerContent();
 }
 
@@ -512,12 +661,43 @@ function createMindmapNodes(
     { fill: '#ab47bc', stroke: '#8e24aa' },
     { fill: '#26c6da', stroke: '#00acc1' },
   ];
-  
+
   children.forEach((child, index) => {
     const color = colors[index % colors.length];
     const width = Math.max(100, 140 - level * 20);
     const height = Math.max(35, 50 - level * 5);
-    
+
+    // Apply imported styling if available
+    const nodeAttrs: any = {
+      body: {
+        fill: child.style?.backgroundColor || color.fill,
+        stroke: child.style?.textColor || color.stroke,
+        strokeWidth: 2,
+        rx: 8,
+        ry: 8,
+      },
+      label: {
+        text: child.icon ? `${child.icon} ${child.topic}` : child.topic,
+        fill: child.style?.textColor || (level > 1 ? '#333333' : '#ffffff'),
+        fontSize: child.style?.fontSize || Math.max(11, 14 - level),
+        fontWeight: child.style?.bold ? 'bold' : 'normal',
+        fontStyle: child.style?.italic ? 'italic' : 'normal',
+      },
+    };
+
+    const nodeData: any = {
+      isMindmap: true,
+      level,
+      mmOrder: orderRef.value++
+    };
+
+    // Add metadata to node data
+    if (child.note) nodeData.note = child.note;
+    if (child.link) nodeData.link = child.link;
+    if (child.markers) nodeData.markers = child.markers;
+    if (child.priority) nodeData.priority = child.priority;
+    if (child.progress) nodeData.progress = child.progress;
+
     // Create node at (0,0) - layout will position it
     const node = graph.addNode({
       id: child.id,
@@ -525,24 +705,11 @@ function createMindmapNodes(
       y: 0,
       width,
       height,
-      attrs: {
-        body: {
-          fill: color.fill,
-          stroke: color.stroke,
-          strokeWidth: 2,
-          rx: 8,
-          ry: 8,
-        },
-        label: {
-          text: child.topic,
-          fill: level > 1 ? '#333333' : '#ffffff',
-          fontSize: Math.max(11, 14 - level),
-        },
-      },
-      data: { isMindmap: true, level, mmOrder: orderRef.value++ },
+      attrs: nodeAttrs,
+      data: nodeData,
       ports: createMindmapPorts(),
     });
-    
+
     // Add edge from parent with straight connector to reduce overlap
     graph.addEdge({
       source: parentId,
@@ -557,7 +724,7 @@ function createMindmapNodes(
       connector: { name: 'normal' },
       router: { name: 'normal' },
     });
-    
+
     // Recursively create grandchildren
     if (child.children && child.children.length > 0) {
       createMindmapNodes(graph, node.id, child.children, level + 1, orderRef);
@@ -591,14 +758,14 @@ interface KityMinderData {
 
 export async function importKityMinder(file: File): Promise<MindmapNode> {
   const text = await file.text();
-  
+
   try {
     const data: KityMinderData = JSON.parse(text);
-    
+
     if (!data.root) {
       throw new Error('Invalid KityMinder file: no root node found');
     }
-    
+
     return convertKityMinderNode(data.root);
   } catch (e) {
     console.error('KityMinder parse error:', e);
@@ -612,11 +779,11 @@ function convertKityMinderNode(node: KityMinderNode): MindmapNode {
     topic: node.data?.text || 'Untitled',
     expanded: node.data?.expandState !== 'collapse',
   };
-  
+
   if (node.children && node.children.length > 0) {
     result.children = node.children.map(convertKityMinderNode);
   }
-  
+
   return result;
 }
 
@@ -626,29 +793,181 @@ export async function importFreeMind(file: File): Promise<MindmapNode> {
   const text = await file.text();
   const parser = new DOMParser();
   const xmlDoc = parser.parseFromString(text, 'text/xml');
-  
+
   const rootNode = xmlDoc.querySelector('map > node');
   if (!rootNode) {
     throw new Error('Invalid FreeMind file: no root node found');
   }
-  
+
   return convertFreeMindNode(rootNode);
 }
 
 function convertFreeMindNode(element: Element): MindmapNode {
   const text = element.getAttribute('TEXT') || 'Untitled';
-  
+
   const node: MindmapNode = {
     id: element.getAttribute('ID') || crypto.randomUUID(),
     topic: text,
     expanded: element.getAttribute('FOLDED') !== 'true',
   };
-  
+
+  // Extract link
+  const link = element.getAttribute('LINK');
+  if (link) {
+    node.link = link;
+  }
+
+  // Extract icons
+  const icons = element.querySelectorAll(':scope > icon');
+  if (icons.length > 0) {
+    const iconNames: string[] = [];
+    icons.forEach(icon => {
+      const builtin = icon.getAttribute('BUILTIN');
+      if (builtin) {
+        iconNames.push(builtin);
+      }
+    });
+    if (iconNames.length > 0) {
+      node.markers = iconNames;
+      node.icon = mapFreeMindIconToEmoji(iconNames[0]);
+    }
+  }
+
+  // Extract notes
+  const richContent = element.querySelector(':scope > richcontent[TYPE="NOTE"]');
+  if (richContent) {
+    const htmlContent = richContent.querySelector('html, body, p');
+    node.note = htmlContent?.textContent?.trim() || '';
+  }
+
+  // Extract style
+  const bgColor = element.getAttribute('BACKGROUND_COLOR');
+  const textColor = element.getAttribute('COLOR');
+  if (bgColor || textColor) {
+    node.style = {
+      backgroundColor: bgColor || undefined,
+      textColor: textColor || undefined,
+    };
+  }
+
   const children = element.querySelectorAll(':scope > node');
   if (children.length > 0) {
     node.children = Array.from(children).map(convertFreeMindNode);
   }
-  
+
+  return node;
+}
+
+/**
+ * Map FreeMind icon names to emoji equivalents
+ */
+function mapFreeMindIconToEmoji(iconName: string): string {
+  const iconMap: Record<string, string> = {
+    // Priority
+    'full-1': '🔴',
+    'full-2': '🟠',
+    'full-3': '🟡',
+    'full-4': '🟢',
+    'full-5': '🔵',
+    // Flags
+    'flag': '🚩',
+    'flag-black': '🏴',
+    'flag-blue': '🔵',
+    'flag-green': '🟢',
+    'flag-orange': '🟠',
+    'flag-pink': '🩷',
+    'flag-yellow': '🟡',
+    // Smileys
+    'smiley-oh': '😮',
+    'smiley-angry': '😠',
+    'smiley-neutral': '😐',
+    // Arrows
+    'go': '➡️',
+    'back': '⬅️',
+    'forward': '⏩',
+    'up': '⬆️',
+    'down': '⬇️',
+    // Symbols
+    'yes': '✅',
+    'no': '❌',
+    'ok': '👌',
+    'stop': '🛑',
+    'help': '❓',
+    'info': 'ℹ️',
+    'idea': '💡',
+    'button_ok': '✅',
+    'button_cancel': '❌',
+    'messagebox_warning': '⚠️',
+    // Calendar
+    'calendar': '📅',
+    'clock': '🕐',
+    'hourglass': '⏳',
+    // Misc
+    'bookmark': '🔖',
+    'attach': '📎',
+    'launch': '🚀',
+    'pencil': '✏️',
+    'list': '📋',
+    'desktop_new': '🖥️',
+    'folder': '📁',
+    'mail': '📧',
+  };
+
+  return iconMap[iconName] || '📌';
+}
+
+// ============ FreePlan Import ============
+// FreePlan is an extended FreeMind format with additional features
+
+export async function importFreePlan(file: File): Promise<MindmapNode> {
+  const text = await file.text();
+  const parser = new DOMParser();
+  const xmlDoc = parser.parseFromString(text, 'text/xml');
+
+  // FreePlan uses the same structure as FreeMind but with extensions
+  const rootNode = xmlDoc.querySelector('map > node');
+  if (!rootNode) {
+    throw new Error('Invalid FreePlan file: no root node found');
+  }
+
+  return convertFreePlanNode(rootNode);
+}
+
+function convertFreePlanNode(element: Element): MindmapNode {
+  // Get text content - FreePlan may use TEXT attribute or richcontent
+  let text = element.getAttribute('TEXT') || '';
+
+  // Check for rich content (HTML formatted text)
+  if (!text) {
+    const richContent = element.querySelector('richcontent[TYPE="NODE"]');
+    if (richContent) {
+      // Extract text from HTML content
+      const htmlContent = richContent.querySelector('html, body, p');
+      text = htmlContent?.textContent?.trim() || 'Untitled';
+    }
+  }
+
+  if (!text) text = 'Untitled';
+
+  const node: MindmapNode = {
+    id: element.getAttribute('ID') || crypto.randomUUID(),
+    topic: text,
+    expanded: element.getAttribute('FOLDED') !== 'true',
+  };
+
+  // FreePlan extensions (for future enhancement)
+  // - LINK attribute for hyperlinks
+  // - icon elements for visual markers
+  // - cloud elements for grouping
+  // - edge elements for custom connectors
+  // - font elements for styling
+  // - hook elements for custom data
+
+  const children = element.querySelectorAll(':scope > node');
+  if (children.length > 0) {
+    node.children = Array.from(children).map(convertFreePlanNode);
+  }
+
   return node;
 }
 
@@ -677,55 +996,55 @@ interface VisioData {
 export async function importVisio(file: File): Promise<VisioData> {
   const zip = new JSZip();
   const contents = await zip.loadAsync(file);
-  
+
   // Debug: log all files
   const fileList = Object.keys(contents.files);
   console.log('Visio files found:', fileList);
-  
+
   // Parse page1.xml (primary page)
   const pageFile = contents.file('visio/pages/page1.xml');
   if (!pageFile) {
     throw new Error('Invalid Visio file: page1.xml not found. Files: ' + fileList.join(', '));
   }
-  
+
   const pageXml = await pageFile.async('string');
   const parser = new DOMParser();
   const pageDoc = parser.parseFromString(pageXml, 'text/xml');
-  
+
   const shapes: VisioShape[] = [];
   const edges: VisioShape[] = [];
-  
+
   // Parse shapes
   const shapeElements = pageDoc.querySelectorAll('Shape');
-  
+
   shapeElements.forEach((shape) => {
     const id = shape.getAttribute('ID') || crypto.randomUUID();
     const name = shape.getAttribute('Name') || shape.getAttribute('NameU') || '';
-    
+
     // Get text content
     const textEl = shape.querySelector('Text');
     const text = textEl?.textContent?.trim() || name || 'Shape';
-    
+
     // Get geometry
     let x = 100, y = 100, width = 100, height = 60;
-    
+
     const pinX = shape.querySelector('Cell[N="PinX"]');
     const pinY = shape.querySelector('Cell[N="PinY"]');
     const widthCell = shape.querySelector('Cell[N="Width"]');
     const heightCell = shape.querySelector('Cell[N="Height"]');
-    
+
     if (pinX) x = parseFloat(pinX.getAttribute('V') || '0') * 96; // Convert inches to pixels
     if (pinY) y = parseFloat(pinY.getAttribute('V') || '0') * 96;
     if (widthCell) width = parseFloat(widthCell.getAttribute('V') || '1') * 96;
     if (heightCell) height = parseFloat(heightCell.getAttribute('V') || '1') * 96;
-    
+
     // Get colors
     let fillColor: string | undefined;
     let lineColor: string | undefined;
-    
+
     const fillFgnd = shape.querySelector('Cell[N="FillForegnd"]');
     const lineColorCell = shape.querySelector('Cell[N="LineColor"]');
-    
+
     if (fillFgnd?.getAttribute('V')) {
       const colorVal = fillFgnd.getAttribute('V');
       if (colorVal && colorVal.startsWith('#')) {
@@ -738,29 +1057,29 @@ export async function importVisio(file: File): Promise<VisioData> {
         lineColor = colorVal;
       }
     }
-    
+
     // Check if it's a connector/edge
     const beginX = shape.querySelector('Cell[N="BeginX"]');
     const endX = shape.querySelector('Cell[N="EndX"]');
     const connects = shape.querySelectorAll('Connect');
-    
+
     const isEdge = (beginX && endX) || connects.length >= 2;
-    
+
     if (isEdge) {
       let fromNode: string | undefined;
       let toNode: string | undefined;
-      
+
       connects.forEach((conn) => {
         const toSheet = conn.getAttribute('ToSheet');
         const fromCell = conn.getAttribute('FromCell');
-        
+
         if (fromCell === 'BeginX' && toSheet) {
           fromNode = toSheet;
         } else if (fromCell === 'EndX' && toSheet) {
           toNode = toSheet;
         }
       });
-      
+
       edges.push({
         id,
         name,
@@ -784,29 +1103,29 @@ export async function importVisio(file: File): Promise<VisioData> {
       });
     }
   });
-  
+
   return { shapes, edges };
 }
 
 export function visioToGraph(graph: Graph, data: VisioData): void {
   graph.clearCells();
-  
+
   // Calculate bounding box to normalize positions
   let minY = Infinity;
   let maxY = -Infinity;
-  
+
   data.shapes.forEach((shape) => {
     if (shape.y < minY) minY = shape.y;
     if (shape.y > maxY) maxY = shape.y;
   });
-  
+
   const pageHeight = maxY - minY + 200;
-  
+
   // Create nodes
   data.shapes.forEach((shape) => {
     // Flip Y axis (Visio uses bottom-left origin)
     const flippedY = pageHeight - (shape.y - minY);
-    
+
     graph.addNode({
       id: shape.id,
       x: shape.x - shape.width / 2,
@@ -830,14 +1149,14 @@ export function visioToGraph(graph: Graph, data: VisioData): void {
       },
     });
   });
-  
+
   // Create edges
   data.edges.forEach((edge) => {
     if (edge.fromNode && edge.toNode) {
       // Check if both nodes exist
       const sourceExists = data.shapes.some(s => s.id === edge.fromNode);
       const targetExists = data.shapes.some(s => s.id === edge.toNode);
-      
+
       if (sourceExists && targetExists) {
         graph.addEdge({
           id: edge.id,
@@ -1034,3 +1353,150 @@ export function exportToHTML(graph: Graph, settings?: {
 </html>`;
 }
 
+// ============ Markdown Export ============
+
+/**
+ * Export mindmap to Markdown outline format
+ */
+export function exportToMarkdown(graph: Graph): string {
+  const nodes = graph.getNodes();
+  if (nodes.length === 0) return '# Empty Diagram\n';
+
+  // Find root nodes (nodes with no incoming edges)
+  const roots = nodes.filter(node => {
+    const incoming = graph.getIncomingEdges(node);
+    return !incoming || incoming.length === 0;
+  });
+
+  if (roots.length === 0) return '# No Root Node Found\n';
+
+  let markdown = '';
+
+  roots.forEach(root => {
+    markdown += convertNodeToMarkdown(graph, root, 0);
+  });
+
+  return markdown;
+}
+
+function convertNodeToMarkdown(graph: Graph, node: Node, level: number): string {
+  const data = node.getData() as any;
+  const label = node.getAttrs()?.label?.text || 'Untitled';
+
+  // Create heading or list item based on level
+  let markdown = '';
+  const indent = '  '.repeat(Math.max(0, level - 1));
+
+  if (level === 0) {
+    markdown += `# ${label}\n\n`;
+  } else {
+    markdown += `${indent}- ${label}\n`;
+  }
+
+  // Add metadata if present
+  if (data?.note) {
+    markdown += `${indent}  > ${data.note}\n`;
+  }
+
+  if (data?.link) {
+    markdown += `${indent}  🔗 [Link](${data.link})\n`;
+  }
+
+  if (data?.priority) {
+    markdown += `${indent}  **Priority:** P${data.priority}\n`;
+  }
+
+  if (data?.progress !== undefined) {
+    markdown += `${indent}  **Progress:** ${data.progress}%\n`;
+  }
+
+  if (data?.markers && data.markers.length > 0) {
+    markdown += `${indent}  **Tags:** ${data.markers.join(', ')}\n`;
+  }
+
+  // Add blank line after metadata
+  if (data?.note || data?.link || data?.priority || data?.progress || data?.markers) {
+    markdown += '\n';
+  }
+
+  // Process children
+  const outgoing = graph.getOutgoingEdges(node) || [];
+  const children = outgoing
+    .map(edge => {
+      const targetId = edge.getTargetCellId();
+      return targetId ? graph.getCellById(targetId) as Node : null;
+    })
+    .filter((n): n is Node => n !== null);
+
+  children.forEach(child => {
+    markdown += convertNodeToMarkdown(graph, child, level + 1);
+  });
+
+  return markdown;
+}
+
+// ============ Text Outline Export ============
+
+/**
+ * Export to plain text outline format
+ */
+export function exportToTextOutline(graph: Graph): string {
+  const nodes = graph.getNodes();
+  if (nodes.length === 0) return 'Empty Diagram\n';
+
+  // Find root nodes
+  const roots = nodes.filter(node => {
+    const incoming = graph.getIncomingEdges(node);
+    return !incoming || incoming.length === 0;
+  });
+
+  if (roots.length === 0) return 'No Root Node Found\n';
+
+  let text = '';
+
+  roots.forEach(root => {
+    text += convertNodeToTextOutline(graph, root, 0);
+  });
+
+  return text;
+}
+
+function convertNodeToTextOutline(graph: Graph, node: Node, level: number): string {
+  const data = node.getData() as any;
+  const label = node.getAttrs()?.label?.text || 'Untitled';
+
+  const indent = '  '.repeat(level);
+  let text = `${indent}${label}\n`;
+
+  // Add metadata
+  if (data?.note) {
+    text += `${indent}  Note: ${data.note}\n`;
+  }
+
+  if (data?.link) {
+    text += `${indent}  Link: ${data.link}\n`;
+  }
+
+  if (data?.priority) {
+    text += `${indent}  Priority: P${data.priority}\n`;
+  }
+
+  if (data?.progress !== undefined) {
+    text += `${indent}  Progress: ${data.progress}%\n`;
+  }
+
+  // Process children
+  const outgoing = graph.getOutgoingEdges(node) || [];
+  const children = outgoing
+    .map(edge => {
+      const targetId = edge.getTargetCellId();
+      return targetId ? graph.getCellById(targetId) as Node : null;
+    })
+    .filter((n): n is Node => n !== null);
+
+  children.forEach(child => {
+    text += convertNodeToTextOutline(graph, child, level + 1);
+  });
+
+  return text;
+}

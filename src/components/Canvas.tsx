@@ -20,6 +20,12 @@ import { getNextThemeColors, getLineColor } from '../utils/theme';
 import { setNodeLabelWithAutoSize } from '../utils/text';
 import { showCellContextMenu, showEmptyCanvasContextMenu, handlePasteAsChildren } from '../utils/contextMenu';
 import { getMindmapLevelColor } from '../config/enhancedStyles';
+import {
+  toggleCollapse,
+  initializeCollapseIndicators,
+  addCollapseIndicator,
+  hasChildren
+} from '../utils/collapse';
 
 // Register custom shapes on module load
 registerLogicGateShapes();
@@ -28,22 +34,21 @@ registerLogicGateShapes();
 type ConnectorStyle = 'smooth' | 'orthogonal-rounded' | 'orthogonal-sharp' | 'straight';
 
 function getEdgeRouting(style: ConnectorStyle): { router: any; connector: any } {
-  // For mindmaps: smooth/rounded use normal router, straight/ortho use manhattan for clean alignment
+  // For mindmaps: use appropriate routing based on style
   switch (style) {
     case 'smooth':
-      // Curved bezier lines (like XMind)
+      // Curved bezier lines (like XMind) - DEFAULT
       return { router: { name: 'normal' }, connector: { name: 'smooth' } };
     case 'orthogonal-rounded':
-      // 90° orthogonal with rounded corners (manhattan router)
-      return { router: { name: 'manhattan' }, connector: { name: 'rounded', args: { radius: 10 } } };
+      // Rounded corners with simple routing
+      return { router: { name: 'normal' }, connector: { name: 'rounded', args: { radius: 10 } } };
     case 'orthogonal-sharp':
-      // 90° orthogonal with sharp corners (manhattan router)
-      return { router: { name: 'manhattan' }, connector: { name: 'normal' } };
+      // Sharp corners with simple routing
+      return { router: { name: 'normal' }, connector: { name: 'normal' } };
     case 'straight':
     default:
-      // Elbow lines (horizontal + vertical segments only) for clean mindmap alignment
-      // Uses manhattan router to ensure 90° angles, with normal connector for sharp corners
-      return { router: { name: 'manhattan' }, connector: { name: 'normal' } };
+      // Default to smooth curved bezier lines
+      return { router: { name: 'normal' }, connector: { name: 'smooth' } };
   }
 }
 
@@ -57,16 +62,16 @@ function getLocalMindmapOrder(): number {
 export function Canvas() {
   const containerRef = useRef<HTMLDivElement>(null);
   const minimapRef = useRef<HTMLDivElement>(null);
-  const { 
-    graph: contextGraph, 
-    setGraph, 
-    setSelectedCell, 
-    setZoom, 
-    showGrid, 
-    mindmapDirection, 
-    timelineDirection, 
-    mode, 
-    gridSize, 
+  const {
+    graph: contextGraph,
+    setGraph,
+    setSelectedCell,
+    setZoom,
+    showGrid,
+    mindmapDirection,
+    timelineDirection,
+    mode,
+    gridSize,
     colorScheme,
     mindmapTheme,
     mindmapShowArrows,
@@ -288,12 +293,12 @@ export function Canvas() {
           const currentMode = (window as any).__drawdd_mode;
           const mmSettings = (window as any).__drawdd_mindmapSettings || { showArrows: false, strokeWidth: 1 };
           const isMindmap = currentMode === 'mindmap';
-          
+
           const lineAttrs: Record<string, unknown> = {
             stroke: '#5F95FF',
             strokeWidth: isMindmap ? (mmSettings.strokeWidth || 1) : 2,
           };
-          
+
           // Only add arrows for non-mindmap or if mindmap arrows enabled
           if (!isMindmap || mmSettings.showArrows) {
             lineAttrs.targetMarker = {
@@ -304,7 +309,7 @@ export function Canvas() {
           } else {
             lineAttrs.targetMarker = null;
           }
-          
+
           return this.createEdge({
             attrs: { line: lineAttrs },
             router: isMindmap ? { name: 'normal' } : undefined,
@@ -397,6 +402,39 @@ export function Canvas() {
         })
       );
     }
+
+    // Initialize collapse indicators for existing nodes
+    initializeCollapseIndicators(graph);
+
+    // Handle collapse/expand toggle from RichContentNode
+    graph.on('node:collapse-toggle', ({ node, collapsed }: { node: X6Node; collapsed?: boolean }) => {
+      // If the event includes the new collapsed state, use it directly
+      // Otherwise, toggle based on current state (for legacy compatibility)
+      const newCollapsed = collapsed !== undefined ? collapsed : !(node.getData()?.collapsed || false);
+      toggleCollapse(graph, node, newCollapsed);
+    });
+
+    // Update indicators when edges change
+    const updateIndicators = (node: X6Node) => {
+      if (node && node.isNode() && node.getData()?.isMindmap) {
+        // Use setTimeout to allow edge removal/addition to complete
+        setTimeout(() => {
+          if (graph.hasCell(node.id)) {
+            addCollapseIndicator(node, hasChildren(graph, node));
+          }
+        }, 0);
+      }
+    };
+
+    graph.on('edge:connected', ({ edge }) => {
+      const source = edge.getSourceCell() as X6Node;
+      if (source) updateIndicators(source);
+    });
+
+    graph.on('edge:removed', ({ edge }) => {
+      const source = edge.getSourceCell() as X6Node;
+      if (source) updateIndicators(source);
+    });
 
     // Keyboard shortcuts
     graph.bindKey(['ctrl+z', 'cmd+z'], () => {
@@ -579,9 +617,9 @@ export function Canvas() {
 
         const dir = (window as any).__mindmapDirection || 'right';
         const level = (typeof parentData.level === 'number' ? parentData.level : 0) + 1;
-        
+
         // Use level-based colors if enabled
-        const mmColors = mmSettings.colorByLevel 
+        const mmColors = mmSettings.colorByLevel
           ? getMindmapLevelColor(level, mmSettings.theme)
           : getNextThemeColors(colorScheme);
 
@@ -596,6 +634,7 @@ export function Canvas() {
             : parentPos.y;
 
         const childNode = graph.addNode({
+          shape: 'rich-content-node',
           x: initialX,
           y: initialY,
           width: 120,
@@ -625,7 +664,7 @@ export function Canvas() {
             strokeWidth: mmSettings.strokeWidth || 1,
           },
         };
-        
+
         if (mmSettings.showArrows) {
           edgeAttrs.line.targetMarker = {
             name: 'block',
@@ -637,11 +676,11 @@ export function Canvas() {
         }
 
         const routing = getEdgeRouting(mmSettings.connectorStyle || 'straight');
-        
+
         // Determine ports based on direction for proper alignment
         const sourcePort = dir === 'left' ? 'left' : dir === 'top' ? 'top' : dir === 'bottom' ? 'bottom' : 'right';
         const targetPort = dir === 'left' ? 'right' : dir === 'top' ? 'bottom' : dir === 'bottom' ? 'top' : 'left';
-        
+
         graph.addEdge({
           source: { cell: parentNode.id, port: sourcePort },
           target: { cell: childNode.id, port: targetPort },
@@ -658,7 +697,7 @@ export function Canvas() {
           return source?.isNode() ? traverseUp(source) : node;
         };
         const rootNode = traverseUp(parentNode);
-        
+
         // Use setTimeout to ensure all DOM updates settle before layout recalculation
         setTimeout(() => {
           applyMindmapLayout(graph, dir, rootNode);
@@ -681,7 +720,7 @@ export function Canvas() {
         const allowMindmap = currentData.isMindmap === true || mode === 'mindmap' || mode === undefined;
         if (!allowMindmap) return false;
         const currentSize = currentNode.getSize();
-        
+
         const mmSettings = (window as any).__drawdd_mindmapSettings || mindmapSettingsRef.current;
 
         // Find incoming edges to find parent
@@ -694,14 +733,15 @@ export function Canvas() {
 
         const currentPos = currentNode.getPosition();
         const level = typeof currentData.level === 'number' ? currentData.level : 1;
-        
+
         // Use level-based colors if enabled
-        const enterColors = mmSettings.colorByLevel 
+        const enterColors = mmSettings.colorByLevel
           ? getMindmapLevelColor(level, mmSettings.theme)
           : getNextThemeColors(colorScheme);
 
         // Create sibling near current - layout will position it
         const siblingNode = graph.addNode({
+          shape: 'rich-content-node',
           x: currentPos.x,
           y: currentPos.y + currentSize.height + 60,
           width: currentSize.width,
@@ -733,7 +773,7 @@ export function Canvas() {
               strokeWidth: mmSettings.strokeWidth || 1,
             },
           };
-          
+
           if (mmSettings.showArrows) {
             edgeAttrs.line.targetMarker = {
               name: 'block',
@@ -766,7 +806,7 @@ export function Canvas() {
             return source?.isNode() ? traverseUp(source) : node;
           };
           const rootNode = traverseUp(parentNode);
-          
+
           // Use setTimeout to ensure all DOM updates settle before layout recalculation
           setTimeout(() => {
             applyMindmapLayout(graph, dir, rootNode);
@@ -1103,7 +1143,7 @@ export function Canvas() {
         const currentLabel = cell.getAttrs()?.label?.text || '';
         const containerRect = containerRef.current?.getBoundingClientRect();
         const graphPos = graph.localToGraph({ x: pos.x + pos.width / 2, y: pos.y + pos.height / 2 });
-        
+
         openTextEditor({
           initial: String(currentLabel),
           clientX: (containerRect?.left || 0) + graphPos.x,
@@ -1121,8 +1161,8 @@ export function Canvas() {
     graphRef.current = graph;
     setGraph(graph);
 
-    // Add some initial demo nodes (theme-aware) - uses colorScheme from window global
-    addDemoNodes(graph, (window as any).__drawdd_colorScheme || 'default', lineColorRef.current);
+    // Demo nodes disabled - start with empty canvas
+    // addDemoNodes(graph, (window as any).__drawdd_colorScheme || 'default', lineColorRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setGraph, setSelectedCell, setZoom]);
 
@@ -1143,35 +1183,35 @@ export function Canvas() {
       const currentMode = (window as any).__drawdd_mode;
       const graph = graphRef.current;
       if (!graph || currentMode !== 'mindmap') return;
-      
+
       // Only intercept if focus is on the canvas (not in a text input)
-      if (document.activeElement && 
-          (document.activeElement.tagName === 'INPUT' || 
-           document.activeElement.tagName === 'TEXTAREA' ||
-           document.activeElement.getAttribute('contenteditable') === 'true')) {
+      if (document.activeElement &&
+        (document.activeElement.tagName === 'INPUT' ||
+          document.activeElement.tagName === 'TEXTAREA' ||
+          document.activeElement.getAttribute('contenteditable') === 'true')) {
         return;
       }
-      
+
       const cells = graph.getSelectedCells();
       if (cells.length !== 1 || !cells[0].isNode()) return;
-      
+
       const clipboardText = e.clipboardData?.getData('text');
       if (!clipboardText) return;
-      
+
       // Check if clipboard contains multi-line text or tab-separated values
       const lines = clipboardText.split(/[\r\n]+/).filter(line => line.trim());
       if (lines.length <= 1 && !clipboardText.includes('\t')) {
         // Single line without tabs - let default paste handle it
         return;
       }
-      
+
       // Prevent default paste behavior
       e.preventDefault();
-      
+
       const parentNode = cells[0] as X6Node;
       const mmSettings = mindmapSettingsRef.current;
       const dir = (window as any).__mindmapDirection || 'right';
-      
+
       handlePasteAsChildren(
         graph,
         parentNode,
@@ -1182,7 +1222,7 @@ export function Canvas() {
         clipboardText
       );
     };
-    
+
     document.addEventListener('paste', handleBrowserPaste);
     return () => {
       document.removeEventListener('paste', handleBrowserPaste);
@@ -1199,19 +1239,47 @@ export function Canvas() {
         graphRef.current.drawBackground({ color: e.detail.color });
       }
     };
-    
+
     window.addEventListener('drawdd:set-background', handleSetBackground as EventListener);
     return () => {
       window.removeEventListener('drawdd:set-background', handleSetBackground as EventListener);
     };
   }, [setCanvasBackground]);
 
+  // Listen for layout mode changes (compact/standard) and re-apply layout
+  useEffect(() => {
+    const handleLayoutModeChanged = () => {
+      if (!graphRef.current || mode !== 'mindmap') return;
+      const graph = graphRef.current;
+      const dir = mindmapDirection;
+
+      // Find root nodes (nodes with no incoming edges that are mindmap nodes)
+      const nodes = graph.getNodes();
+      const rootNodes = nodes.filter(node => {
+        const data = (node as any).getData?.() || {};
+        if (!data.isMindmap) return false;
+        const incoming = graph.getIncomingEdges(node);
+        return !incoming || incoming.length === 0;
+      });
+
+      // Apply layout to each root
+      rootNodes.forEach(rootNode => {
+        applyMindmapLayout(graph, dir, rootNode);
+      });
+    };
+
+    window.addEventListener('drawdd:layout-mode-changed', handleLayoutModeChanged);
+    return () => {
+      window.removeEventListener('drawdd:layout-mode-changed', handleLayoutModeChanged);
+    };
+  }, [mode, mindmapDirection]);
+
   // Apply connector style changes to existing mindmap edges
   useEffect(() => {
     if (!graphRef.current) return;
     const graph = graphRef.current;
     const edges = graph.getEdges();
-    
+
     edges.forEach(edge => {
       // Only update mindmap edges (check if source/target have isMindmap data)
       const sourceNode = graph.getCellById(edge.getSourceCellId() || '');
@@ -1230,14 +1298,14 @@ export function Canvas() {
     if (!graphRef.current) return;
     const graph = graphRef.current;
     const edges = graph.getEdges();
-    
+
     edges.forEach(edge => {
       const sourceNode = graph.getCellById(edge.getSourceCellId() || '');
       const sourceData = sourceNode?.isNode() ? (sourceNode as any).getData?.() : null;
       if (sourceData?.isMindmap) {
         const currentAttrs = edge.getAttrs() || {};
         const lineAttrs = { ...(currentAttrs.line || {}) };
-        
+
         if (mindmapShowArrows) {
           lineAttrs.targetMarker = { name: 'block', width: 8, height: 6 };
         } else {
@@ -1245,7 +1313,7 @@ export function Canvas() {
           lineAttrs.targetMarker = '';
           lineAttrs.sourceMarker = '';
         }
-        
+
         edge.setAttrs({ line: lineAttrs });
       }
     });
@@ -1256,7 +1324,7 @@ export function Canvas() {
     if (!graphRef.current) return;
     const graph = graphRef.current;
     const edges = graph.getEdges();
-    
+
     edges.forEach(edge => {
       const sourceNode = graph.getCellById(edge.getSourceCellId() || '');
       const sourceData = sourceNode?.isNode() ? (sourceNode as any).getData?.() : null;
@@ -1275,7 +1343,7 @@ export function Canvas() {
     const handleBeforeUnload = () => {
       localStorage.removeItem('drawdd-session-active');
     };
-    
+
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         // Page is being hidden, could be closing
@@ -1285,13 +1353,13 @@ export function Canvas() {
         localStorage.removeItem('drawdd-unclean-exit');
       }
     };
-    
+
     window.addEventListener('beforeunload', handleBeforeUnload);
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    
+
     // Set unclean exit flag on mount (will be cleared if page closes cleanly)
     localStorage.setItem('drawdd-unclean-exit', 'true');
-    
+
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
       document.removeEventListener('visibilitychange', handleVisibilityChange);

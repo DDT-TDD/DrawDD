@@ -5,9 +5,14 @@
 
 import type { Graph, Cell, Node as X6Node } from '@antv/x6';
 import { applyMindmapLayout } from '../utils/layout';
+import { setNodeLabelWithAutoSize } from '../utils/text';
 import { getNextThemeColors } from '../utils/theme';
 import { FULL_PORTS_CONFIG } from '../config/shapes';
 import { getMindmapLevelColor } from '../config/enhancedStyles';
+import { parseMarkmapDocument, isMarkmapDocument, renderInlineMarkdown, stripMarkdown } from '../utils/markdown';
+import type { MarkmapNode } from '../utils/markdown';
+import { toggleCollapse } from '../utils/collapse';
+import { showErrorNotification } from '../utils/notifications';
 
 let mindmapOrderCounter = 1;
 
@@ -59,9 +64,9 @@ function showBackgroundColorPicker(): void {
   // Remove any existing picker
   const existing = document.getElementById('drawdd-bg-picker');
   if (existing) existing.remove();
-  
+
   const isDark = document.documentElement.classList.contains('dark');
-  
+
   const picker = document.createElement('div');
   picker.id = 'drawdd-bg-picker';
   picker.style.cssText = `
@@ -77,7 +82,7 @@ function showBackgroundColorPicker(): void {
     padding: 16px;
     min-width: 280px;
   `;
-  
+
   const title = document.createElement('div');
   title.textContent = 'Background Color';
   title.style.cssText = `
@@ -87,14 +92,14 @@ function showBackgroundColorPicker(): void {
     margin-bottom: 12px;
   `;
   picker.appendChild(title);
-  
+
   const grid = document.createElement('div');
   grid.style.cssText = `
     display: grid;
     grid-template-columns: repeat(8, 1fr);
     gap: 6px;
   `;
-  
+
   BACKGROUND_COLORS.forEach(color => {
     const swatch = document.createElement('button');
     swatch.style.cssText = `
@@ -120,9 +125,9 @@ function showBackgroundColorPicker(): void {
     };
     grid.appendChild(swatch);
   });
-  
+
   picker.appendChild(grid);
-  
+
   // Close button
   const closeBtn = document.createElement('button');
   closeBtn.textContent = 'Cancel';
@@ -139,9 +144,9 @@ function showBackgroundColorPicker(): void {
   `;
   closeBtn.onclick = () => picker.remove();
   picker.appendChild(closeBtn);
-  
+
   document.body.appendChild(picker);
-  
+
   // Close on click outside
   const handleClickOutside = (e: MouseEvent) => {
     if (!picker.contains(e.target as Node)) {
@@ -236,18 +241,18 @@ function renderMenuItems(menu: HTMLDivElement, items: ContextMenuItem[]): void {
 
       const labelWrapper = document.createElement('span');
       labelWrapper.style.cssText = 'display: flex; align-items: center; gap: 6px;';
-      
+
       if (item.icon) {
         const icon = document.createElement('span');
         icon.textContent = item.icon;
         icon.style.cssText = 'font-size: 12px; width: 16px; text-align: center;';
         labelWrapper.appendChild(icon);
       }
-      
+
       const label = document.createElement('span');
       label.textContent = item.label;
       labelWrapper.appendChild(label);
-      
+
       menuItem.appendChild(labelWrapper);
 
       if (item.shortcut) {
@@ -266,7 +271,7 @@ function renderMenuItems(menu: HTMLDivElement, items: ContextMenuItem[]): void {
 
       const hoverBg = isDark ? '#334155' : '#f1f5f9';
       let submenuEl: HTMLDivElement | null = null;
-      
+
       if (!item.disabled) {
         menuItem.onmouseenter = () => {
           menuItem.style.background = hoverBg;
@@ -288,7 +293,7 @@ function renderMenuItems(menu: HTMLDivElement, items: ContextMenuItem[]): void {
             const itemRect = menuItem.getBoundingClientRect();
             submenuEl.style.left = `${menuRect.right - 2}px`;
             submenuEl.style.top = `${itemRect.top}px`;
-            
+
             // Render submenu items
             item.submenu.forEach(subitem => {
               const subMenuItem = document.createElement('div');
@@ -308,9 +313,9 @@ function renderMenuItems(menu: HTMLDivElement, items: ContextMenuItem[]): void {
               };
               submenuEl!.appendChild(subMenuItem);
             });
-            
+
             document.body.appendChild(submenuEl);
-            
+
             // Ensure submenu stays within viewport
             requestAnimationFrame(() => {
               if (submenuEl) {
@@ -340,7 +345,7 @@ function renderMenuItems(menu: HTMLDivElement, items: ContextMenuItem[]): void {
             }
           }
         };
-        
+
         // Only handle click if no submenu
         if (!item.submenu) {
           menuItem.onclick = (e) => {
@@ -378,28 +383,66 @@ export function showEmptyCanvasContextMenu(
   options: ContextMenuOptions
 ): void {
   const menu = createMenuElement(clientX, clientY);
-  
+
   const colorScheme = (window as any).__drawdd_colorScheme || 'default';
   const colors = getNextThemeColors(colorScheme);
 
   const items: ContextMenuItem[] = [
     { label: '## Edit', icon: '' },
-    { 
-      label: 'Paste', 
-      icon: '📋', 
+    {
+      label: 'Paste',
+      icon: '📋',
       shortcut: 'Ctrl+V',
-      disabled: graph.isClipboardEmpty(),
-      action: () => {
+      // Always enable to allow system clipboard paste
+      disabled: false,
+      action: async () => {
+        // Try internal paste first
         if (!graph.isClipboardEmpty()) {
           const cells = graph.paste({ offset: 30 });
           graph.cleanSelection();
           graph.select(cells);
+        } else {
+          // Try system clipboard paste (text/markdown)
+          try {
+            const text = await navigator.clipboard.readText();
+            if (text && text.trim().length > 0) {
+              // Check if it's markmap content
+              if (/^#{1,6}\s+/m.test(text)) {
+                // Import createMarkmapMindmap dynamically 
+                const { createMarkmapMindmap } = await import('./contextMenu');
+
+                // Create mindmap at mouse position
+                const point = graph.clientToLocal({ x: clientX, y: clientY });
+                const success = await createMarkmapMindmap(graph, text, point.x, point.y, {
+                  lineColor: '#A2B1C3',
+                  colorScheme: colorScheme,
+                  mmSettings: options.mindmapSettings || {
+                    showArrows: false,
+                    strokeWidth: 1,
+                    colorByLevel: true,
+                    theme: 'blue'
+                  }
+                });
+
+                if (success) {
+                  (window as any).__drawdd_mode = 'mindmap';
+                  window.dispatchEvent(new CustomEvent('drawdd-mode-change', { detail: { mode: 'mindmap' } }));
+                }
+              } else {
+                // Regular text - maybe create a text node?
+                // For now just notify user or do nothing if not markmap
+                console.log('Clipboard contains text but not markdown structure');
+              }
+            }
+          } catch (e) {
+            console.error('Paste failed:', e);
+          }
         }
       }
     },
-    { 
-      label: 'Select All', 
-      icon: '☑️', 
+    {
+      label: 'Select All',
+      icon: '☑️',
       shortcut: 'Ctrl+A',
       action: () => {
         graph.select(graph.getCells());
@@ -407,18 +450,18 @@ export function showEmptyCanvasContextMenu(
     },
     { label: '---' },
     { label: '## History', icon: '' },
-    { 
-      label: 'Undo', 
-      icon: '↩️', 
+    {
+      label: 'Undo',
+      icon: '↩️',
       shortcut: 'Ctrl+Z',
       disabled: !graph.canUndo(),
       action: () => {
         if (graph.canUndo()) graph.undo();
       }
     },
-    { 
-      label: 'Redo', 
-      icon: '↪️', 
+    {
+      label: 'Redo',
+      icon: '↪️',
       shortcut: 'Ctrl+Y',
       disabled: !graph.canRedo(),
       action: () => {
@@ -436,6 +479,7 @@ export function showEmptyCanvasContextMenu(
           y: y - 30,
           width: 120,
           height: 60,
+          shape: 'rich-content-node',
           attrs: {
             body: {
               fill: colors.fill,
@@ -465,6 +509,7 @@ export function showEmptyCanvasContextMenu(
           y: y - 15,
           width: 80,
           height: 30,
+          shape: 'rich-content-node',
           attrs: {
             body: {
               fill: 'transparent',
@@ -502,7 +547,7 @@ export function showEmptyCanvasContextMenu(
                 const scale = Math.min(maxDim / img.width, maxDim / img.height, 1);
                 const width = Math.round(img.width * scale);
                 const height = Math.round(img.height * scale);
-                
+
                 const node = graph.addNode({
                   x: x - width / 2,
                   y: y - height / 2,
@@ -542,6 +587,7 @@ export function showEmptyCanvasContextMenu(
             y: y - 30,
             width: 150,
             height: 60,
+            shape: 'rich-content-node',
             attrs: {
               body: {
                 fill: mmColors.fill,
@@ -562,6 +608,21 @@ export function showEmptyCanvasContextMenu(
           });
           graph.cleanSelection();
           graph.select(node);
+        }
+      },
+      { label: '---' },
+      {
+        label: 'Link Folder...',
+        icon: '📁',
+        action: async () => {
+          await handleLinkFolder(graph, x, y, options.mindmapSettings?.theme || 'blue');
+        }
+      },
+      {
+        label: 'Insert Folder Snapshot...',
+        icon: '📂',
+        action: async () => {
+          await handleInsertFolderSnapshot(graph, x, y, options.mindmapSettings?.theme || 'blue');
         }
       }
     );
@@ -650,6 +711,10 @@ export function showCellContextMenu(
   const isMindmapNode = isNode && data?.isMindmap === true;
   const allowMindmapActions = (isMindmapNode || options.mode === 'mindmap') && options.mode !== 'timeline';
 
+  // Check if this is a folder explorer node
+  const folderMetadata = data?.folderExplorer;
+  const isLinkedNode = folderMetadata?.explorerType === 'linked';
+
   const dir = (window as any).__mindmapDirection || 'right';
   const lineColor = (window as any).__drawdd_lineColor || '#5F95FF';
   const colorScheme = (window as any).__drawdd_colorScheme || 'default';
@@ -673,6 +738,18 @@ export function showCellContextMenu(
         icon: '➡️',
         shortcut: 'Enter',
         action: () => addMindmapSibling(graph, cell as X6Node, dir, lineColor, colorScheme, mmSettings)
+      },
+      {
+        label: 'Paste as Children',
+        icon: '📥',
+        shortcut: 'Ctrl+V',
+        action: () => {
+          handlePasteAsChildren(graph, cell as X6Node, dir, lineColor, colorScheme, mmSettings as any)
+            .then((success: boolean) => {
+              if (!success) console.warn('Paste as children: no text in clipboard or parse failed');
+            })
+            .catch((err: Error) => console.error('Paste as children error:', err));
+        }
       }
     );
 
@@ -689,6 +766,73 @@ export function showCellContextMenu(
       });
     }
 
+    // Linked node operations
+    if (isLinkedNode) {
+      items.push(
+        { label: '---' },
+        { label: '## Folder Explorer', icon: '' }
+      );
+
+      // Add "Open File" option for file nodes (not directories)
+      if (folderMetadata.isDirectory === false) {
+        items.push({
+          label: 'Open File',
+          icon: '📄',
+          action: async () => {
+            try {
+              const { openFile } = await import('../services/electron');
+              const result = await openFile(folderMetadata.path);
+
+              if (!result.success) {
+                const errorMsg = result.error || 'Unknown error';
+                console.error('Failed to open file:', errorMsg);
+                showErrorNotification(`Failed to open file: ${errorMsg}`);
+              }
+            } catch (error) {
+              console.error('Error opening file:', error);
+              showErrorNotification(`Error opening file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+          }
+        });
+      }
+
+      items.push(
+        {
+          label: 'Refresh Branch',
+          icon: '🔄',
+          action: () => handleRefreshBranch(graph, cell as X6Node)
+        },
+        {
+          label: 'Unlink Node',
+          icon: '🔗',
+          action: () => handleUnlinkNode(graph, cell as X6Node)
+        },
+        {
+          label: 'Unlink Branch',
+          icon: '🔓',
+          action: () => handleUnlinkBranch(graph, cell as X6Node)
+        }
+      );
+    }
+
+    // Folder explorer attachment options (for non-linked nodes)
+    if (!isLinkedNode) {
+      items.push(
+        { label: '---' },
+        { label: '## Folder Explorer', icon: '' },
+        {
+          label: 'Link Folder as Children',
+          icon: '📁',
+          action: () => handleLinkFolderAsChildren(graph, cell as X6Node, dir, mmSettings)
+        },
+        {
+          label: 'Insert Folder Snapshot as Children',
+          icon: '📷',
+          action: () => handleInsertFolderSnapshotAsChildren(graph, cell as X6Node, dir, mmSettings)
+        }
+      );
+    }
+
     items.push({ label: '---' });
   }
 
@@ -703,7 +847,7 @@ export function showCellContextMenu(
           const nodePos = (cell as X6Node).getPosition();
           const nodeSize = (cell as X6Node).getSize();
           const tlDir = (window as any).__timelineDirection || 'horizontal';
-          
+
           const x0 = tlDir === 'horizontal' ? nodePos.x + nodeSize.width + 120 : nodePos.x;
           const y0 = tlDir === 'horizontal' ? nodePos.y : nodePos.y + nodeSize.height + 80;
 
@@ -712,6 +856,7 @@ export function showCellContextMenu(
             y: y0,
             width: 140,
             height: 50,
+            shape: 'rich-content-node',
             attrs: {
               body: { fill: colors.fill, stroke: colors.stroke, strokeWidth: 2, rx: 8, ry: 8 },
               label: { text: 'New Event', fill: colors.text, fontSize: 14 },
@@ -779,7 +924,16 @@ export function showCellContextMenu(
       icon: '🗑️',
       shortcut: 'Del',
       action: () => {
-        graph.removeCell(cell);
+        // Use setTimeout to avoid React unmount race condition with rich-content-node
+        setTimeout(() => {
+          try {
+            if (graph.hasCell(cell.id)) {
+              graph.removeCell(cell);
+            }
+          } catch (error) {
+            console.error('Error removing cell:', error);
+          }
+        }, 0);
       }
     }
   );
@@ -919,15 +1073,16 @@ function addMindmapChild(
       y0 = parentPos.y;
   }
 
-  const nodeColors = mmSettings.colorByLevel 
+  const nodeColors = mmSettings.colorByLevel
     ? getMindmapLevelColor(level, mmSettings.theme as any)
     : getNextThemeColors(colorScheme);
 
   const childNode = graph.addNode({
     x: x0,
     y: y0,
-    width: 120,
-    height: 40,
+    width: 160,
+    height: 60,
+    shape: 'rich-content-node',
     attrs: {
       body: {
         fill: nodeColors.fill,
@@ -979,8 +1134,9 @@ function addMindmapChild(
 
   // Find root and apply layout with setTimeout to ensure DOM updates settle
   const rootNode = findMindmapRoot(graph, parentNode);
+  const layoutMode = (localStorage.getItem('drawdd-mindmap-layout-mode') as 'standard' | 'compact') || 'standard';
   setTimeout(() => {
-    applyMindmapLayout(graph, direction as any, rootNode);
+    applyMindmapLayout(graph, direction as any, rootNode, layoutMode);
   }, 0);
 
   graph.cleanSelection();
@@ -1008,7 +1164,7 @@ function addMindmapSibling(
   const parentEdge = incomingEdges?.[0];
   const parentNode = parentEdge ? graph.getCellById(parentEdge.getSourceCellId() || '') : null;
 
-  const nodeColors = mmSettings.colorByLevel 
+  const nodeColors = mmSettings.colorByLevel
     ? getMindmapLevelColor(level, mmSettings.theme as any)
     : getNextThemeColors(colorScheme);
 
@@ -1017,6 +1173,7 @@ function addMindmapSibling(
     y: currentPos.y + currentSize.height + 60,
     width: currentSize.width,
     height: currentSize.height,
+    shape: 'rich-content-node',
     attrs: {
       body: {
         fill: nodeColors.fill,
@@ -1068,9 +1225,10 @@ function addMindmapSibling(
     });
 
     const rootNode = findMindmapRoot(graph, parentNode);
+    const layoutMode = (localStorage.getItem('drawdd-mindmap-layout-mode') as 'standard' | 'compact') || 'standard';
     // Use setTimeout to ensure DOM updates settle before layout recalculation
     setTimeout(() => {
-      applyMindmapLayout(graph, direction as any, rootNode);
+      applyMindmapLayout(graph, direction as any, rootNode, layoutMode);
     }, 0);
   }
 
@@ -1094,53 +1252,345 @@ function findMindmapRoot(graph: Graph, node: Cell): X6Node {
   return node as X6Node;
 }
 
-/**
- * Toggle collapse/expand of a mindmap branch
- */
-function toggleCollapse(graph: Graph, node: X6Node, collapse: boolean): void {
-  const data = node.getData() || {};
-  node.setData({ ...data, collapsed: collapse });
-
-  const hideDescendants = (n: X6Node, hide: boolean) => {
-    const outgoingEdges = graph.getOutgoingEdges(n);
-    if (!outgoingEdges) return;
-
-    outgoingEdges.forEach(edge => {
-      edge.setVisible(!hide);
-      const targetId = edge.getTargetCellId();
-      const target = targetId ? graph.getCellById(targetId) : null;
-      if (target && target.isNode()) {
-        target.setVisible(!hide);
-        hideDescendants(target as X6Node, hide);
-      }
-    });
-  };
-
-  hideDescendants(node, collapse);
-}
-
 // Helper to get router/connector config based on style
 type ConnectorStyle = 'smooth' | 'orthogonal-rounded' | 'orthogonal-sharp' | 'straight';
 
 function getEdgeRouting(style: ConnectorStyle | string | undefined): { router: any; connector: any } {
-  // For mindmaps: smooth uses normal router, straight/ortho use manhattan for clean alignment
+  // For mindmaps: use appropriate routing based on style
   switch (style) {
     case 'smooth':
       return { router: { name: 'normal' }, connector: { name: 'smooth' } };
     case 'orthogonal-rounded':
     case 'orthogonal': // legacy support
-      return { router: { name: 'manhattan' }, connector: { name: 'rounded', args: { radius: 10 } } };
+      return { router: { name: 'normal' }, connector: { name: 'rounded', args: { radius: 10 } } };
     case 'orthogonal-sharp':
-      return { router: { name: 'manhattan' }, connector: { name: 'normal' } };
+      return { router: { name: 'normal' }, connector: { name: 'normal' } };
     case 'straight':
     default:
-      // Elbow lines (horizontal + vertical segments only) for clean mindmap alignment
-      return { router: { name: 'manhattan' }, connector: { name: 'normal' } };
+      // Default to smooth curved bezier lines
+      return { router: { name: 'normal' }, connector: { name: 'smooth' } };
   }
 }
 
 /**
+ * Parse hierarchical structure from indented text
+ */
+interface HierarchyNode {
+  text: string;
+  level: number;
+  children: HierarchyNode[];
+  htmlContent?: string;  // Rich HTML content for markdown rendering
+  metadata?: {
+    link?: string;
+    image?: string;
+    checkbox?: boolean;
+    codeBlock?: { lang: string; code: string };
+    table?: string[][];
+  };
+}
+
+function parseIndentedText(text: string): HierarchyNode[] {
+  const lines = text.split(/[\r\n]+/).filter(line => line.length > 0);
+  if (lines.length === 0) return [];
+
+  // Check if this is markdown header format (# Header, ## Subheader, etc.)
+  const hasMarkdownHeaders = lines.some(line => /^#+\s+/.test(line.trim()));
+
+  if (hasMarkdownHeaders) {
+    return parseMarkdownHeaders(text);
+  }
+
+  // Detect indentation type (tabs or spaces)
+  const indentPattern = /^(\t+|\s+)/;
+  let indentSize = 0;
+
+  // Auto-detect indent size from first indented line
+  for (const line of lines) {
+    const match = line.match(/^(\s+)/);
+    if (match && match[1].length > 0) {
+      const spaces = match[1];
+      if (spaces.includes('\t')) {
+        indentSize = 1; // Tab-based
+        break;
+      } else {
+        indentSize = spaces.length;
+        // Look for common indent sizes (2, 4, 8)
+        if (indentSize >= 8) indentSize = 8;
+        else if (indentSize >= 4) indentSize = 4;
+        else if (indentSize >= 2) indentSize = 2;
+        break;
+      }
+    }
+  }
+
+  if (indentSize === 0) indentSize = 2; // Default to 2 spaces
+
+  const stack: HierarchyNode[] = [];
+  const root: HierarchyNode[] = [];
+
+  lines.forEach(line => {
+    // Remove bullet points, numbers, and common list markers
+    let cleanLine = line
+      .replace(/^\s*[-*+•◦▪▫]\s+/, '') // Bullets
+      .replace(/^\s*\d+[.)]\s+/, '') // Numbers
+      .replace(/^\s*[a-zA-Z][.)]\s+/, '') // Letters
+      .trim();
+
+    if (!cleanLine) return;
+
+    // Calculate indent level
+    const match = line.match(indentPattern);
+    const indent = match ? match[1] : '';
+    const level = indent.includes('\t')
+      ? indent.length
+      : Math.floor(indent.length / indentSize);
+
+    const node: HierarchyNode = {
+      text: cleanLine,
+      level,
+      children: []
+    };
+
+    // Pop stack until we find the parent level
+    while (stack.length > 0 && stack[stack.length - 1].level >= level) {
+      stack.pop();
+    }
+
+    if (stack.length === 0) {
+      root.push(node);
+    } else {
+      stack[stack.length - 1].children.push(node);
+    }
+
+    stack.push(node);
+  });
+
+  return root;
+}
+
+/**
+ * Parse markdown headers (# Header, ## Subheader, etc.) into hierarchy
+ * Like markmap format
+ */
+function parseMarkdownHeaders(text: string): HierarchyNode[] {
+  const lines = text.split(/[\r\n]+/).filter(line => line.length > 0);
+  if (lines.length === 0) return [];
+
+  const stack: HierarchyNode[] = [];
+  const root: HierarchyNode[] = [];
+
+  lines.forEach(line => {
+    const headerMatch = line.match(/^(#+)\s*(.*)$/);
+
+    let level: number;
+    let cleanText: string;
+
+    if (headerMatch) {
+      // Markdown header: # = level 0, ## = level 1, etc.
+      level = headerMatch[1].length - 1;
+      cleanText = headerMatch[2].trim();
+    } else {
+      // Non-header line: treat as content under current level
+      cleanText = line
+        .replace(/^\s*[-*+•◦▪▫]\s+/, '') // Remove bullets
+        .replace(/^\s*\d+[.)]\s+/, '') // Remove numbers
+        .trim();
+
+      // Add as child of last node if exists
+      if (stack.length > 0 && cleanText) {
+        const lastNode = stack[stack.length - 1];
+        lastNode.children.push({
+          text: cleanText,
+          level: lastNode.level + 1,
+          children: []
+        });
+        return;
+      }
+      level = 0;
+    }
+
+    if (!cleanText) return;
+
+    const node: HierarchyNode = {
+      text: cleanText,
+      level,
+      children: []
+    };
+
+    // Pop stack until we find the parent level
+    while (stack.length > 0 && stack[stack.length - 1].level >= level) {
+      stack.pop();
+    }
+
+    if (stack.length === 0) {
+      root.push(node);
+    } else {
+      stack[stack.length - 1].children.push(node);
+    }
+
+    stack.push(node);
+  });
+
+  return root;
+}
+
+/**
+ * Parse TSV (Tab-Separated Values) from Excel/spreadsheet clipboard
+ */
+function parseTSVHierarchy(text: string): HierarchyNode[] {
+  const lines = text.split(/[\r\n]+/).filter(line => line.trim().length > 0);
+  if (lines.length === 0) return [];
+
+  const result: HierarchyNode[] = [];
+
+  lines.forEach(line => {
+    const columns = line.split('\t');
+
+    // Find first non-empty column (determines hierarchy level)
+    let level = 0;
+    let text = '';
+
+    for (let i = 0; i < columns.length; i++) {
+      const col = columns[i].trim();
+      if (col) {
+        level = i;
+        text = col;
+        break;
+      }
+    }
+
+    if (!text) return;
+
+    const node: HierarchyNode = { text, level, children: [] };
+
+    // Build hierarchy based on column position
+    if (level === 0) {
+      result.push(node);
+    } else {
+      // Find parent at previous level
+      const findParent = (nodes: HierarchyNode[], targetLevel: number): HierarchyNode | null => {
+        for (let i = nodes.length - 1; i >= 0; i--) {
+          if (nodes[i].level === targetLevel - 1) {
+            return nodes[i];
+          }
+          if (nodes[i].children.length > 0) {
+            const found = findParent(nodes[i].children, targetLevel);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+
+      const parent = findParent(result, level);
+      if (parent) {
+        parent.children.push(node);
+      } else {
+        // Fallback: add to root
+        result.push(node);
+      }
+    }
+  });
+
+  return result;
+}
+
+/**
+ * Create mindmap nodes from hierarchy structure
+ */
+function createNodesFromHierarchy(
+  graph: Graph,
+  parentNode: X6Node,
+  hierarchy: HierarchyNode[],
+  baseLevel: number,
+  direction: string,
+  lineColor: string,
+  colorScheme: string,
+  mmSettings: { showArrows: boolean; strokeWidth: number; colorByLevel: boolean; theme: string; connectorStyle?: string }
+): void {
+  hierarchy.forEach((item, index) => {
+    const level = baseLevel + item.level;
+    const nodeColors = mmSettings.colorByLevel
+      ? getMindmapLevelColor(level, mmSettings.theme as any)
+      : getNextThemeColors(colorScheme);
+
+    // Always use rich-content-node for consistent markdown support
+    const childNode: X6Node = graph.addNode({
+      x: parentNode.getPosition().x + 200,
+      y: parentNode.getPosition().y + index * 60,
+      width: 160,
+      height: 60,
+      shape: 'rich-content-node',
+      attrs: {
+        body: {
+          fill: nodeColors.fill,
+          stroke: nodeColors.stroke,
+          strokeWidth: 2,
+          rx: 6,
+          ry: 6,
+        },
+        label: {
+          text: item.text,
+          fill: nodeColors.text,
+          fontSize: 12,
+        },
+      },
+      data: {
+        isMindmap: true,
+        level,
+        mmOrder: getMindmapOrderCounter(),
+        htmlContent: item.htmlContent,
+        text: item.text,
+        textColor: nodeColors.text,
+        markdownMetadata: item.metadata
+      },
+      ports: FULL_PORTS_CONFIG as any,
+    });
+
+    // Apply smart sizing to fit text content
+    setNodeLabelWithAutoSize(childNode as X6Node, item.text);
+
+    const edgeAttrs: any = {
+      line: {
+        stroke: lineColor,
+        strokeWidth: mmSettings.strokeWidth,
+      },
+    };
+
+    if (mmSettings.showArrows) {
+      edgeAttrs.line.targetMarker = { name: 'block', width: 8, height: 6 };
+    } else {
+      edgeAttrs.line.targetMarker = null;
+    }
+
+    const routing = getEdgeRouting(mmSettings.connectorStyle);
+
+    graph.addEdge({
+      source: { cell: parentNode.id },
+      target: { cell: childNode.id },
+      attrs: edgeAttrs,
+      router: routing.router,
+      connector: routing.connector,
+    });
+
+    // Recursively create children
+    if (item.children.length > 0) {
+      createNodesFromHierarchy(
+        graph,
+        childNode,
+        item.children,
+        level,
+        direction,
+        lineColor,
+        colorScheme,
+        mmSettings
+      );
+    }
+  });
+}
+
+/**
  * Handle paste of text list to create mindmap branches
+ * Supports: plain text, indented text, bullet lists, TSV (Excel), and hierarchical structures
  */
 export async function handlePasteAsChildren(
   graph: Graph,
@@ -1156,71 +1606,570 @@ export async function handlePasteAsChildren(
     const text = providedText || await navigator.clipboard.readText();
     if (!text || text.trim().length === 0) return false;
 
-    // Split by newlines or tabs
-    const lines = text.split(/[\n\r\t]+/).filter(line => line.trim().length > 0);
-    if (lines.length <= 1) return false;
-
     const targetData = targetNode.getData() || {};
-    const level = (typeof targetData.level === 'number' ? targetData.level : 0) + 1;
+    const baseLevel = (typeof targetData.level === 'number' ? targetData.level : 0) + 1;
 
-    lines.forEach((line, index) => {
-      const nodeColors = mmSettings.colorByLevel 
-        ? getMindmapLevelColor(level, mmSettings.theme as any)
-        : getNextThemeColors(colorScheme);
+    let hierarchy: HierarchyNode[] = [];
 
-      const childNode = graph.addNode({
-        x: targetNode.getPosition().x + 200,
-        y: targetNode.getPosition().y + index * 60,
-        width: 120,
-        height: 40,
-        attrs: {
-          body: {
-            fill: nodeColors.fill,
-            stroke: nodeColors.stroke,
-            strokeWidth: 2,
-            rx: 6,
-            ry: 6,
-          },
-          label: {
-            text: line.trim().substring(0, 50), // Limit text length
-            fill: nodeColors.text,
-            fontSize: 12,
-          },
-        },
-        data: { isMindmap: true, level, mmOrder: getMindmapOrderCounter() },
-        ports: FULL_PORTS_CONFIG as any,
-      });
+    // Detect format and parse accordingly
+    // Check for markdown document format (headers indicate markmap structure)
+    if (isMarkmapDocument(text)) {
+      // Use full markmap parser for rich content (bold, italic, links, equations, etc.)
+      const markmapNodes = parseMarkmapDocument(text);
 
-      const edgeAttrs: any = {
-        line: {
-          stroke: lineColor,
-          strokeWidth: mmSettings.strokeWidth,
-        },
-      };
-
-      if (mmSettings.showArrows) {
-        edgeAttrs.line.targetMarker = { name: 'block', width: 8, height: 6 };
-      } else {
-        edgeAttrs.line.targetMarker = null;
+      // Convert MarkmapNode[] to HierarchyNode[] with HTML content stored in data
+      function convertMarkmapToHierarchy(nodes: MarkmapNode[], levelOffset: number = 0): HierarchyNode[] {
+        return nodes.map(node => ({
+          text: stripMarkdown(node.text), // Plain text for label
+          level: levelOffset,
+          children: convertMarkmapToHierarchy(node.children, 0),
+          // Store rich content in a property that createNodesFromHierarchy will use
+          htmlContent: node.htmlContent,
+          metadata: node.metadata
+        }));
       }
 
-      const routing = getEdgeRouting(mmSettings.connectorStyle);
+      hierarchy = convertMarkmapToHierarchy(markmapNodes);
+    } else if (text.includes('\t')) {
+      // TSV format (Excel/spreadsheet)
+      hierarchy = parseTSVHierarchy(text);
+    } else if (/^\s+/m.test(text) || /\n\s+/.test(text)) {
+      // Indented text format (spaces or tabs at start of lines)
+      hierarchy = parseIndentedText(text);
+    } else if (/^\s*[-*+•◦▪▫]\s+/m.test(text)) {
+      // Bullet list format - parse as indented text
+      hierarchy = parseIndentedText(text);
+    } else if (/^\s*\d+[.)]\s+/m.test(text)) {
+      // Numbered list format - parse as indented text
+      hierarchy = parseIndentedText(text);
+    } else {
+      // Simple line-by-line format (fallback) - render inline markdown
+      const lines = text.split(/[\n\r]+/).filter(line => line.trim().length > 0);
+      if (lines.length === 0) return false;
 
-      graph.addEdge({
-        source: { cell: targetNode.id },
-        target: { cell: childNode.id },
-        attrs: edgeAttrs,
-        router: routing.router,
-        connector: routing.connector,
-      });
-    });
+      hierarchy = lines.map(line => ({
+        text: stripMarkdown(line.trim()),
+        level: 0,
+        children: [],
+        htmlContent: renderInlineMarkdown(line.trim())
+      }));
+    }
+
+    if (hierarchy.length === 0) return false;
+
+    // Create nodes from hierarchy
+    createNodesFromHierarchy(
+      graph,
+      targetNode,
+      hierarchy,
+      baseLevel,
+      direction,
+      lineColor,
+      colorScheme,
+      mmSettings
+    );
 
     // Apply layout
     const rootNode = findMindmapRoot(graph, targetNode);
-    applyMindmapLayout(graph, direction as any, rootNode);
+    const layoutMode = (localStorage.getItem('drawdd-mindmap-layout-mode') as 'standard' | 'compact') || 'standard';
+    setTimeout(() => {
+      applyMindmapLayout(graph, direction as any, rootNode, layoutMode);
+    }, 50);
 
     return true;
-  } catch {
+  } catch (error) {
+    console.error('Paste as children error:', error);
     return false;
+  }
+}
+
+/**
+ * Create a new mindmap from a full markdown/markmap document
+ * Called when pasting markdown on a blank canvas
+ */
+export async function createMarkmapMindmap(
+  graph: Graph,
+  markdown: string,
+  centerX: number,
+  centerY: number,
+  options: {
+    lineColor: string;
+    colorScheme: string;
+    mmSettings: { showArrows: boolean; strokeWidth: number; colorByLevel: boolean; theme: string; connectorStyle?: string };
+  }
+): Promise<boolean> {
+  try {
+    // Parse the markdown document
+    const markmapNodes = parseMarkmapDocument(markdown);
+    if (markmapNodes.length === 0) return false;
+
+    // Create root node from first header
+    const firstNode = markmapNodes[0];
+    const rootColors = options.mmSettings.colorByLevel
+      ? getMindmapLevelColor(0, options.mmSettings.theme as any)
+      : getNextThemeColors(options.colorScheme);
+
+    // Use rich-content-node for KaTeX support
+    const rootNode: X6Node = graph.addNode({
+      x: centerX - 80,
+      y: centerY - 40,
+      width: 160,
+      height: 80,
+      shape: 'rich-content-node',
+      attrs: {
+        body: {
+          fill: rootColors.fill,
+          stroke: rootColors.stroke,
+          strokeWidth: 2,
+          rx: 10,
+          ry: 10,
+        },
+        label: {
+          text: stripMarkdown(firstNode.text),
+          fill: rootColors.text,
+          fontSize: 16,
+          fontWeight: 'bold',
+        },
+      },
+      data: {
+        isMindmap: true,
+        level: 0,
+        mmOrder: getMindmapOrderCounter(),
+        htmlContent: firstNode.htmlContent,
+        text: stripMarkdown(firstNode.text),
+        textColor: rootColors.text,
+        markdownMetadata: firstNode.metadata
+      },
+      ports: FULL_PORTS_CONFIG as any,
+    });
+
+    // Apply smart sizing
+    setNodeLabelWithAutoSize(rootNode as X6Node, stripMarkdown(firstNode.text));
+
+    // Convert remaining markmap nodes to hierarchy nodes
+    function convertToHierarchy(nodes: MarkmapNode[]): HierarchyNode[] {
+      return nodes.map(node => ({
+        text: stripMarkdown(node.text),
+        level: 0,
+        children: convertToHierarchy(node.children),
+        htmlContent: node.htmlContent,
+        metadata: node.metadata
+      }));
+    }
+
+    // Create children from first node's children plus siblings
+    const allChildren = [
+      ...convertToHierarchy(firstNode.children),
+      ...convertToHierarchy(markmapNodes.slice(1))
+    ];
+
+    if (allChildren.length > 0) {
+      createNodesFromHierarchy(
+        graph,
+        rootNode as X6Node,
+        allChildren,
+        1,
+        'right',
+        options.lineColor,
+        options.colorScheme,
+        options.mmSettings
+      );
+    }
+
+    // Apply layout
+    const layoutMode = (localStorage.getItem('drawdd-mindmap-layout-mode') as 'standard' | 'compact') || 'standard';
+    setTimeout(() => {
+      applyMindmapLayout(graph, 'right', rootNode as X6Node, layoutMode);
+    }, 50);
+
+    // Select the root node
+    graph.select(rootNode);
+
+    return true;
+  } catch (error) {
+    console.error('Create markmap mindmap error:', error);
+    return false;
+  }
+}
+
+/**
+ * Handle "Refresh Branch" context menu action
+ * Re-scans the directory and updates the branch
+ */
+async function handleRefreshBranch(graph: Graph, node: X6Node): Promise<void> {
+  const metadata = node.getData().folderExplorer;
+  if (!metadata || metadata.explorerType !== 'linked') {
+    return;
+  }
+
+  try {
+    // Import electron API and folder explorer utilities
+    const { scanDirectory } = await import('../services/electron');
+    const { removeDescendants, generateChildNodes } = await import('./folderExplorer');
+
+    // Get includeHiddenFiles setting from localStorage
+    const includeHidden = localStorage.getItem('drawdd-include-hidden-files') === 'true';
+
+    // Scan the directory
+    const scanResult = await scanDirectory(metadata.path, includeHidden);
+
+    if (!scanResult.success || !scanResult.fileTree) {
+      console.error('Failed to refresh branch:', scanResult.error);
+      showErrorNotification(`Failed to refresh branch: ${scanResult.error || 'Unknown error'}`);
+      return;
+    }
+
+    // Remove old children
+    removeDescendants(graph, node);
+
+    // Generate new children
+    generateChildNodes(graph, node, scanResult.fileTree, metadata);
+
+    // Update timestamp
+    node.setData({
+      ...node.getData(),
+      folderExplorer: {
+        ...metadata,
+        lastRefreshed: new Date().toISOString(),
+      },
+    });
+
+    // Apply layout
+    const direction = (window as any).__mindmapDirection || 'right';
+    const { applyMindmapLayout } = await import('./layout');
+    const layoutMode = (localStorage.getItem('drawdd-mindmap-layout-mode') as 'standard' | 'compact') || 'standard';
+
+    // Find root node
+    const findRoot = (n: X6Node): X6Node => {
+      const incoming = graph.getIncomingEdges(n);
+      if (!incoming || incoming.length === 0) return n;
+      const sourceId = incoming[0].getSourceCellId();
+      const source = sourceId ? graph.getCellById(sourceId) : null;
+      if (source && source.isNode()) return findRoot(source as X6Node);
+      return n;
+    };
+
+    const rootNode = findRoot(node);
+    setTimeout(() => {
+      applyMindmapLayout(graph, direction, rootNode, layoutMode);
+    }, 0);
+
+  } catch (error) {
+    console.error('Refresh branch error:', error);
+    showErrorNotification(`Failed to refresh branch: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Handle "Unlink Node" context menu action
+ * Converts a single linked node to a standard mindmap node
+ */
+async function handleUnlinkNode(graph: Graph, node: X6Node): Promise<void> {
+  const data = node.getData();
+  const metadata = data.folderExplorer;
+
+  if (!metadata) {
+    return;
+  }
+
+  // Remove folder explorer metadata
+  const { folderExplorer, ...cleanData } = data;
+  node.setData(cleanData);
+
+  // Remove folder explorer styling
+  const { removeFolderExplorerStyling } = await import('./folderExplorerStyles');
+  removeFolderExplorerStyling(node);
+}
+
+/**
+ * Handle "Unlink Branch" context menu action
+ * Recursively unlinks a node and all its descendants
+ */
+async function handleUnlinkBranch(graph: Graph, node: X6Node): Promise<void> {
+  const { getAllDescendants } = await import('./folderExplorer');
+  const { removeFolderExplorerStyling } = await import('./folderExplorerStyles');
+
+  // Get all descendants
+  const descendants = getAllDescendants(graph, node);
+
+  // Unlink the node and all descendants
+  const nodesToUnlink = [node, ...descendants];
+
+  nodesToUnlink.forEach(n => {
+    const data = n.getData();
+    if (data.folderExplorer) {
+      // Remove folder explorer metadata
+      const { folderExplorer, ...cleanData } = data;
+      n.setData(cleanData);
+
+      // Remove folder explorer styling
+      removeFolderExplorerStyling(n);
+    }
+  });
+}
+
+/**
+ * Handle "Link Folder" menu action
+ * Opens folder dialog and creates a linked mindmap
+ */
+async function handleLinkFolder(
+  graph: Graph,
+  x: number,
+  y: number,
+  theme: string
+): Promise<void> {
+  try {
+    // Import electron API dynamically
+    const { selectFolder, scanDirectory } = await import('../services/electron');
+
+    // Open folder selection dialog
+    const result = await selectFolder();
+
+    if (!result.success || !result.folderPath) {
+      if (!result.canceled) {
+        console.error('Failed to select folder:', result.error);
+      }
+      return;
+    }
+
+    // Get includeHiddenFiles setting from localStorage
+    const includeHidden = localStorage.getItem('drawdd-include-hidden-files') === 'true';
+
+    // Scan the directory
+    const scanResult = await scanDirectory(result.folderPath, includeHidden);
+
+    if (!scanResult.success || !scanResult.fileTree) {
+      console.error('Failed to scan directory:', scanResult.error);
+      return;
+    }
+
+    // Import folder explorer utilities
+    const { generateFolderMindmap } = await import('./folderExplorer');
+
+    // Get mindmap direction from global state
+    const direction = (window as any).__mindmapDirection || 'right';
+
+    // Generate the folder mindmap
+    generateFolderMindmap(scanResult.fileTree, graph, {
+      rootX: x - 80,
+      rootY: y - 40,
+      explorerType: 'linked',
+      autoCollapseDepth: 4,
+      direction: direction,
+      colorScheme: theme,
+    });
+
+  } catch (error) {
+    console.error('Link folder error:', error);
+  }
+}
+
+/**
+ * Handle "Insert Folder Snapshot" menu action
+ * Opens folder dialog and creates a static mindmap
+ */
+async function handleInsertFolderSnapshot(
+  graph: Graph,
+  x: number,
+  y: number,
+  theme: string
+): Promise<void> {
+  try {
+    // Import electron API dynamically
+    const { selectFolder, scanDirectory } = await import('../services/electron');
+
+    // Open folder selection dialog
+    const result = await selectFolder();
+
+    if (!result.success || !result.folderPath) {
+      if (!result.canceled) {
+        console.error('Failed to select folder:', result.error);
+      }
+      return;
+    }
+
+    // Get includeHiddenFiles setting from localStorage
+    const includeHidden = localStorage.getItem('drawdd-include-hidden-files') === 'true';
+
+    // Scan the directory
+    const scanResult = await scanDirectory(result.folderPath, includeHidden);
+
+    if (!scanResult.success || !scanResult.fileTree) {
+      console.error('Failed to scan directory:', scanResult.error);
+      return;
+    }
+
+    // Import folder explorer utilities
+    const { generateFolderMindmap } = await import('./folderExplorer');
+
+    // Get mindmap direction from global state
+    const direction = (window as any).__mindmapDirection || 'right';
+
+    // Generate the folder mindmap (static mode)
+    generateFolderMindmap(scanResult.fileTree, graph, {
+      rootX: x - 80,
+      rootY: y - 40,
+      explorerType: 'static',
+      autoCollapseDepth: 4,
+      direction: direction,
+      colorScheme: theme,
+    });
+
+  } catch (error) {
+    console.error('Insert folder snapshot error:', error);
+  }
+}
+
+
+/**
+ * Handle "Link Folder as Children" context menu action
+ * Attaches a linked folder structure as children of the selected node
+ */
+async function handleLinkFolderAsChildren(
+  graph: Graph,
+  parentNode: X6Node,
+  direction: string,
+  mmSettings: any
+): Promise<void> {
+  try {
+    // Import electron API dynamically
+    const { selectFolder, scanDirectory } = await import('../services/electron');
+
+    // Open folder selection dialog
+    const result = await selectFolder();
+
+    if (!result.success || !result.folderPath) {
+      if (!result.canceled) {
+        console.error('Failed to select folder:', result.error);
+      }
+      return;
+    }
+
+    // Get includeHiddenFiles setting from localStorage
+    const includeHidden = localStorage.getItem('drawdd-include-hidden-files') === 'true';
+
+    // Scan the directory
+    const scanResult = await scanDirectory(result.folderPath, includeHidden);
+
+    if (!scanResult.success || !scanResult.fileTree) {
+      console.error('Failed to scan directory:', scanResult.error);
+      showErrorNotification(`Failed to scan directory: ${scanResult.error || 'Unknown error'}`);
+      return;
+    }
+
+    // Import folder explorer utilities
+    const { generateChildNodes } = await import('./folderExplorer');
+
+    // Create folder explorer metadata
+    const metadata = {
+      isFolderExplorer: true,
+      explorerType: 'linked' as const,
+      path: result.folderPath,
+      isDirectory: true,
+      isReadOnly: true,
+      lastRefreshed: new Date().toISOString(),
+    };
+
+    // Generate children from folder structure
+    generateChildNodes(graph, parentNode, scanResult.fileTree, metadata);
+
+    // Apply layout
+    const { applyMindmapLayout } = await import('./layout');
+    const layoutMode = (localStorage.getItem('drawdd-mindmap-layout-mode') as 'standard' | 'compact') || 'standard';
+
+    // Find root node
+    const findRoot = (n: X6Node): X6Node => {
+      const incoming = graph.getIncomingEdges(n);
+      if (!incoming || incoming.length === 0) return n;
+      const sourceId = incoming[0].getSourceCellId();
+      const source = sourceId ? graph.getCellById(sourceId) : null;
+      if (source && source.isNode()) return findRoot(source as X6Node);
+      return n;
+    };
+
+    const rootNode = findRoot(parentNode);
+    setTimeout(() => {
+      applyMindmapLayout(graph, direction as any, rootNode, layoutMode);
+    }, 0);
+
+  } catch (error) {
+    console.error('Link folder as children error:', error);
+    showErrorNotification(`Failed to link folder: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Handle "Insert Folder Snapshot as Children" context menu action
+ * Attaches a static folder structure as children of the selected node
+ */
+async function handleInsertFolderSnapshotAsChildren(
+  graph: Graph,
+  parentNode: X6Node,
+  direction: string,
+  mmSettings: any
+): Promise<void> {
+  try {
+    // Import electron API dynamically
+    const { selectFolder, scanDirectory } = await import('../services/electron');
+
+    // Open folder selection dialog
+    const result = await selectFolder();
+
+    if (!result.success || !result.folderPath) {
+      if (!result.canceled) {
+        console.error('Failed to select folder:', result.error);
+      }
+      return;
+    }
+
+    // Get includeHiddenFiles setting from localStorage
+    const includeHidden = localStorage.getItem('drawdd-include-hidden-files') === 'true';
+
+    // Scan the directory
+    const scanResult = await scanDirectory(result.folderPath, includeHidden);
+
+    if (!scanResult.success || !scanResult.fileTree) {
+      console.error('Failed to scan directory:', scanResult.error);
+      showErrorNotification(`Failed to scan directory: ${scanResult.error || 'Unknown error'}`);
+      return;
+    }
+
+    // Import folder explorer utilities
+    const { generateChildNodes } = await import('./folderExplorer');
+
+    // Create folder explorer metadata (static mode)
+    const metadata = {
+      isFolderExplorer: true,
+      explorerType: 'static' as const,
+      path: result.folderPath,
+      isDirectory: true,
+      isReadOnly: false, // Static nodes are editable
+    };
+
+    // Generate children from folder structure
+    generateChildNodes(graph, parentNode, scanResult.fileTree, metadata);
+
+    // Apply layout
+    const { applyMindmapLayout } = await import('./layout');
+    const layoutMode = (localStorage.getItem('drawdd-mindmap-layout-mode') as 'standard' | 'compact') || 'standard';
+
+    // Find root node
+    const findRoot = (n: X6Node): X6Node => {
+      const incoming = graph.getIncomingEdges(n);
+      if (!incoming || incoming.length === 0) return n;
+      const sourceId = incoming[0].getSourceCellId();
+      const source = sourceId ? graph.getCellById(sourceId) : null;
+      if (source && source.isNode()) return findRoot(source as X6Node);
+      return n;
+    };
+
+    const rootNode = findRoot(parentNode);
+    setTimeout(() => {
+      applyMindmapLayout(graph, direction as any, rootNode, layoutMode);
+    }, 0);
+
+  } catch (error) {
+    console.error('Insert folder snapshot as children error:', error);
+    showErrorNotification(`Failed to insert folder snapshot: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }

@@ -67,12 +67,81 @@ export interface NodeDecoration {
   color?: string;
 }
 
+// Folder Explorer metadata for nodes
+export interface FolderExplorerMetadata {
+  isFolderExplorer: boolean;
+  explorerType: 'linked' | 'static';
+  path: string;  // Full file system path
+  isDirectory: boolean;
+  isReadOnly: boolean;  // True for linked nodes
+  lastRefreshed?: string;  // ISO timestamp for linked nodes
+}
+
+// Extended node data interface
+export interface NodeData {
+  // Mindmap properties
+  isMindmap?: boolean;
+  level?: number;
+  mmOrder?: number;
+  
+  // Timeline properties
+  isTimeline?: boolean;
+  eventType?: 'event' | 'milestone' | 'period' | 'decision' | 'phase' | 'task';
+  date?: string;
+  endDate?: string;
+  duration?: number;
+  description?: string;
+  priority?: 'low' | 'medium' | 'high';
+  status?: 'planned' | 'in-progress' | 'completed' | 'cancelled';
+  
+  // Visual properties
+  imageUrl?: string;
+  naturalWidth?: number;
+  naturalHeight?: number;
+  prefixDecoration?: string;
+  suffixDecoration?: string;
+  text?: string;
+  textColor?: string;
+  locked?: boolean;
+  
+  // Folder explorer properties
+  folderExplorer?: FolderExplorerMetadata;
+  
+  // Collapse/expand property
+  collapsed?: boolean;
+}
+
+export interface TimelineEventData {
+  isTimeline: boolean;
+  eventType: 'event' | 'milestone' | 'period' | 'decision' | 'phase' | 'task';
+  date?: string; // ISO date string
+  endDate?: string; // For periods/phases
+  duration?: number; // In days
+  description?: string;
+  priority?: 'low' | 'medium' | 'high';
+  status?: 'planned' | 'in-progress' | 'completed' | 'cancelled';
+}
+
 export interface MindmapNode {
   id: string;
   topic: string;
   children?: MindmapNode[];
   expanded?: boolean;
   direction?: 'right' | 'left';
+  // Enhanced metadata
+  note?: string;
+  link?: string;
+  icon?: string;
+  priority?: number;
+  progress?: number;
+  markers?: string[];
+  style?: {
+    backgroundColor?: string;
+    textColor?: string;
+    fontSize?: number;
+    bold?: boolean;
+    italic?: boolean;
+  };
 }
 
 export interface XMindSheet {
@@ -114,6 +183,8 @@ export interface DrawddDocument {
     showGrid?: boolean;
     mindmapDirection?: MindmapLayoutDirection;
     timelineDirection?: 'horizontal' | 'vertical';
+    markdownEnabled?: boolean;  // Default: true
+    includeHiddenFiles?: boolean;  // Default: false
   };
 }
 
@@ -166,6 +237,14 @@ export interface GraphContextType {
   setMindmapSortOrder: (order: 'clockwise' | 'counter-clockwise' | 'top-to-bottom' | 'left-to-right') => void;
   mindmapConnectorStyle: 'smooth' | 'orthogonal-rounded' | 'orthogonal-sharp' | 'straight';
   setMindmapConnectorStyle: (style: 'smooth' | 'orthogonal-rounded' | 'orthogonal-sharp' | 'straight') => void;
+  // New layout settings
+  mindmapLayoutMode: 'standard' | 'compact';
+  setMindmapLayoutMode: (mode: 'standard' | 'compact') => void;
+  // Markdown and folder explorer settings
+  markdownEnabled: boolean;
+  setMarkdownEnabled: (enabled: boolean) => void;
+  includeHiddenFiles: boolean;
+  setIncludeHiddenFiles: (include: boolean) => void;
 }
 
 export interface CanvasBackground {

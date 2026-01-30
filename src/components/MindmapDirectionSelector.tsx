@@ -90,7 +90,8 @@ export function MindmapDirectionSelector() {
     mindmapStrokeWidth, setMindmapStrokeWidth,
     mindmapColorByLevel, setMindmapColorByLevel,
     mindmapSortOrder, setMindmapSortOrder,
-    mindmapConnectorStyle, setMindmapConnectorStyle
+    mindmapConnectorStyle, setMindmapConnectorStyle,
+    mindmapLayoutMode
   } = useGraph();
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'direction' | 'style' | 'order'>('direction');
@@ -120,11 +121,11 @@ export function MindmapDirectionSelector() {
       if (selectedNodes.length > 0) {
         // Apply layout starting from selected node(s)
         selectedNodes.forEach(node => {
-          applyMindmapLayout(graph, direction, node);
+          applyMindmapLayout(graph, direction, node, mindmapLayoutMode);
         });
       } else {
         // No selection - apply to entire graph
-        applyMindmapLayout(graph, direction);
+        applyMindmapLayout(graph, direction, undefined, mindmapLayoutMode);
       }
     }
   };
@@ -133,7 +134,7 @@ export function MindmapDirectionSelector() {
     setMindmapSortOrder(sortOrder);
     // Re-apply layout with new sort order
     if (graph && graph.getNodes().length > 0) {
-      applyMindmapLayout(graph, mindmapDirection);
+      applyMindmapLayout(graph, mindmapDirection, undefined, mindmapLayoutMode);
     }
   };
 
