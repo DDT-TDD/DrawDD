@@ -80,10 +80,12 @@ export function Canvas() {
     mindmapBranchNumbering,
     mindmapSortOrder,
     mindmapConnectorStyle,
+    mindmapLayoutMode,
     setCanvasBackground
   } = useGraph();
   const graphRef = useRef<Graph | null>(null);
   const lineColorRef = useRef<string>(getLineColor(colorScheme));
+  const editCellTextHandlerRef = useRef<EventListener | null>(null);
 
   // Mindmap settings ref for use in callbacks
   const mindmapSettingsRef = useRef({
@@ -1156,7 +1158,8 @@ export function Canvas() {
         });
       }
     };
-    window.addEventListener('drawdd:edit-cell-text', handleEditCellText as EventListener);
+    editCellTextHandlerRef.current = handleEditCellText as EventListener;
+    window.addEventListener('drawdd:edit-cell-text', editCellTextHandlerRef.current);
 
     graphRef.current = graph;
     setGraph(graph);
@@ -1170,6 +1173,11 @@ export function Canvas() {
     initGraph();
 
     return () => {
+      // Clean up edit-cell-text event listener
+      if (editCellTextHandlerRef.current) {
+        window.removeEventListener('drawdd:edit-cell-text', editCellTextHandlerRef.current);
+        editCellTextHandlerRef.current = null;
+      }
       if (graphRef.current) {
         graphRef.current.dispose();
         graphRef.current = null;
@@ -1336,7 +1344,124 @@ export function Canvas() {
         });
       }
     });
+
   }, [mindmapStrokeWidth]);
+
+  // Handle Drag & Drop Reparenting for Mindmaps
+  useEffect(() => {
+    if (!graphRef.current) return;
+    const graph = graphRef.current;
+
+    const handleNodeMouseUp = ({ node }: { node: any }) => {
+      // Only for mindmap nodes in mindmap mode
+      if (mode !== 'mindmap') return;
+      const data = node.getData() || {};
+      if (!data.isMindmap) return;
+
+      // Find potential parent under the mouse (center of dragged node)
+      const bbox = node.getBBox();
+      const center = bbox.getCenter();
+
+      // Get nodes at center point (exclude self)
+      // We expect the user to drop the node ONTO another node
+      const nodesUnderCursor = graph.getNodesFromPoint({ x: center.x, y: center.y });
+      const targetNode = nodesUnderCursor.find((n: any) => n.id !== node.id && n.isNode());
+
+      if (targetNode) {
+        // Prevent cycles: check if target is a descendant of node
+        let isDescendant = false;
+        const checkDescendants = (n: any) => {
+          if (n.id === targetNode.id) isDescendant = true;
+          if (isDescendant) return;
+          // Check outgoing edges recursively
+          const children = graph.getOutgoingEdges(n)?.map((e: any) => e.getTargetCell()) || [];
+          children.forEach((c: any) => c && c.isNode() && checkDescendants(c));
+        }
+        checkDescendants(node);
+
+        if (isDescendant) {
+          console.warn('Cannot reparent to a descendant');
+          return;
+        }
+
+        // 1. Remove existing incoming edges (detach from old parent)
+        const incomingEdges = graph.getIncomingEdges(node);
+        // Only remove mindmap edges ideally, but for now remove all incoming
+        if (incomingEdges) {
+          incomingEdges.forEach((edge: any) => graph.removeEdge(edge));
+        }
+
+        // 2. Attach to new parent (targetNode)
+        const routing = getEdgeRouting(mindmapConnectorStyle);
+
+        graph.addEdge({
+          source: targetNode,
+          target: node,
+          router: routing.router,
+          connector: routing.connector,
+          attrs: {
+            line: {
+              stroke: colorScheme === 'dark' ? '#cbd5e1' : '#333333',
+              strokeWidth: mindmapStrokeWidth,
+              targetMarker: mindmapShowArrows ? 'classic' : '',
+            },
+          },
+          data: {
+            isMindmap: true
+          }
+        });
+
+        // 2.5 Update node level based on new parent's level
+        const targetData = targetNode.getData() || {};
+        const newLevel = (typeof targetData.level === 'number' ? targetData.level : 0) + 1;
+        const oldLevel = data.level || 1;
+        const levelDiff = newLevel - oldLevel;
+
+        // Update the moved node's level
+        node.setData({ ...data, level: newLevel });
+
+        // Recursively update all descendant levels
+        const updateDescendantLevels = (parentNode: any, diff: number) => {
+          const outgoingEdges = graph.getOutgoingEdges(parentNode) || [];
+          outgoingEdges.forEach((edge: any) => {
+            const child = edge.getTargetCell();
+            if (child && child.isNode()) {
+              const childData = child.getData() || {};
+              const childLevel = (typeof childData.level === 'number' ? childData.level : 1) + diff;
+              child.setData({ ...childData, level: childLevel });
+              updateDescendantLevels(child, diff);
+            }
+          });
+        };
+        updateDescendantLevels(node, levelDiff);
+
+        // 3. Trigger Layout
+        // Find root of the TARGET node (new family)
+        let current = targetNode;
+        const visited = new Set<string>();
+        while (true) {
+          if (visited.has(current.id)) break;
+          visited.add(current.id);
+
+          const inc = graph.getIncomingEdges(current);
+          if (!inc || inc.length === 0) break;
+          const src = inc[0].getSourceCell();
+          if (src && src.isNode()) current = src as any;
+          else break;
+        }
+
+        // Wait for edge to be added then layout
+        setTimeout(() => {
+          applyMindmapLayout(graph, mindmapDirection, current, mindmapLayoutMode);
+        }, 50);
+      }
+    };
+
+    graph.on('node:mouseup', handleNodeMouseUp);
+    return () => {
+      graph.off('node:mouseup', handleNodeMouseUp);
+    };
+  }, [graphRef.current, mode, mindmapDirection, mindmapLayoutMode, mindmapConnectorStyle, mindmapStrokeWidth, mindmapShowArrows, colorScheme]);
 
   // Handle clean exit - mark session as cleanly closed
   useEffect(() => {

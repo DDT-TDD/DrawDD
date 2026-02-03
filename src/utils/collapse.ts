@@ -11,7 +11,6 @@ import type { Graph, Node as X6Node } from '@antv/x6';
  * ONLY manages the collapsed state flag - does NOT touch visibility
  */
 export function toggleCollapse(graph: Graph, node: X6Node, collapse: boolean): void {
-  console.log('[COLLAPSE] toggleCollapse called:', node.id, 'collapse:', collapse);
   const data = node.getData() || {};
   node.setData({ ...data, collapsed: collapse });
 
@@ -29,8 +28,14 @@ export function toggleCollapse(graph: Graph, node: X6Node, collapse: boolean): v
 /**
  * Hide all descendants of a collapsed node
  */
-function hideDescendants(graph: Graph, node: X6Node): void {
-  console.log('[COLLAPSE] hideDescendants called for node:', node.id);
+function hideDescendants(graph: Graph, node: X6Node, visited = new Set<string>()): void {
+  const nodeId = node.id;
+  if (visited.has(nodeId)) {
+    console.warn('[COLLAPSE] Cycle detected, stopping recursion at:', nodeId);
+    return;
+  }
+  visited.add(nodeId);
+
   const outgoingEdges = graph.getOutgoingEdges(node) || [];
 
   outgoingEdges.forEach(edge => {
@@ -40,13 +45,12 @@ function hideDescendants(graph: Graph, node: X6Node): void {
     if (target && target.isNode()) {
       const targetNode = target as X6Node;
 
-      console.log('[COLLAPSE] Hiding node:', targetNode.id);
       // Hide the edge and node
       edge.setVisible(false);
       targetNode.setVisible(false);
 
       // Recursively hide all descendants
-      hideDescendants(graph, targetNode);
+      hideDescendants(graph, targetNode, visited);
     }
   });
 }
@@ -55,8 +59,14 @@ function hideDescendants(graph: Graph, node: X6Node): void {
  * Show direct children of an expanded node
  * Respects individual collapsed states of children
  */
-function showDescendants(graph: Graph, node: X6Node): void {
-  console.log('[COLLAPSE] showDescendants called for node:', node.id);
+function showDescendants(graph: Graph, node: X6Node, visited = new Set<string>()): void {
+  const nodeId = node.id;
+  if (visited.has(nodeId)) {
+    console.warn('[COLLAPSE] Cycle detected, stopping recursion at:', nodeId);
+    return;
+  }
+  visited.add(nodeId);
+
   const outgoingEdges = graph.getOutgoingEdges(node) || [];
 
   outgoingEdges.forEach(edge => {
@@ -67,14 +77,13 @@ function showDescendants(graph: Graph, node: X6Node): void {
       const targetNode = target as X6Node;
       const targetData = targetNode.getData() || {};
 
-      console.log('[COLLAPSE] Showing node:', targetNode.id, 'collapsed:', targetData.collapsed);
       // Show the edge and node
       edge.setVisible(true);
       targetNode.setVisible(true);
 
       // If child is not collapsed, show its descendants too
       if (!targetData.collapsed) {
-        showDescendants(graph, targetNode);
+        showDescendants(graph, targetNode, visited);
       }
     }
   });

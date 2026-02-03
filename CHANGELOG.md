@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.1] - 2026-02-03
+
+### Fixed
+
+#### Mindmap
+- **Drag-and-Drop Reparenting**: Node levels now correctly update when dragging nodes to new parents, including all descendants
+- **Delete All Lines Button**: Now correctly removes edges connected to selected nodes using live graph state
+- **Collapse/Expand Indicators**: Edge event handlers now properly check both source and target nodes for accurate indicator display
+
+#### Text Editing
+- **Shape Size Preservation**: Shapes no longer resize when editing text; they only grow if text doesn't fit, never shrink below user's chosen size
+- **Multi-line Text**: Explicit newlines in text now display correctly
+
+#### Code Quality
+- **Memory Leak Fix**: Added proper cleanup for `edit-cell-text` event listener
+- **Debug Code Removal**: Removed debug `console.log` statements from `collapse.ts` and `RichContentNode.tsx`
+
 ## [2.0.0] - 2026-01-30
 
 ### Added

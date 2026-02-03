@@ -102,15 +102,11 @@ export function RichContentNode({ node, graph: graphProp }: RichContentNodeProps
     // Get graph from prop OR fallback to node's model graph (X6 internal structure)
     const graph = graphProp || ((node as any)?.model?.graph);
 
-    // DEBUG: Log props to diagnose rendering issues
-    console.log('[RICH_CONTENT_NODE] Rendering node, node exists:', !!node, 'graph exists:', !!graph, 'graphProp:', !!graphProp);
-
     const containerRef = useRef<HTMLDivElement>(null);
     const [, forceUpdate] = useState(0);
     const [hasChildren, setHasChildren] = useState(false);
 
     if (!node) {
-        console.log('[RICH_CONTENT_NODE] No node provided!');
         return <div style={{ color: 'red', border: '2px solid red' }}>NO NODE</div>;
     }
 
@@ -147,30 +143,24 @@ export function RichContentNode({ node, graph: graphProp }: RichContentNodeProps
 
     // 1. Check getAttrByPath('label/text')
     const attrLabelText = node?.getAttrByPath('label/text');
-    console.log('[RICH_CONTENT_NODE] attrLabelText:', attrLabelText);
     if (typeof attrLabelText === 'string') labelText = attrLabelText;
 
     // 2. Check getAttrByPath('text/text')
     if (!labelText) {
         const attrTextText = node?.getAttrByPath('text/text');
-        console.log('[RICH_CONTENT_NODE] attrTextText:', attrTextText);
         if (typeof attrTextText === 'string') labelText = attrTextText;
     }
 
     // 3. Check data.text
     if (!labelText && data.text) {
-        console.log('[RICH_CONTENT_NODE] data.text:', data.text);
         labelText = data.text;
     }
 
     // 4. Check data.htmlContent as fallback
     if (!labelText && data.htmlContent) {
-        console.log('[RICH_CONTENT_NODE] data.htmlContent:', data.htmlContent);
         // Strip HTML tags if using as source text for reprocessing
         labelText = data.htmlContent.replace(/<[^>]*>/g, '');
     }
-
-    console.log('[RICH_CONTENT_NODE] Final labelText:', labelText);
 
     // Determine node type from folder explorer metadata
     // Requirements 1.15: Exclude markdown rendering for linked folder nodes
@@ -242,10 +232,22 @@ export function RichContentNode({ node, graph: graphProp }: RichContentNodeProps
         }
 
         // Check if this node has children (outgoing edges)
+        // Use node.id to ensure we get the correct edges
         const checkChildren = () => {
             try {
-                const outgoingEdges = graph.getOutgoingEdges(node);
-                setHasChildren(Array.isArray(outgoingEdges) && outgoingEdges.length > 0);
+                // Get the actual node from graph to ensure we have the latest state
+                const currentNode = graph.getCellById(node.id);
+                if (!currentNode || !currentNode.isNode()) {
+                    setHasChildren(false);
+                    return;
+                }
+                const outgoingEdges = graph.getOutgoingEdges(currentNode);
+                // Filter to only count visible edges (not hidden by parent collapse)
+                const visibleChildren = (outgoingEdges || []).filter((edge: any) => {
+                    const target = edge.getTargetCell();
+                    return target && target.isNode();
+                });
+                setHasChildren(visibleChildren.length > 0);
             } catch {
                 setHasChildren(false);
             }
@@ -253,17 +255,43 @@ export function RichContentNode({ node, graph: graphProp }: RichContentNodeProps
 
         checkChildren();
 
-        // Re-check when edges change
-        const handleEdgeChange = () => {
-            setTimeout(checkChildren, 10);
+        // Re-check when edges change - check if change affects this node
+        const handleEdgeAdded = ({ edge }: { edge: any }) => {
+            // Check both source and target as the edge might affect this node either way
+            const sourceId = edge.getSourceCellId?.() || edge.source?.cell;
+            const targetId = edge.getTargetCellId?.() || edge.target?.cell;
+            if (sourceId === node.id || targetId === node.id) {
+                setTimeout(checkChildren, 10);
+            }
         };
 
-        graph.on('edge:added', handleEdgeChange);
-        graph.on('edge:removed', handleEdgeChange);
+        const handleEdgeRemoved = ({ edge }: { edge: any }) => {
+            // When edge is removed, we need to check if this node was the source
+            // The edge object should still have its source/target info at this point
+            const sourceId = edge.getSourceCellId?.() || edge.source?.cell;
+            const targetId = edge.getTargetCellId?.() || edge.target?.cell;
+            if (sourceId === node.id || targetId === node.id) {
+                setTimeout(checkChildren, 10);
+            }
+        };
+
+        // Also listen for edge:connected which fires when edge source/target changes
+        const handleEdgeConnected = ({ edge }: { edge: any }) => {
+            const sourceId = edge.getSourceCellId?.() || edge.source?.cell;
+            const targetId = edge.getTargetCellId?.() || edge.target?.cell;
+            if (sourceId === node.id || targetId === node.id) {
+                setTimeout(checkChildren, 10);
+            }
+        };
+
+        graph.on('edge:added', handleEdgeAdded);
+        graph.on('edge:removed', handleEdgeRemoved);
+        graph.on('edge:connected', handleEdgeConnected);
 
         return () => {
-            graph.off('edge:added', handleEdgeChange);
-            graph.off('edge:removed', handleEdgeChange);
+            graph.off('edge:added', handleEdgeAdded);
+            graph.off('edge:removed', handleEdgeRemoved);
+            graph.off('edge:connected', handleEdgeConnected);
         };
     }, [node, graph, isMindmap]);
 

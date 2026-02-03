@@ -106,8 +106,9 @@ export function measureWrappedText(text: string, wrapWidth: number, options: Par
  * Preserves existing label attributes (like fill color) while updating text.
  * 
  * Strategy:
- * - For short text (fits in one line): extend WIDTH to fit the text (never cuts text)
- * - For long text (exceeds maxWidth): wraps text and extends HEIGHT
+ * - Keep current shape size as the minimum (user's chosen size)
+ * - Only resize if text doesn't fit in the current shape
+ * - Never shrink below current size - only grow if needed
  */
 export function setNodeLabelWithAutoSize(node: Node, text: string, options: Partial<MeasureOptions> = {}) {
   const currentAttrs = node.getAttrs();
@@ -119,46 +120,70 @@ export function setNodeLabelWithAutoSize(node: Node, text: string, options: Part
   const currentSize = node.size();
   const padding = options.padding ?? DEFAULTS.padding;
   const maxWidth = options.maxWidth ?? DEFAULTS.maxWidth;
-  const minWidth = options.minWidth ?? DEFAULTS.minWidth;
-  const minHeight = options.minHeight ?? DEFAULTS.minHeight;
+  const lineHeightMultiplier = options.lineHeight ?? DEFAULTS.lineHeight;
 
-  // Measure the natural single-line width of the text
+  // Handle empty/null text
+  const safeText = text || '';
+
+  // If no measurement context available, just update text without resizing
   if (!measureCtx) {
-    node.resize(currentSize.width, currentSize.height);
-    node.setAttrs({ label: { ...currentLabelAttrs, text } });
+    node.setAttrs({ label: { ...currentLabelAttrs, text: safeText } });
     return;
   }
 
   measureCtx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
-  const naturalWidth = measureCtx.measureText(text).width + padding;
+  
+  // Check if text contains explicit newlines
+  const hasNewlines = safeText.includes('\n');
+  const lines = safeText.split('\n');
+  const lineCount = lines.length;
+  
+  // Measure the widest line
+  const lineWidths = lines.map(line => measureCtx!.measureText(line).width);
+  const widestLineWidth = (lineWidths.length > 0 ? Math.max(...lineWidths) : 0) + padding;
+  
+  // Calculate the required dimensions for the text
+  const lineHeight = fontSize * lineHeightMultiplier;
+  let requiredWidth: number;
+  let requiredHeight: number;
 
-  let newWidth: number;
-  let newHeight: number;
-
-  if (naturalWidth <= maxWidth) {
-    // Text fits in one line - extend width to fit (never cut text)
-    newWidth = Math.max(currentSize.width, minWidth, Math.ceil(naturalWidth));
-    newHeight = Math.max(currentSize.height, minHeight);
+  if (!hasNewlines) {
+    // Single line text
+    requiredWidth = Math.ceil(widestLineWidth);
+    requiredHeight = Math.ceil(lineHeight + padding);
+    
+    // Check if text needs to wrap within current width
+    if (requiredWidth > currentSize.width && requiredWidth > maxWidth) {
+      // Text is too wide, needs wrapping - calculate wrapped height
+      const wrapWidth = Math.max(currentSize.width - padding, maxWidth - padding);
+      const { height: wrappedHeight } = measureWrappedText(safeText, wrapWidth, {
+        fontSize,
+        fontFamily,
+        fontWeight,
+        minWidth: currentSize.width,
+        maxWidth,
+        minHeight: currentSize.height,
+        padding,
+        lineHeight: lineHeightMultiplier,
+      });
+      requiredHeight = wrappedHeight;
+      requiredWidth = currentSize.width; // Keep current width, just grow height
+    }
   } else {
-    // Text too long for one line - wrap within maxWidth and extend height
-    const wrapWidth = Math.max(maxWidth - padding, minWidth - padding);
-    const { height } = measureWrappedText(text, wrapWidth, {
-      fontSize,
-      fontFamily,
-      fontWeight,
-      minWidth,
-      maxWidth,
-      minHeight,
-      padding,
-      lineHeight: options.lineHeight ?? DEFAULTS.lineHeight,
-    });
-
-    newWidth = Math.max(currentSize.width, maxWidth);
-    newHeight = Math.max(currentSize.height, height);
+    // Multi-line text with explicit newlines
+    requiredWidth = Math.ceil(widestLineWidth);
+    requiredHeight = Math.ceil(lineCount * lineHeight + padding);
   }
 
-  // Resize node to fit text
-  node.resize(newWidth, newHeight);
+  // Only grow if text doesn't fit - never shrink
+  // Current size is the minimum (user's chosen size)
+  const newWidth = Math.max(currentSize.width, Math.min(maxWidth, requiredWidth));
+  const newHeight = Math.max(currentSize.height, requiredHeight);
+
+  // Only resize if we need to grow
+  if (newWidth > currentSize.width || newHeight > currentSize.height) {
+    node.resize(newWidth, newHeight);
+  }
 
   // Update label - preserve existing attributes and add text wrapping
   // Remove old textWrap to avoid conflicts, then add new one
@@ -167,9 +192,9 @@ export function setNodeLabelWithAutoSize(node: Node, text: string, options: Part
   node.setAttrs({
     label: {
       ...preservedLabelAttrs,
-      text,
+      text: safeText,
       textWrap: {
-        text,
+        text: safeText,
         width: -(padding),
         height: -(padding),
         ellipsis: false,

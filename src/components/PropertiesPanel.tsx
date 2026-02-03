@@ -259,7 +259,15 @@ export function PropertiesPanel() {
     if (!graph) return;
     // Use setTimeout to avoid React unmount race condition
     setTimeout(() => {
-      graph.removeCells(selectedNodes);
+      // Get current selection directly from graph to avoid stale React state
+      const currentSelection = graph.getSelectedCells();
+      if (currentSelection.length > 0) {
+        graph.removeCells(currentSelection);
+      } else {
+        // Fallback to React state if graph selection is empty
+        const cellsToRemove = [...selectedNodes, ...selectedEdges];
+        graph.removeCells(cellsToRemove);
+      }
     }, 0);
   };
 
@@ -367,7 +375,7 @@ export function PropertiesPanel() {
       const data = node.getData() || {};
       setPrefixDecoration((data.prefixDecoration as string) || '');
       setSuffixDecoration((data.suffixDecoration as string) || '');
-      
+
       // Load timeline data if it's a timeline node
       if (data.isTimeline) {
         setTimelineDate((data.date as string) || '');
@@ -433,7 +441,7 @@ export function PropertiesPanel() {
 
     // Use batch/history to make this a single undo-able operation
     graph.startBatch('replace-shape');
-    
+
     try {
       const oldNode = shapeChangeTarget;
       const oldPos = oldNode.getPosition();
@@ -441,67 +449,67 @@ export function PropertiesPanel() {
       const oldData = oldNode.getData();
 
       const allShapes = [
-      ...FLOWCHART_SHAPES,
-      ...MINDMAP_SHAPES,
-      ...TIMELINE_SHAPES,
-      ...BASIC_SHAPES,
-      ...ARROW_SHAPES,
-      ...CALLOUT_SHAPES,
-      ...CONTAINER_SHAPES,
-      ...ORGCHART_SHAPES,
-      ...LOGIC_SHAPES,
-      ...TEXT_SHAPES
-    ];
+        ...FLOWCHART_SHAPES,
+        ...MINDMAP_SHAPES,
+        ...TIMELINE_SHAPES,
+        ...BASIC_SHAPES,
+        ...ARROW_SHAPES,
+        ...CALLOUT_SHAPES,
+        ...CONTAINER_SHAPES,
+        ...ORGCHART_SHAPES,
+        ...LOGIC_SHAPES,
+        ...TEXT_SHAPES
+      ];
 
-    // Find by label to ensure unique identification (many shapes share the same type like 'polygon')
-    const shapeConfig = allShapes.find(s => s.label === shapeLabel);
-    if (!shapeConfig) return;
+      // Find by label to ensure unique identification (many shapes share the same type like 'polygon')
+      const shapeConfig = allShapes.find(s => s.label === shapeLabel);
+      if (!shapeConfig) return;
 
-    // Get connected edges with their original port info
-    const incomingEdges = graph.getIncomingEdges(oldNode);
-    const outgoingEdges = graph.getOutgoingEdges(oldNode);
+      // Get connected edges with their original port info
+      const incomingEdges = graph.getIncomingEdges(oldNode);
+      const outgoingEdges = graph.getOutgoingEdges(oldNode);
 
-    // Create new node with same position and text
-    // Always use FULL_PORTS_CONFIG to ensure all ports are available for edge repositioning
-    const newNode = graph.addNode({
-      ...shapeConfig,
-      shape: shapeConfig.type,
-      x: oldPos.x,
-      y: oldPos.y,
-      attrs: {
-        ...shapeConfig.attrs,
-        label: {
-          ...(shapeConfig.attrs.label as any),
-          text: oldAttrs.label?.text || shapeConfig.attrs.label.text,
-        },
-      } as any,
-      data: oldData,
-      ports: FULL_PORTS_CONFIG as any,
-    });
+      // Create new node with same position and text
+      // Always use FULL_PORTS_CONFIG to ensure all ports are available for edge repositioning
+      const newNode = graph.addNode({
+        ...shapeConfig,
+        shape: shapeConfig.type,
+        x: oldPos.x,
+        y: oldPos.y,
+        attrs: {
+          ...shapeConfig.attrs,
+          label: {
+            ...(shapeConfig.attrs.label as any),
+            text: oldAttrs.label?.text || shapeConfig.attrs.label.text,
+          },
+        } as any,
+        data: oldData,
+        ports: FULL_PORTS_CONFIG as any,
+      });
 
-    // Reconnect edges to the new node at best matching ports
-    // Map old connection points to appropriate ports on new shape
-    incomingEdges?.forEach(edge => {
-      const oldTarget = edge.getTarget() as any;
-      const oldPort = oldTarget?.port;
-      // Try to keep same port if it exists, otherwise use 'left' as default for incoming
-      const portToUse = oldPort && FULL_PORTS_CONFIG.items.some(p => p.id === oldPort) ? oldPort : 'left';
-      edge.setTarget({ cell: newNode.id, port: portToUse });
-    });
-    outgoingEdges?.forEach(edge => {
-      const oldSource = edge.getSource() as any;
-      const oldPort = oldSource?.port;
-      // Try to keep same port if it exists, otherwise use 'right' as default for outgoing
-      const portToUse = oldPort && FULL_PORTS_CONFIG.items.some(p => p.id === oldPort) ? oldPort : 'right';
-      edge.setSource({ cell: newNode.id, port: portToUse });
-    });
+      // Reconnect edges to the new node at best matching ports
+      // Map old connection points to appropriate ports on new shape
+      incomingEdges?.forEach(edge => {
+        const oldTarget = edge.getTarget() as any;
+        const oldPort = oldTarget?.port;
+        // Try to keep same port if it exists, otherwise use 'left' as default for incoming
+        const portToUse = oldPort && FULL_PORTS_CONFIG.items.some(p => p.id === oldPort) ? oldPort : 'left';
+        edge.setTarget({ cell: newNode.id, port: portToUse });
+      });
+      outgoingEdges?.forEach(edge => {
+        const oldSource = edge.getSource() as any;
+        const oldPort = oldSource?.port;
+        // Try to keep same port if it exists, otherwise use 'right' as default for outgoing
+        const portToUse = oldPort && FULL_PORTS_CONFIG.items.some(p => p.id === oldPort) ? oldPort : 'right';
+        edge.setSource({ cell: newNode.id, port: portToUse });
+      });
 
-    // Remove old node and select new one
-    // Use setTimeout to avoid React unmount race condition
-    setTimeout(() => {
-      graph.removeNode(oldNode);
-      graph.select(newNode);
-    }, 0);
+      // Remove old node and select new one
+      // Use setTimeout to avoid React unmount race condition
+      setTimeout(() => {
+        graph.removeNode(oldNode);
+        graph.select(newNode);
+      }, 0);
     } finally {
       graph.stopBatch('replace-shape');
     }
@@ -753,7 +761,7 @@ export function PropertiesPanel() {
       const node = selectedCell as Node;
       const data = node.getData() || {};
       node.setData({ ...data, date });
-      
+
       // Trigger timeline re-layout if in timeline mode
       if (graph && (window as any).__drawdd_mode === 'timeline') {
         setTimeout(() => {
@@ -789,7 +797,7 @@ export function PropertiesPanel() {
       const node = selectedCell as Node;
       const data = node.getData() || {};
       node.setData({ ...data, priority });
-      
+
       // Update node color based on priority
       const priorityColors = {
         low: { fill: '#e0f2fe', stroke: '#0284c7' },
@@ -813,7 +821,7 @@ export function PropertiesPanel() {
       const node = selectedCell as Node;
       const data = node.getData() || {};
       node.setData({ ...data, status });
-      
+
       // Update node opacity based on status
       const statusOpacity = {
         planned: 0.7,
@@ -847,7 +855,7 @@ export function PropertiesPanel() {
   const handleApplyEdgesToAll = () => {
     if (!graph) return;
     const dashArray = edgeStyle === 'dashed' ? '8 4' : edgeStyle === 'dotted' ? '2 2' : '';
-    
+
     // Always use the user's arrow selection - this is an explicit "Apply to All" action
     const sourceMarker = sourceArrow === 'none' ? '' : { name: sourceArrow, width: 12, height: 8 };
     const targetMarker = targetArrow === 'none' ? '' : { name: targetArrow, width: 12, height: 8 };
@@ -1959,11 +1967,10 @@ export function PropertiesPanel() {
                         <button
                           key={priority}
                           onClick={() => handleTimelinePriorityChange(priority)}
-                          className={`px-2 py-1.5 text-xs rounded border ${
-                            timelinePriority === priority
+                          className={`px-2 py-1.5 text-xs rounded border ${timelinePriority === priority
                               ? 'bg-blue-500 text-white border-blue-600'
                               : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
-                          }`}
+                            }`}
                         >
                           {priority.charAt(0).toUpperCase() + priority.slice(1)}
                         </button>
@@ -1980,11 +1987,10 @@ export function PropertiesPanel() {
                         <button
                           key={status}
                           onClick={() => handleTimelineStatusChange(status)}
-                          className={`px-2 py-1.5 text-xs rounded border ${
-                            timelineStatus === status
+                          className={`px-2 py-1.5 text-xs rounded border ${timelineStatus === status
                               ? 'bg-blue-500 text-white border-blue-600'
                               : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
-                          }`}
+                            }`}
                         >
                           {status.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
                         </button>
