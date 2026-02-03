@@ -26,6 +26,7 @@ import {
   addCollapseIndicator,
   hasChildren
 } from '../utils/collapse';
+import { createQuickConnect, QuickConnectManager } from '../utils/quickConnect';
 
 // Register custom shapes on module load
 registerLogicGateShapes();
@@ -86,6 +87,7 @@ export function Canvas() {
   const graphRef = useRef<Graph | null>(null);
   const lineColorRef = useRef<string>(getLineColor(colorScheme));
   const editCellTextHandlerRef = useRef<EventListener | null>(null);
+  const quickConnectRef = useRef<QuickConnectManager | null>(null);
 
   // Mindmap settings ref for use in callbacks
   const mindmapSettingsRef = useRef({
@@ -1162,6 +1164,7 @@ export function Canvas() {
     window.addEventListener('drawdd:edit-cell-text', editCellTextHandlerRef.current);
 
     graphRef.current = graph;
+    (window as any).__drawdd_graph = graph; // Expose graph for markdown conversion
     setGraph(graph);
 
     // Demo nodes disabled - start with empty canvas
@@ -1182,6 +1185,7 @@ export function Canvas() {
         graphRef.current.dispose();
         graphRef.current = null;
       }
+      delete (window as any).__drawdd_graph; // Clean up graph reference
     };
   }, [initGraph]);
 
@@ -1491,6 +1495,40 @@ export function Canvas() {
       // Clean exit - remove the flag
       localStorage.removeItem('drawdd-unclean-exit');
       localStorage.removeItem('drawdd-session-active');
+    };
+  }, []);
+
+  // Quick Connect Mode - show hover arrows for flowcharts
+  useEffect(() => {
+    const graph = graphRef.current;
+    if (!graph) return;
+
+    if (mode === 'flowchart') {
+      // Create Quick Connect if not already created
+      if (!quickConnectRef.current) {
+        quickConnectRef.current = createQuickConnect(graph, {
+          colorScheme,
+          defaultShape: 'rect',
+        });
+      }
+      quickConnectRef.current.setEnabled(true);
+      quickConnectRef.current.updateOptions({ colorScheme });
+    } else {
+      // Disable Quick Connect for non-flowchart modes
+      if (quickConnectRef.current) {
+        quickConnectRef.current.setEnabled(false);
+      }
+    }
+    // Don't return cleanup - we only dispose on full unmount in the main cleanup effect
+  }, [mode, colorScheme]);
+
+  // Cleanup Quick Connect on unmount
+  useEffect(() => {
+    return () => {
+      if (quickConnectRef.current) {
+        quickConnectRef.current.dispose();
+        quickConnectRef.current = null;
+      }
     };
   }, []);
 

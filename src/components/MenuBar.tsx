@@ -124,16 +124,19 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     if (!file || !graph) return;
 
     const ext = file.name.split('.').pop()?.toLowerCase();
-    // Remove extensions - handle both .json and .drawdd.json
+    // Remove extensions - handle .drwdd, .json and legacy .drawdd.json
     let fileName = file.name;
-    if (fileName.endsWith('.drawdd.json')) {
+    if (fileName.endsWith('.drwdd')) {
+      fileName = fileName.replace('.drwdd', '');
+    } else if (fileName.endsWith('.drawdd.json')) {
       fileName = fileName.replace('.drawdd.json', '');
     } else {
       fileName = fileName.replace(/\.[^/.]+$/, ''); // Remove last extension
     }
 
     try {
-      if (ext === 'json') {
+      // Handle .drwdd, .json and legacy .drawdd.json the same way
+      if (ext === 'json' || ext === 'drwdd') {
         const text = await file.text();
         const parsed = JSON.parse(text);
         // Always use the actual filename from the opened file (user sees this in their file explorer)
@@ -308,7 +311,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
               alert('Failed to save file: ' + result.error);
             }
           } else {
-            const result = await electronAPI.saveFileAs(`${fileName}.drawdd.json`, content);
+            const result = await electronAPI.saveFileAs(`${fileName}.drwdd`, content);
             if (result.success && result.filePath) {
               const displayName = result.displayName || fileName;
               drawddWindow.__drawdd_updateFileName?.(displayName);
@@ -330,11 +333,11 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
             }
             fileToSave.name = newName;
             const blob = new Blob([JSON.stringify(fileToSave, null, 2)], { type: 'application/json' });
-            saveAs(blob, `${newName}.drawdd.json`);
+            saveAs(blob, `${newName}.drwdd`);
             drawddWindow.__drawdd_updateFileName?.(newName);
           } else {
             const blob = new Blob([content], { type: 'application/json' });
-            saveAs(blob, `${fileName}.drawdd.json`);
+            saveAs(blob, `${fileName}.drwdd`);
             drawddWindow.__drawdd_markSaved?.();
           }
         }
@@ -347,7 +350,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
           timelineDirection
         });
         const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' });
-        saveAs(blob, 'diagram.drawdd.json');
+        saveAs(blob, 'diagram.drwdd');
       }
     }
     setActiveMenu(null);
@@ -373,7 +376,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
         const content = fileToSave
           ? JSON.stringify(fileToSave, null, 2)
           : JSON.stringify(exportToJSON(graph, { canvasBackground, showGrid, mindmapDirection, timelineDirection }), null, 2);
-        const result = await electronAPI.saveFileAs(`${currentName}.drawdd.json`, content);
+        const result = await electronAPI.saveFileAs(`${currentName}.drwdd`, content);
         if (result.success && result.filePath) {
           const displayName = result.displayName || currentName;
           drawddWindow.__drawdd_updateFileName?.(displayName);
@@ -400,7 +403,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
             )
           };
           const blob = new Blob([JSON.stringify(fileToSave, null, 2)], { type: 'application/json' });
-          saveAs(blob, `${newName}.drawdd.json`);
+          saveAs(blob, `${newName}.drwdd`);
           drawddWindow.__drawdd_updateFileName?.(newName);
         } else {
           const doc = exportToJSON(graph, {
@@ -410,7 +413,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
             timelineDirection
           });
           const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' });
-          saveAs(blob, `${newName}.drawdd.json`);
+          saveAs(blob, `${newName}.drwdd`);
           drawddWindow.__drawdd_updateFileName?.(newName);
         }
       }

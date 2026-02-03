@@ -91,6 +91,7 @@ export function PropertiesPanel() {
   const [edgeWidth, setEdgeWidth] = useState(2);
   const [edgeStyle, setEdgeStyle] = useState<'solid' | 'dashed' | 'dotted'>('solid');
   const [edgeConnector, setEdgeConnector] = useState<'normal' | 'rounded' | 'smooth' | 'ortho'>('normal');
+  const [lineHops, setLineHops] = useState(false);
   const [sourceArrow, setSourceArrow] = useState<'block' | 'classic' | 'diamond' | 'circle' | 'circlePlus' | 'ellipse' | 'cross' | 'none'>('none');
   const [targetArrow, setTargetArrow] = useState<'block' | 'classic' | 'diamond' | 'circle' | 'circlePlus' | 'ellipse' | 'cross' | 'none'>('none');
   const [edgeLabel, setEdgeLabel] = useState('');
@@ -926,6 +927,29 @@ export function PropertiesPanel() {
       } else {
         edge.setConnector('normal');
         edge.setRouter('normal');
+      }
+      // Re-apply line hops if enabled
+      if (lineHops) {
+        edge.setConnector({ name: 'jumpover', args: { size: 6, type: 'arc' } });
+      }
+    });
+  };
+
+  const handleLineHopsChange = (enabled: boolean) => {
+    setLineHops(enabled);
+    getEdgeTargets().forEach(edge => {
+      if (enabled) {
+        // Apply jumpover connector
+        edge.setConnector({ name: 'jumpover', args: { size: 6, type: 'arc' } });
+      } else {
+        // Restore based on current connector type
+        if (edgeConnector === 'smooth') {
+          edge.setConnector('smooth');
+        } else if (edgeConnector === 'rounded') {
+          edge.setConnector({ name: 'rounded', args: { radius: 10 } });
+        } else {
+          edge.setConnector('normal');
+        }
       }
     });
   };
@@ -2231,6 +2255,27 @@ export function PropertiesPanel() {
               </div>
             </Section>
 
+            {/* Line Hops */}
+            <Section title="Line Hops">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-600 dark:text-gray-400">
+                  Show arc when lines cross
+                </span>
+                <button
+                  onClick={() => handleLineHopsChange(!lineHops)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    lineHops ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      lineHops ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            </Section>
+
             {/* Edge Color */}
             <Section title="Line Color">
               <ColorRow color={edgeColor} onChange={handleEdgeColorChange} />
@@ -2421,11 +2466,15 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function ColorRow({ color, onChange }: { color: string; onChange: (c: string) => void }) {
+  // HTML color input only accepts hex colors, not "transparent" or other values
+  const isValidHexColor = /^#[0-9A-Fa-f]{6}$/.test(color);
+  const colorInputValue = isValidHexColor ? color : '#ffffff';
+  
   return (
     <div className="flex items-center gap-2">
       <input
         type="color"
-        value={color}
+        value={colorInputValue}
         onChange={(e) => onChange(e.target.value)}
         className="w-8 h-8 rounded border border-gray-300 dark:border-gray-600 cursor-pointer"
       />
@@ -2434,6 +2483,7 @@ function ColorRow({ color, onChange }: { color: string; onChange: (c: string) =>
         value={color}
         onChange={(e) => onChange(e.target.value)}
         className="flex-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-xs font-mono uppercase bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+        placeholder="#ffffff or transparent"
       />
     </div>
   );

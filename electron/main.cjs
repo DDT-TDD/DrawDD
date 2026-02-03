@@ -14,9 +14,10 @@ try {
 let mainWindow;
 
 function ensureDrawddExtension(filePath) {
-  if (filePath.toLowerCase().endsWith('.drawdd.json')) return filePath;
-  if (filePath.toLowerCase().endsWith('.json')) return filePath.replace(/\.json$/i, '.drawdd.json');
-  return `${filePath}.drawdd.json`;
+  if (filePath.toLowerCase().endsWith('.drwdd')) return filePath;
+  if (filePath.toLowerCase().endsWith('.drawdd.json')) return filePath.replace(/\.drawdd\.json$/i, '.drwdd');
+  if (filePath.toLowerCase().endsWith('.json')) return filePath.replace(/\.json$/i, '.drwdd');
+  return `${filePath}.drwdd`;
 }
 
 function getIconPath() {
@@ -152,8 +153,9 @@ function createMenu() {
           click: async () => {
             const result = await dialog.showOpenDialog(mainWindow, {
               filters: [
-                { name: 'All Supported', extensions: ['json', 'xmind', 'mmap', 'km', 'mm', 'vsdx'] },
-                { name: 'DRAWDD Files', extensions: ['json'] },
+                { name: 'All Supported', extensions: ['drwdd', 'json', 'xmind', 'mmap', 'km', 'mm', 'vsdx'] },
+                { name: 'DRAWDD Files', extensions: ['drwdd'] },
+                { name: 'Legacy JSON', extensions: ['json'] },
                 { name: 'XMind', extensions: ['xmind'] },
                 { name: 'MindManager', extensions: ['mmap'] },
                 { name: 'KityMinder', extensions: ['km'] },
@@ -489,10 +491,15 @@ ipcMain.handle('save-file', async (_event, filePath, content) => {
 
 ipcMain.handle('save-file-as', async (_event, defaultName, content) => {
   try {
+    // Change default name to use .drwdd extension
+    const drwddName = defaultName.replace(/\.drawdd\.json$/i, '.drwdd').replace(/\.json$/i, '.drwdd');
     const result = await dialog.showSaveDialog(mainWindow, {
       title: 'Save Diagram',
-      defaultPath: defaultName,
-      filters: [{ name: 'DRAWDD Files', extensions: ['json'] }],
+      defaultPath: drwddName.endsWith('.drwdd') ? drwddName : `${drwddName}.drwdd`,
+      filters: [
+        { name: 'DRAWDD Files', extensions: ['drwdd'] },
+        { name: 'Legacy JSON', extensions: ['json'] }
+      ],
     });
     if (result.canceled || !result.filePath) {
       return { success: false, canceled: true };
@@ -506,7 +513,7 @@ ipcMain.handle('save-file-as', async (_event, defaultName, content) => {
     return {
       success: true,
       filePath: finalPath,
-      displayName: path.basename(finalPath).replace(/\.drawdd\.json$/i, '').replace(/\.json$/i, ''),
+      displayName: path.basename(finalPath).replace(/\.drwdd$/i, '').replace(/\.drawdd\.json$/i, '').replace(/\.json$/i, ''),
     };
   } catch (error) {
     return { success: false, error: error?.message || String(error) };

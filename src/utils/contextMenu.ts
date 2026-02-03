@@ -3,7 +3,7 @@
  * Provides context menus for cells, empty canvas, and mindmap-specific operations
  */
 
-import type { Graph, Cell, Node as X6Node } from '@antv/x6';
+import type { Graph, Cell, Node as X6Node, Edge } from '@antv/x6';
 import { applyMindmapLayout } from '../utils/layout';
 import { setNodeLabelWithAutoSize } from '../utils/text';
 import { getNextThemeColors } from '../utils/theme';
@@ -1029,6 +1029,47 @@ export function showCellContextMenu(
         icon: '•••',
         action: () => {
           cell.setAttrs({ line: { strokeDasharray: '2 4' } });
+        }
+      },
+      { label: '---' },
+      { label: '## Line Routing', icon: '' },
+      {
+        label: 'Line Hops (Arc)',
+        icon: '⌒',
+        action: () => {
+          (cell as Edge).setConnector({ name: 'jumpover', args: { size: 6, type: 'arc' } });
+        }
+      },
+      {
+        label: 'Orthogonal Routing',
+        icon: '⊢',
+        action: () => {
+          (cell as Edge).setConnector('normal');
+          (cell as Edge).setRouter('manhattan');
+        }
+      },
+      {
+        label: 'Rounded Routing',
+        icon: '⌒',
+        action: () => {
+          (cell as Edge).setConnector({ name: 'rounded', args: { radius: 10 } });
+          (cell as Edge).setRouter('manhattan');
+        }
+      },
+      {
+        label: 'Smooth Curves',
+        icon: '∿',
+        action: () => {
+          (cell as Edge).setConnector('smooth');
+          (cell as Edge).setRouter('normal');
+        }
+      },
+      {
+        label: 'Straight Line',
+        icon: '—',
+        action: () => {
+          (cell as Edge).setConnector('normal');
+          (cell as Edge).setRouter('normal');
         }
       }
     );

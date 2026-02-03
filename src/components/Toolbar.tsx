@@ -21,6 +21,10 @@ import {
   AlignStartHorizontal,
   AlignEndHorizontal,
   CheckSquare,
+  Layout,
+  Layers,
+  ArrowRightLeft,
+  Workflow,
 } from 'lucide-react';
 import { saveAs } from 'file-saver';
 import { useGraph } from '../context/GraphContext';
@@ -29,6 +33,9 @@ import { DiagramTypeSelector } from './DiagramTypeSelector';
 import { MindmapDirectionSelector } from './MindmapDirectionSelector';
 import { TimelineDirectionSelector } from './TimelineDirectionSelector';
 import { applyTreeLayout, applyFishboneLayout, applyTimelineLayout, type LayoutDirection } from '../utils/layout';
+import { applyFlowchartLayout } from '../utils/flowchartLayout';
+import { createSwimlanes, SWIMLANE_TEMPLATES } from '../utils/swimlane';
+import { labelAllDecisionBranches } from '../utils/decisionLabels';
 import type { DrawddDocument } from '../types';
 
 export function Toolbar() {
@@ -171,7 +178,7 @@ export function Toolbar() {
       if (currentFile) {
         // Export entire file structure with all pages
         const blob = new Blob([JSON.stringify(currentFile, null, 2)], { type: 'application/json' });
-        saveAs(blob, `${currentFile.name || 'diagram'}.json`);
+        saveAs(blob, `${currentFile.name || 'diagram'}.drwdd`);
       } else {
         // Fallback: export just current graph
         const doc = exportToJSON(graph, {
@@ -181,7 +188,7 @@ export function Toolbar() {
           timelineDirection
         });
         const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' });
-        saveAs(blob, 'drawdd-export.json');
+        saveAs(blob, 'drawdd-export.drwdd');
       }
     }
   };
@@ -197,7 +204,8 @@ export function Toolbar() {
     const ext = file.name.split('.').pop()?.toLowerCase();
 
     try {
-      if (ext === 'json') {
+      // Handle .drwdd and .json the same way (both are JSON format)
+      if (ext === 'json' || ext === 'drwdd') {
         const text = await file.text();
         const parsed = JSON.parse(text);
         
@@ -227,7 +235,7 @@ export function Toolbar() {
         mindmapToGraph(graph, mindmap);
         setMode('mindmap');
       } else {
-        alert('Unsupported file format. Supported: .json, .xmind, .mmap');
+        alert('Unsupported file format. Supported: .drwdd, .json, .xmind, .mmap');
       }
     } catch (error) {
       console.error('Import error:', error);
@@ -253,6 +261,84 @@ export function Toolbar() {
   const handleTimelineLayout = (orientation: 'horizontal' | 'vertical' = 'horizontal') => {
     if (graph) {
       applyTimelineLayout(graph, orientation);
+    }
+  };
+
+  // Flowchart-specific features
+  const handleAutoLayout = (direction: 'TB' | 'BT' | 'LR' | 'RL' = 'TB') => {
+    if (graph) {
+      applyFlowchartLayout(graph, { direction, type: 'hierarchical' });
+    }
+  };
+
+  const handleAddSwimlanes = (templateKey: string) => {
+    if (graph) {
+      const template = SWIMLANE_TEMPLATES[templateKey as keyof typeof SWIMLANE_TEMPLATES];
+      if (template) {
+        // Template is just an array of lane configs
+        const isVertical = templateKey === 'departments' || templateKey === 'systems';
+        createSwimlanes(graph, template, {
+          direction: isVertical ? 'horizontal' : 'vertical',
+          laneWidth: 200,
+          laneHeight: 400
+        });
+      }
+    }
+  };
+
+  const handleApplyRouting = (style: 'flowchart' | 'simple' | 'curved' | 'metro' | 'direct') => {
+    if (!graph) return;
+    
+    // Use same logic as PropertiesPanel handleApplyEdgesToAll for consistency
+    graph.getEdges().forEach(edge => {
+      // Get current source/target to preserve connection points
+      const source = edge.getSource();
+      const target = edge.getTarget();
+      
+      if (style === 'curved') {
+        // Smooth curves
+        edge.setConnector('smooth');
+        edge.setRouter('normal');
+      } else if (style === 'flowchart') {
+        // Manhattan routing with rounded corners (like Orthogonal-Rounded)
+        edge.setConnector({ name: 'rounded', args: { radius: 10 } });
+        edge.setRouter({ 
+          name: 'manhattan',
+          args: {
+            // Preserve connection points by using existing anchors
+            startDirections: ['top', 'right', 'bottom', 'left'],
+            endDirections: ['top', 'right', 'bottom', 'left'],
+          }
+        });
+      } else if (style === 'simple') {
+        // Orthogonal with sharp corners
+        edge.setConnector('normal');
+        edge.setRouter({ 
+          name: 'manhattan',
+          args: {
+            startDirections: ['top', 'right', 'bottom', 'left'],
+            endDirections: ['top', 'right', 'bottom', 'left'],
+          }
+        });
+      } else if (style === 'metro') {
+        // Metro style - 45 degree angles
+        edge.setConnector({ name: 'rounded', args: { radius: 8 } });
+        edge.setRouter({ name: 'metro' });
+      } else {
+        // Direct - straight line
+        edge.setConnector('normal');
+        edge.setRouter('normal');
+      }
+      
+      // Re-apply source/target to ensure connection points are preserved
+      if (source) edge.setSource(source);
+      if (target) edge.setTarget(target);
+    });
+  };
+
+  const handleLabelDecisions = () => {
+    if (graph) {
+      labelAllDecisionBranches(graph);
     }
   };
 
@@ -533,6 +619,122 @@ export function Toolbar() {
         </div>
       </div>
 
+      {/* Flowchart Tools - Only show in flowchart mode */}
+      {mode === 'flowchart' && (
+        <>
+          <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-2" />
+          
+          {/* Auto-Layout */}
+          <div className="relative group">
+            <ToolbarButton icon={Layout} title="Auto-Layout Flowchart" onClick={() => handleAutoLayout('TB')} />
+            <div className="absolute left-0 top-full mt-1 hidden group-hover:block bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 min-w-[180px] z-50">
+              <div className="px-3 py-1 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Auto-Layout Direction</div>
+              <button
+                onClick={() => handleAutoLayout('TB')}
+                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <Layout size={16} />
+                Top to Bottom
+              </button>
+              <button
+                onClick={() => handleAutoLayout('LR')}
+                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <Layout size={16} className="rotate-90" />
+                Left to Right
+              </button>
+              <button
+                onClick={() => handleAutoLayout('BT')}
+                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <Layout size={16} className="rotate-180" />
+                Bottom to Top
+              </button>
+              <button
+                onClick={() => handleAutoLayout('RL')}
+                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <Layout size={16} className="-rotate-90" />
+                Right to Left
+              </button>
+            </div>
+          </div>
+
+          {/* Swimlanes */}
+          <div className="relative group">
+            <ToolbarButton icon={Layers} title="Add Swimlanes" onClick={() => {}} />
+            <div className="absolute left-0 top-full mt-1 hidden group-hover:block bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 min-w-[200px] z-50">
+              <div className="px-3 py-1 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Swimlane Templates</div>
+              <button
+                onClick={() => handleAddSwimlanes('departments')}
+                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                🏢 Departments (Vertical)
+              </button>
+              <button
+                onClick={() => handleAddSwimlanes('roles')}
+                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                👥 Roles (Horizontal)
+              </button>
+              <button
+                onClick={() => handleAddSwimlanes('phases')}
+                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                📋 Project Phases (Horizontal)
+              </button>
+              <button
+                onClick={() => handleAddSwimlanes('systems')}
+                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                💻 Systems (Vertical)
+              </button>
+            </div>
+          </div>
+
+          {/* Smart Routing */}
+          <div className="relative group">
+            <ToolbarButton icon={ArrowRightLeft} title="Connector Routing Style" onClick={() => handleApplyRouting('flowchart')} />
+            <div className="absolute left-0 top-full mt-1 hidden group-hover:block bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 min-w-[180px] z-50">
+              <div className="px-3 py-1 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Routing Style</div>
+              <button
+                onClick={() => handleApplyRouting('flowchart')}
+                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                📐 Flowchart (Manhattan)
+              </button>
+              <button
+                onClick={() => handleApplyRouting('simple')}
+                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                📏 Simple (Orthogonal)
+              </button>
+              <button
+                onClick={() => handleApplyRouting('curved')}
+                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                🌊 Smooth Curves
+              </button>
+              <button
+                onClick={() => handleApplyRouting('metro')}
+                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                🚇 Metro Style
+              </button>
+              <button
+                onClick={() => handleApplyRouting('direct')}
+                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                ➡️ Direct (Straight)
+              </button>
+            </div>
+          </div>
+
+          {/* Decision Labels */}
+          <ToolbarButton icon={Workflow} title="Auto-Label Decision Branches (Yes/No)" onClick={handleLabelDecisions} />
+        </>
+      )}
+
       <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-2" />
 
       {/* History */}
@@ -571,11 +773,11 @@ export function Toolbar() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".json,.xmind,.mmap"
+        accept=".drwdd,.json,.xmind,.mmap"
         className="hidden"
         onChange={handleFileImport}
       />
-      <ToolbarButton icon={Upload} title="Import (JSON, XMind, MindManager)" onClick={handleImportClick} />
+      <ToolbarButton icon={Upload} title="Import (DRWDD, JSON, XMind, MindManager)" onClick={handleImportClick} />
 
       {/* Export */}
       <div className="relative group">

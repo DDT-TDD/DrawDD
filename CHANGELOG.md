@@ -2,6 +2,54 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.0] - 2026-02-03
+
+### Added
+
+#### Edge/Line Enhancements
+- **Line Hops (Jumpover)**: Enable line hops in Properties Panel to show arc jumps where edges cross
+- **Line Routing Context Menu**: Right-click edges for quick access to routing styles (Line Hops, Orthogonal, Rounded, Smooth, Straight)
+
+#### File Format
+- **New .drwdd Extension**: DRAWDD now saves files with `.drwdd` extension for easy identification
+- **Backwards Compatible**: Still opens legacy `.json` and `.drawdd.json` files
+
+### Fixed
+
+#### Quick Connect
+- **Arrow Click Handling**: Fixed Quick Connect arrows not responding to clicks in Flowchart mode
+- **Event Capture**: Improved event handling to prevent X6 from intercepting arrow clicks
+
+#### Properties Panel
+- **Color Input Fix**: Fixed "transparent" color value causing console errors in color picker (now gracefully handles non-hex colors)
+
+#### Text Rendering
+- **Multi-line Text Height**: Improved auto-sizing calculation to better estimate wrapped line heights
+
+#### Node Conversion
+- **Edge Preservation**: Edges now maintain their exact connection points when nodes convert to markdown mode
+- **Port Configuration**: Converted nodes now properly include all ports for edge connectivity
+
+## [2.0.2] - 2026-02-03
+
+### Added
+
+#### Flowchart Tools (Flowchart Mode Only)
+- **Auto-Layout**: Hierarchical auto-layout with TB, BT, LR, RL directions for automatic node arrangement
+- **Swimlanes**: Create swimlane containers with templates (Departments, Roles, Project Phases, Systems)
+- **Smart Connector Routing**: Multiple routing styles (Flowchart/Manhattan, Simple/Orthogonal, Curved, Metro, Direct)
+- **Decision Branch Labels**: Auto-label decision node branches with Yes/No based on direction
+- **Quick Connect Mode**: Utility for hover arrows to quickly add connected nodes (infrastructure ready)
+
+#### Markdown Improvements
+- **Hybrid Markdown Rendering**: Nodes are now automatically converted to support markdown when markdown syntax is detected
+- **Cross-Mode Markdown**: Markdown rendering now works in Flowchart mode (previously only worked in Mindmap mode)
+
+### Technical
+- New utilities: `flowchartLayout.ts`, `swimlane.ts`, `quickConnect.ts`, `smartRouting.ts`, `decisionLabels.ts`
+- Toolbar integration for flowchart-specific features
+- Graph instance exposed for advanced utilities via `window.__drawdd_graph`
+
 ## [2.0.1] - 2026-02-03
 
 ### Fixed

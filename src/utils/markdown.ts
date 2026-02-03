@@ -262,6 +262,9 @@ export function renderInlineMarkdown(text: string): string {
     html = html.replace(/`([^`]+)`/g,
         '<code style="background:#f5f5f5;padding:2px 4px;border-radius:3px;font-family:monospace;font-size:0.9em;">$1</code>');
 
+    // Convert newlines to <br> for multi-line support
+    html = html.replace(/\n/g, '<br>');
+
     return html;
 }
 
