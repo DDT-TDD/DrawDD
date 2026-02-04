@@ -844,19 +844,29 @@ export function showCellContextMenu(
         label: 'Add Event After',
         icon: '📅',
         action: () => {
-          const nodePos = (cell as X6Node).getPosition();
-          const nodeSize = (cell as X6Node).getSize();
+          const parentNode = cell as X6Node;
+          const nodePos = parentNode.getPosition();
+          const nodeSize = parentNode.getSize();
           const tlDir = (window as any).__timelineDirection || 'horizontal';
+
+          // Ensure parent node has ports for connection
+          const parentPorts = (parentNode as any).getPorts?.() || [];
+          if (parentPorts.length === 0) {
+            (parentNode as any).prop?.('ports', FULL_PORTS_CONFIG);
+          }
 
           const x0 = tlDir === 'horizontal' ? nodePos.x + nodeSize.width + 120 : nodePos.x;
           const y0 = tlDir === 'horizontal' ? nodePos.y : nodePos.y + nodeSize.height + 80;
 
+          const sourcePort = tlDir === 'horizontal' ? 'right' : 'bottom';
+          const targetPort = tlDir === 'horizontal' ? 'left' : 'top';
+
           const newEvent = graph.addNode({
             x: x0,
             y: y0,
-            width: 140,
-            height: 50,
-            shape: 'rich-content-node',
+            width: 120,
+            height: 55,
+            shape: 'rect',
             attrs: {
               body: { fill: colors.fill, stroke: colors.stroke, strokeWidth: 2, rx: 8, ry: 8 },
               label: { text: 'New Event', fill: colors.text, fontSize: 14 },
@@ -866,9 +876,9 @@ export function showCellContextMenu(
           });
 
           graph.addEdge({
-            source: cell.id,
-            target: newEvent.id,
-            attrs: { line: { stroke: lineColor, strokeWidth: 2 } },
+            source: { cell: cell.id, port: sourcePort },
+            target: { cell: newEvent.id, port: targetPort },
+            attrs: { line: { stroke: lineColor, strokeWidth: 2, targetMarker: { name: 'block', size: 6 } } },
           });
 
           graph.cleanSelection();

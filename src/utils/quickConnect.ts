@@ -81,9 +81,22 @@ export class QuickConnectManager {
       this.scheduleHide(node, 300);
     });
 
-    // Don't hide on scale/translate - just update positions
+    // Update positions on scale/translate (zoom and pan)
     this.graph.on('scale', () => {
       if (this.currentNode) {
+        this.updateArrowPositions();
+      }
+    });
+    
+    this.graph.on('translate', () => {
+      if (this.currentNode) {
+        this.updateArrowPositions();
+      }
+    });
+    
+    // Also track when the node itself moves
+    this.graph.on('node:moved', ({ node }) => {
+      if (this.currentNode && this.currentNode.id === node.id) {
         this.updateArrowPositions();
       }
     });
@@ -150,8 +163,19 @@ export class QuickConnectManager {
     const centerY = bbox.y + bbox.height / 2;
     
     // Create SVG container for arrows
+    // Append to the cells/stage layer so arrows transform with zoom/pan
     const svg = this.graph.view.svg;
     if (!svg) return;
+    
+    // Find the stage/viewport layer that contains cells (this layer already has transforms applied)
+    // In X6, cells are rendered in a <g> element with class "x6-graph-svg-stage"
+    let stageLayer = svg.querySelector('.x6-graph-svg-stage') as SVGGElement | null;
+    if (!stageLayer) {
+      // Fallback: try to find the first <g> that looks like the main content layer
+      stageLayer = svg.querySelector('g') as SVGGElement | null;
+    }
+    
+    const appendTarget = stageLayer || svg;
 
     this.container = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     this.container.setAttribute('class', 'quick-connect-arrows');
@@ -172,8 +196,8 @@ export class QuickConnectManager {
       }
     });
     
-    // Append to end of SVG to ensure it's on top
-    svg.appendChild(this.container);
+    // Append to the stage layer so transforms are correctly applied
+    appendTarget.appendChild(this.container);
 
     ARROW_POSITIONS.forEach(pos => {
       const arrowX = centerX + pos.dx * (bbox.width / 2 + this.options.arrowSize + 5);
@@ -260,11 +284,22 @@ export class QuickConnectManager {
     const bbox = sourceNode.getBBox();
     const { nodeSpacing, colorScheme, defaultShape } = this.options;
     const theme = getNextThemeColors(colorScheme);
+    
+    // Check if we're in timeline mode
+    const currentMode = (window as any).__drawdd_mode;
+    const isTimeline = currentMode === 'timeline';
+    const sourceData = sourceNode.getData() || {};
+
+    // Ensure source node has ports for connection
+    const sourcePorts = (sourceNode as any).getPorts?.() || [];
+    if (sourcePorts.length === 0) {
+      (sourceNode as any).prop?.('ports', FULL_PORTS_CONFIG);
+    }
 
     // Calculate new node position
     let newX: number, newY: number;
     const newWidth = 120;
-    const newHeight = 60;
+    const newHeight = isTimeline ? 55 : 60;
 
     switch (direction) {
       case 'top':
@@ -285,7 +320,11 @@ export class QuickConnectManager {
         break;
     }
 
-    // Create new node
+    // Create new node with appropriate data based on mode
+    const nodeData = isTimeline || sourceData.isTimeline 
+      ? { isTimeline: true, eventType: 'event' }
+      : {};
+
     const newNode = this.graph.addNode({
       x: newX,
       y: newY,
@@ -297,15 +336,16 @@ export class QuickConnectManager {
           fill: theme.fill,
           stroke: theme.stroke,
           strokeWidth: 2,
-          rx: 6,
-          ry: 6,
+          rx: isTimeline ? 8 : 6,
+          ry: isTimeline ? 8 : 6,
         },
         label: {
-          text: 'New Step',
+          text: isTimeline ? 'New Event' : 'New Step',
           fill: theme.text,
           fontSize: 14,
         },
       },
+      data: nodeData,
       ports: FULL_PORTS_CONFIG as any,
     });
 
@@ -405,6 +445,8 @@ export class QuickConnectManager {
     this.graph.off('node:mouseenter');
     this.graph.off('node:mouseleave');
     this.graph.off('scale');
+    this.graph.off('translate');
+    this.graph.off('node:moved');
     this.graph.off('blank:click');
     this.graph.off('cell:click');
   }

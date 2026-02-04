@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.1] - 2026-02-04
+
+### Changed
+
+#### Theme System Overhaul
+- **Professional Themes**: Complete redesign of all color schemes with light, professional backgrounds
+- **28 Curated Themes**: Replaced 30+ inconsistent themes with 28 carefully designed options
+- **Theme Categories**: Organized into Professional, Elegant, Nature, Warm, Creative, Pastel, Earth Tones, Accessibility, and Dark Mode
+- **Improved Readability**: Better contrast ratios and meaningful color combinations
+
+### Fixed
+
+#### Timeline Mode
+- **Context Menu Detection**: Fixed timeline context menu not showing timeline-specific options due to stale closure
+- **Quick Connect Arrows**: Fixed hover arrows not appearing in Timeline mode
+- **Dynamic Port Injection**: Nodes created via Insert key now properly receive connection ports
+
+#### Connections
+- **Visio Import Ports**: Shapes imported from Visio now have proper port configuration
+- **Parent Node Ports**: Parent nodes now dynamically receive ports when adding child events
+
+#### Multi-Selection
+- **Selection List Display**: Properties panel now shows list of all selected items, not just count
+- **Primary Selection Indicator**: Visual marker shows primary node in multi-selection
+- **Mixed Selection Support**: Properly displays both nodes and edges in selection
+
+#### Quick Connect
+- **SVG Layer Positioning**: Arrows now render in correct layer
+- **Pan/Zoom Updates**: Arrows update position during canvas navigation
+- **Node Move Tracking**: Arrows reposition when hovered node moves
+
 ## [2.1.0] - 2026-02-03
 
 ### Added

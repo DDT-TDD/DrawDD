@@ -3,6 +3,7 @@ import type { DrawddDocument, XMindSheet, XMindTopic, MindmapNode } from '../typ
 import type { Graph, Node } from '@antv/x6';
 import { applyMindmapLayout } from './layout';
 import { initializeCollapseIndicators } from './collapse';
+import { FULL_PORTS_CONFIG } from '../config/shapes';
 
 // ============ XMind Import ============
 
@@ -1147,6 +1148,7 @@ export function visioToGraph(graph: Graph, data: VisioData): void {
           fontSize: 12,
         },
       },
+      ports: FULL_PORTS_CONFIG as any,
     });
   });
 

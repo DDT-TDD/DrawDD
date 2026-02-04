@@ -3,6 +3,7 @@ import { X, Search, ChevronRight } from 'lucide-react';
 import { useGraph } from '../context/GraphContext';
 import { applyMindmapLayout, applyTreeLayout } from '../utils/layout';
 import { setNodeLabelWithAutoSize } from '../utils/text';
+import { FULL_PORTS_CONFIG } from '../config/shapes';
 
 interface ExamplesDialogProps {
   isOpen: boolean;
@@ -327,7 +328,7 @@ export function ExamplesDialog({ isOpen, onClose }: ExamplesDialogProps) {
     if (!graph) return;
     graph.clearCells();
 
-    // Timeline line
+    // Timeline line (decorative, no ports needed)
     graph.addNode({ x: 50, y: 200, width: 700, height: 4, attrs: { body: { fill: '#64748b', stroke: 'transparent' }, label: { text: '' } } });
 
     const events = [
@@ -341,13 +342,15 @@ export function ExamplesDialog({ isOpen, onClose }: ExamplesDialogProps) {
     events.forEach((e, i) => {
       graph.addNode({
         x: e.x, y: e.y, width: 100, height: 60,
-        attrs: { body: { fill: e.fill, stroke: e.fill, rx: 8 }, label: { text: e.label, fill: '#fff', fontSize: 10 } }
+        attrs: { body: { fill: e.fill, stroke: e.fill, rx: 8 }, label: { text: e.label, fill: '#fff', fontSize: 10 } },
+        data: { isTimeline: true, eventType: 'event' },
+        ports: FULL_PORTS_CONFIG as any,
       });
-      // Connector to timeline
+      // Connector to timeline (decorative)
       graph.addNode({ x: e.x + 45, y: i % 2 === 0 ? 180 : 205, width: 10, height: i % 2 === 0 ? 60 : 45, attrs: { body: { fill: e.fill, stroke: 'transparent' }, label: { text: '' } } });
     });
 
-    setMode('flowchart');
+    setMode('timeline');
     onClose();
   };
 

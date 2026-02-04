@@ -1183,6 +1183,8 @@ export function PropertiesPanel() {
       });
     };
 
+    const totalItems = selectedNodes.length + selectedEdges.length;
+
     return (
       <div className="w-72 bg-white dark:bg-gray-800 flex flex-col h-full overflow-hidden border-l border-gray-200 dark:border-gray-700">
         <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-blue-50/50 dark:bg-blue-900/10">
@@ -1192,13 +1194,76 @@ export function PropertiesPanel() {
             </div>
             <div>
               <h2 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wide">
-                {selectedNodes.length} Items Selected
+                {totalItems} Items Selected
               </h2>
+              {selectedEdges.length > 0 && (
+                <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                  {selectedNodes.length} shapes, {selectedEdges.length} connections
+                </p>
+              )}
             </div>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          {/* Selected Items List */}
+          <Section title={`Selected Shapes (${selectedNodes.length})`}>
+            <div className="max-h-40 overflow-y-auto space-y-1 bg-gray-50 dark:bg-gray-900 rounded-md p-2">
+              {selectedNodes.map((node, index) => {
+                const labelText = String((node.getAttrs()?.label as any)?.text || 'Shape');
+                const truncatedLabel = labelText.length > 25 ? labelText.substring(0, 22) + '...' : labelText;
+                const isLast = index === selectedNodes.length - 1;
+                return (
+                  <div 
+                    key={node.id} 
+                    className={`flex items-center gap-2 text-xs px-2 py-1.5 rounded ${
+                      isLast 
+                        ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800' 
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                    }`}
+                    title={labelText}
+                  >
+                    <span className="w-5 h-5 flex items-center justify-center rounded bg-gray-200 dark:bg-gray-700 text-[10px] font-medium">
+                      {index + 1}
+                    </span>
+                    <span className="flex-1 truncate">{truncatedLabel}</span>
+                    {isLast && <span className="text-[10px] text-blue-500 dark:text-blue-400">Primary</span>}
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1.5 text-center">
+              Primary item is used as reference for size matching
+            </p>
+          </Section>
+
+          {/* Selected Connections (if any) */}
+          {selectedEdges.length > 0 && (
+            <Section title={`Selected Connections (${selectedEdges.length})`}>
+              <div className="max-h-28 overflow-y-auto space-y-1 bg-gray-50 dark:bg-gray-900 rounded-md p-2">
+                {selectedEdges.map((edge, index) => {
+                  const sourceCell = edge.getSourceCell();
+                  const targetCell = edge.getTargetCell();
+                  const sourceLabel = sourceCell?.isNode() ? String((sourceCell.getAttrs()?.label as any)?.text || 'Shape').substring(0, 10) : '?';
+                  const targetLabel = targetCell?.isNode() ? String((targetCell.getAttrs()?.label as any)?.text || 'Shape').substring(0, 10) : '?';
+                  return (
+                    <div 
+                      key={edge.id} 
+                      className="flex items-center gap-1.5 text-[10px] px-2 py-1 rounded text-gray-600 dark:text-gray-400"
+                    >
+                      <span className="w-4 h-4 flex items-center justify-center rounded bg-gray-200 dark:bg-gray-700 text-[9px] font-medium shrink-0">
+                        {index + 1}
+                      </span>
+                      <span className="truncate">{sourceLabel}</span>
+                      <span className="text-gray-400">→</span>
+                      <span className="truncate">{targetLabel}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </Section>
+          )}
+
           {/* Alignment */}
           <Section title="Alignment">
             <div className="grid grid-cols-6 gap-1">
@@ -1347,6 +1412,33 @@ export function PropertiesPanel() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-5">
+          {/* Selected Connections List */}
+          <Section title="Selected Connections">
+            <div className="max-h-32 overflow-y-auto space-y-1 bg-gray-50 dark:bg-gray-900 rounded-md p-2">
+              {selectedEdges.map((edge, index) => {
+                const sourceCell = edge.getSourceCell();
+                const targetCell = edge.getTargetCell();
+                const sourceLabel = sourceCell?.isNode() ? String((sourceCell.getAttrs()?.label as any)?.text || 'Shape').substring(0, 12) : '?';
+                const targetLabel = targetCell?.isNode() ? String((targetCell.getAttrs()?.label as any)?.text || 'Shape').substring(0, 12) : '?';
+                const edgeLabel = (edge.getLabels()?.[0]?.attrs?.label as any)?.text || '';
+                return (
+                  <div 
+                    key={edge.id} 
+                    className="flex items-center gap-1.5 text-[10px] px-2 py-1.5 rounded text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+                    title={`${sourceLabel} → ${targetLabel}${edgeLabel ? ` (${edgeLabel})` : ''}`}
+                  >
+                    <span className="w-4 h-4 flex items-center justify-center rounded bg-gray-200 dark:bg-gray-700 text-[9px] font-medium shrink-0">
+                      {index + 1}
+                    </span>
+                    <span className="truncate">{sourceLabel}</span>
+                    <span className="text-gray-400">→</span>
+                    <span className="truncate">{targetLabel}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </Section>
+
           <Section title="Line Style">
             <div className="grid grid-cols-3 gap-2">
               {(['solid', 'dashed', 'dotted'] as const).map((style) => (

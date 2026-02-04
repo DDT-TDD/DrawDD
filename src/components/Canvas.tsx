@@ -586,22 +586,33 @@ export function Canvas() {
           const size = parentNode.getSize();
           const isHorizontal = timelineDirection === 'horizontal';
 
+          // Ensure parent node has ports for connection
+          const parentPorts = (parentNode as any).getPorts?.() || [];
+          if (parentPorts.length === 0) {
+            (parentNode as any).prop?.('ports', FULL_PORTS_CONFIG);
+          }
+
           const newNode = graph.addNode({
             shape: 'rect',
             x: isHorizontal ? pos.x + size.width + 100 : pos.x,
             y: isHorizontal ? pos.y : pos.y + size.height + 80,
-            width: 100,
-            height: 60,
+            width: 120,
+            height: 55,
             attrs: {
-              body: { fill: insColors.fill, stroke: insColors.stroke, strokeWidth: 2, rx: 4, ry: 4 },
+              body: { fill: insColors.fill, stroke: insColors.stroke, strokeWidth: 2, rx: 8, ry: 8 },
               label: { text: 'New Event', fill: insColors.text, fontSize: 14 },
             },
+            data: { isTimeline: true, eventType: 'event' },
+            ports: FULL_PORTS_CONFIG as any,
           });
 
+          const sourcePort = isHorizontal ? 'right' : 'bottom';
+          const targetPort = isHorizontal ? 'left' : 'top';
+
           graph.addEdge({
-            source: parentNode,
-            target: newNode,
-            attrs: { line: { stroke: insLineColor, strokeWidth: 2 } },
+            source: { cell: parentNode.id, port: sourcePort },
+            target: { cell: newNode.id, port: targetPort },
+            attrs: { line: { stroke: insLineColor, strokeWidth: 2, targetMarker: { name: 'block', size: 6 } } },
           });
 
           graph.cleanSelection();
@@ -1118,8 +1129,10 @@ export function Canvas() {
         colorByLevel: false,
         theme: 'blue'
       };
+      // Use window.__drawdd_mode to get current mode (closure value would be stale)
+      const currentMode = (window as any).__drawdd_mode || 'flowchart';
       showCellContextMenu(graph, cell, e.clientX, e.clientY, {
-        mode,
+        mode: currentMode,
         mindmapSettings: mmSettings
       });
     });
@@ -1133,8 +1146,10 @@ export function Canvas() {
         colorByLevel: false,
         theme: 'blue'
       };
+      // Use window.__drawdd_mode to get current mode (closure value would be stale)
+      const currentMode = (window as any).__drawdd_mode || 'flowchart';
       showEmptyCanvasContextMenu(graph, x, y, e.clientX, e.clientY, {
-        mode,
+        mode: currentMode,
         mindmapSettings: mmSettings
       });
     });
@@ -1498,12 +1513,12 @@ export function Canvas() {
     };
   }, []);
 
-  // Quick Connect Mode - show hover arrows for flowcharts
+  // Quick Connect Mode - show hover arrows for flowcharts and timelines
   useEffect(() => {
     const graph = graphRef.current;
     if (!graph) return;
 
-    if (mode === 'flowchart') {
+    if (mode === 'flowchart' || mode === 'timeline') {
       // Create Quick Connect if not already created
       if (!quickConnectRef.current) {
         quickConnectRef.current = createQuickConnect(graph, {
@@ -1514,7 +1529,7 @@ export function Canvas() {
       quickConnectRef.current.setEnabled(true);
       quickConnectRef.current.updateOptions({ colorScheme });
     } else {
-      // Disable Quick Connect for non-flowchart modes
+      // Disable Quick Connect for mindmap mode
       if (quickConnectRef.current) {
         quickConnectRef.current.setEnabled(false);
       }
