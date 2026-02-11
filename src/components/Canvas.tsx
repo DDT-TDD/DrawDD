@@ -351,8 +351,8 @@ export function Canvas() {
         multiple: true,
         rubberband: true,
         movable: true,
-        showNodeSelectionBox: false,
-        showEdgeSelectionBox: false,
+        showNodeSelectionBox: true,
+        showEdgeSelectionBox: true,
       })
     );
 
@@ -715,7 +715,7 @@ export function Canvas() {
 
         // Use setTimeout to ensure all DOM updates settle before layout recalculation
         setTimeout(() => {
-          applyMindmapLayout(graph, dir, rootNode);
+          applyMindmapLayout(graph, dir, rootNode, mindmapLayoutMode);
         }, 0);
 
         graph.unselect(childNode);
@@ -824,7 +824,7 @@ export function Canvas() {
 
           // Use setTimeout to ensure all DOM updates settle before layout recalculation
           setTimeout(() => {
-            applyMindmapLayout(graph, dir, rootNode);
+            applyMindmapLayout(graph, dir, rootNode, mindmapLayoutMode);
           }, 0);
         }
 
@@ -1072,8 +1072,8 @@ export function Canvas() {
               if (value) {
                 edge.setLabels([{
                   attrs: {
-                    text: { text: value, fill: '#333', fontSize: 12, lineHeight: 1.3, whiteSpace: 'pre-wrap' },
-                    rect: { fill: '#fff', stroke: '#ddd', strokeWidth: 1 },
+                    text: { text: value, fill: '#333', fontSize: 12 },
+                    rect: { fill: '#fff', stroke: '#ddd', strokeWidth: 1, ref: 'text', refWidth: '140%', refHeight: '140%', refX: '-20%', refY: '-20%' },
                   },
                   position: 0.5,
                 }]);
@@ -1197,19 +1197,23 @@ export function Canvas() {
         editCellTextHandlerRef.current = null;
       }
       if (graphRef.current) {
-        graphRef.current.dispose();
+        const graph = graphRef.current;
         graphRef.current = null;
+        // Defer disposal to avoid "Attempted to synchronously unmount a root" React error
+        setTimeout(() => {
+          graph.dispose();
+        }, 0);
       }
       delete (window as any).__drawdd_graph; // Clean up graph reference
     };
   }, [initGraph]);
 
   // Handle paste-as-children: when pasting text on a mindmap node, create child branches
+  // Also handle system clipboard paste for text and images on canvas
   useEffect(() => {
-    const handleBrowserPaste = (e: ClipboardEvent) => {
-      const currentMode = (window as any).__drawdd_mode;
+    const handleBrowserPaste = async (e: ClipboardEvent) => {
       const graph = graphRef.current;
-      if (!graph || currentMode !== 'mindmap') return;
+      if (!graph) return;
 
       // Only intercept if focus is on the canvas (not in a text input)
       if (document.activeElement &&
@@ -1219,35 +1223,99 @@ export function Canvas() {
         return;
       }
 
-      const cells = graph.getSelectedCells();
-      if (cells.length !== 1 || !cells[0].isNode()) return;
+      const currentMode = (window as any).__drawdd_mode;
 
-      const clipboardText = e.clipboardData?.getData('text');
-      if (!clipboardText) return;
-
-      // Check if clipboard contains multi-line text or tab-separated values
-      const lines = clipboardText.split(/[\r\n]+/).filter(line => line.trim());
-      if (lines.length <= 1 && !clipboardText.includes('\t')) {
-        // Single line without tabs - let default paste handle it
-        return;
+      // === Mindmap multi-line paste (existing behavior) ===
+      if (currentMode === 'mindmap') {
+        const cells = graph.getSelectedCells();
+        if (cells.length === 1 && cells[0].isNode()) {
+          const clipboardText = e.clipboardData?.getData('text');
+          if (clipboardText) {
+            const lines = clipboardText.split(/[\r\n]+/).filter(line => line.trim());
+            if (lines.length > 1 || clipboardText.includes('\t')) {
+              e.preventDefault();
+              const parentNode = cells[0] as X6Node;
+              const mmSettings = mindmapSettingsRef.current;
+              const dir = (window as any).__mindmapDirection || 'right';
+              handlePasteAsChildren(
+                graph, parentNode, dir,
+                lineColorRef.current, colorScheme,
+                mmSettings, clipboardText
+              );
+              return;
+            }
+          }
+        }
       }
 
-      // Prevent default paste behavior
-      e.preventDefault();
+      // === Image paste from clipboard ===
+      const items = e.clipboardData?.items;
+      if (items) {
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          if (item.type.startsWith('image/')) {
+            e.preventDefault();
+            const blob = item.getAsFile();
+            if (!blob) continue;
 
-      const parentNode = cells[0] as X6Node;
-      const mmSettings = mindmapSettingsRef.current;
-      const dir = (window as any).__mindmapDirection || 'right';
+            const reader = new FileReader();
+            reader.onload = () => {
+              const dataUrl = reader.result as string;
+              // Get center of current viewport
+              const { x: cx, y: cy } = graph.getGraphArea().center;
+              const img = new Image();
+              img.onload = () => {
+                // Scale image to max 400px wide/tall
+                const maxDim = 400;
+                let w = img.width;
+                let h = img.height;
+                if (w > maxDim || h > maxDim) {
+                  const scale = maxDim / Math.max(w, h);
+                  w = Math.round(w * scale);
+                  h = Math.round(h * scale);
+                }
+                graph.addNode({
+                  x: cx - w / 2,
+                  y: cy - h / 2,
+                  width: w,
+                  height: h,
+                  attrs: {
+                    body: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 },
+                    image: { 'xlink:href': dataUrl, width: w, height: h },
+                    label: { text: '' },
+                  },
+                  shape: 'image',
+                });
+              };
+              img.src = dataUrl;
+            };
+            reader.readAsDataURL(blob);
+            return;
+          }
+        }
+      }
 
-      handlePasteAsChildren(
-        graph,
-        parentNode,
-        dir,
-        lineColorRef.current,
-        colorScheme,
-        mmSettings,
-        clipboardText
-      );
+      // === Plain text paste onto canvas (create text node) ===
+      const clipboardText = e.clipboardData?.getData('text');
+      if (clipboardText && clipboardText.trim()) {
+        // Only intercept if X6 clipboard plugin won't handle it
+        // (X6 clipboard handles its own internal copy/paste via Ctrl+C/V on selected cells)
+        const selected = graph.getSelectedCells();
+        if (selected.length === 0) {
+          e.preventDefault();
+          const { x: cx, y: cy } = graph.getGraphArea().center;
+          graph.addNode({
+            x: cx - 60,
+            y: cy - 20,
+            width: 120,
+            height: 40,
+            attrs: {
+              body: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 },
+              label: { text: clipboardText.trim(), fontSize: 14, fill: '#333' },
+            },
+          });
+        }
+      }
     };
 
     document.addEventListener('paste', handleBrowserPaste);
@@ -1275,10 +1343,12 @@ export function Canvas() {
 
   // Listen for layout mode changes (compact/standard) and re-apply layout
   useEffect(() => {
-    const handleLayoutModeChanged = () => {
+    const handleLayoutModeChanged = (e: Event) => {
       if (!graphRef.current || mode !== 'mindmap') return;
       const graph = graphRef.current;
       const dir = mindmapDirection;
+      const layoutMode = (e as CustomEvent).detail?.mode ||
+        (localStorage.getItem('drawdd-mindmap-layout-mode') as 'compact' | 'standard' | 'spacious') || 'standard';
 
       // Find root nodes (nodes with no incoming edges that are mindmap nodes)
       const nodes = graph.getNodes();
@@ -1291,7 +1361,7 @@ export function Canvas() {
 
       // Apply layout to each root
       rootNodes.forEach(rootNode => {
-        applyMindmapLayout(graph, dir, rootNode);
+        applyMindmapLayout(graph, dir, rootNode, layoutMode);
       });
     };
 

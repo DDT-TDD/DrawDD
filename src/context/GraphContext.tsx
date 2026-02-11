@@ -59,7 +59,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
   });
 
   // New layout and feature settings
-  const [mindmapLayoutMode, setMindmapLayoutMode] = useState<'standard' | 'compact'>(() => {
+  const [mindmapLayoutMode, setMindmapLayoutMode] = useState<'compact' | 'standard' | 'spacious'>(() => {
     return (localStorage.getItem('drawdd-mindmap-layout-mode') as any) || 'standard';
   });
   const [markdownEnabled, setMarkdownEnabled] = useState<boolean>(() => {
@@ -146,7 +146,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
         },
         // New layout and feature settings
         mindmapLayoutMode,
-        setMindmapLayoutMode: (mode: 'standard' | 'compact') => {
+        setMindmapLayoutMode: (mode: 'compact' | 'standard' | 'spacious') => {
           setMindmapLayoutMode(mode);
           localStorage.setItem('drawdd-mindmap-layout-mode', mode);
           // Dispatch event to trigger layout refresh

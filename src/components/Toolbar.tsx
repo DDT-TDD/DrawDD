@@ -47,15 +47,15 @@ export function Toolbar() {
   // Track selection changes
   useEffect(() => {
     if (!graph) return;
-    
+
     const updateSelection = () => {
       const cells = graph.getSelectedCells();
       setSelectionCount(cells.length);
     };
-    
+
     graph.on('selection:changed', updateSelection);
     updateSelection();
-    
+
     return () => {
       graph.off('selection:changed', updateSelection);
     };
@@ -119,13 +119,13 @@ export function Toolbar() {
       const container = graph.container as HTMLElement | undefined;
       const shouldHide = !exportConnectionPoints;
       const shouldHideGrid = !exportGrid && showGrid;
-      
+
       if (shouldHide && container) container.classList.add('hide-ports');
       if (shouldHideGrid) graph.hideGrid();
-      
+
       // Wait a frame for changes to apply
       await new Promise(resolve => setTimeout(resolve, 100));
-      
+
       graph.toPNG((dataUri: string) => {
         // Convert data URI to blob
         const byteString = atob(dataUri.split(',')[1]);
@@ -137,7 +137,7 @@ export function Toolbar() {
         }
         const blob = new Blob([ab], { type: mimeString });
         saveAs(blob, 'drawdd-export.png');
-        
+
         // Restore after export
         if (shouldHide && container) container.classList.remove('hide-ports');
         if (shouldHideGrid) graph.showGrid();
@@ -153,17 +153,17 @@ export function Toolbar() {
       const container = graph.container as HTMLElement | undefined;
       const shouldHide = !exportConnectionPoints;
       const shouldHideGrid = !exportGrid && showGrid;
-      
+
       if (shouldHide && container) container.classList.add('hide-ports');
       if (shouldHideGrid) graph.hideGrid();
-      
+
       // Wait a frame for changes to apply
       await new Promise(resolve => setTimeout(resolve, 100));
-      
+
       graph.toSVG((svgString: string) => {
         const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
         saveAs(blob, 'drawdd-export.svg');
-        
+
         // Restore after export
         if (shouldHide && container) container.classList.remove('hide-ports');
         if (shouldHideGrid) graph.showGrid();
@@ -208,7 +208,7 @@ export function Toolbar() {
       if (ext === 'json' || ext === 'drwdd') {
         const text = await file.text();
         const parsed = JSON.parse(text);
-        
+
         // Check if it's a DiagramFile (has pages) or old DrawddDocument format
         if (parsed.pages && Array.isArray(parsed.pages)) {
           // New format with pages - load first page
@@ -288,13 +288,13 @@ export function Toolbar() {
 
   const handleApplyRouting = (style: 'flowchart' | 'simple' | 'curved' | 'metro' | 'direct') => {
     if (!graph) return;
-    
+
     // Use same logic as PropertiesPanel handleApplyEdgesToAll for consistency
     graph.getEdges().forEach(edge => {
       // Get current source/target to preserve connection points
       const source = edge.getSource();
       const target = edge.getTarget();
-      
+
       if (style === 'curved') {
         // Smooth curves
         edge.setConnector('smooth');
@@ -302,7 +302,7 @@ export function Toolbar() {
       } else if (style === 'flowchart') {
         // Manhattan routing with rounded corners (like Orthogonal-Rounded)
         edge.setConnector({ name: 'rounded', args: { radius: 10 } });
-        edge.setRouter({ 
+        edge.setRouter({
           name: 'manhattan',
           args: {
             // Preserve connection points by using existing anchors
@@ -313,7 +313,7 @@ export function Toolbar() {
       } else if (style === 'simple') {
         // Orthogonal with sharp corners
         edge.setConnector('normal');
-        edge.setRouter({ 
+        edge.setRouter({
           name: 'manhattan',
           args: {
             startDirections: ['top', 'right', 'bottom', 'left'],
@@ -329,7 +329,7 @@ export function Toolbar() {
         edge.setConnector('normal');
         edge.setRouter('normal');
       }
-      
+
       // Re-apply source/target to ensure connection points are preserved
       if (source) edge.setSource(source);
       if (target) edge.setTarget(target);
@@ -440,33 +440,30 @@ export function Toolbar() {
       <div className="flex items-center gap-1 mr-4 p-1 bg-gray-100 dark:bg-gray-700 rounded-lg">
         <button
           onClick={() => setMode('flowchart')}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-            mode === 'flowchart'
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === 'flowchart'
               ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm'
               : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
-          }`}
+            }`}
         >
           <LayoutGrid size={16} />
           Flowchart
         </button>
         <button
           onClick={() => setMode('mindmap')}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-            mode === 'mindmap'
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === 'mindmap'
               ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm'
               : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
-          }`}
+            }`}
         >
           <GitBranch size={16} />
           Mindmap
         </button>
         <button
           onClick={() => setMode('timeline')}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-            mode === 'timeline'
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === 'timeline'
               ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm'
               : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
-          }`}
+            }`}
         >
           📅
           Timeline
@@ -478,26 +475,34 @@ export function Toolbar() {
       {mode === 'mindmap' && (
         <div className="flex items-center gap-1 p-1 bg-gray-100 dark:bg-gray-700 rounded-lg">
           <button
-            onClick={() => setMindmapLayoutMode('standard')}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              mindmapLayoutMode === 'standard'
+            onClick={() => setMindmapLayoutMode('compact')}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${mindmapLayoutMode === 'compact'
                 ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm'
                 : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
-            }`}
-            title="Standard spacing (more room)"
+              }`}
+            title="Compact spacing (tighter gaps)"
+          >
+            Compact
+          </button>
+          <button
+            onClick={() => setMindmapLayoutMode('standard')}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${mindmapLayoutMode === 'standard'
+                ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm'
+                : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            title="Standard spacing"
           >
             Standard
           </button>
           <button
-            onClick={() => setMindmapLayoutMode('compact')}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              mindmapLayoutMode === 'compact'
+            onClick={() => setMindmapLayoutMode('spacious')}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${mindmapLayoutMode === 'spacious'
                 ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm'
                 : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
-            }`}
-            title="Compact spacing (30% tighter)"
+              }`}
+            title="Spacious spacing (wider gaps)"
           >
-            Compact
+            Spacious
           </button>
         </div>
       )}
@@ -556,7 +561,7 @@ export function Toolbar() {
 
       {/* Alignment */}
       <div className="relative group">
-        <ToolbarButton icon={AlignHorizontalJustifyCenter} title="Align & Distribute" onClick={() => {}} />
+        <ToolbarButton icon={AlignHorizontalJustifyCenter} title="Align & Distribute" onClick={() => { }} />
         <div className="absolute left-0 top-full mt-1 hidden group-hover:block bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 min-w-[180px] z-50">
           <div className="px-3 py-1 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Align</div>
           <button
@@ -623,7 +628,7 @@ export function Toolbar() {
       {mode === 'flowchart' && (
         <>
           <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-2" />
-          
+
           {/* Auto-Layout */}
           <div className="relative group">
             <ToolbarButton icon={Layout} title="Auto-Layout Flowchart" onClick={() => handleAutoLayout('TB')} />
@@ -662,7 +667,7 @@ export function Toolbar() {
 
           {/* Swimlanes */}
           <div className="relative group">
-            <ToolbarButton icon={Layers} title="Add Swimlanes" onClick={() => {}} />
+            <ToolbarButton icon={Layers} title="Add Swimlanes" onClick={() => { }} />
             <div className="absolute left-0 top-full mt-1 hidden group-hover:block bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 min-w-[200px] z-50">
               <div className="px-3 py-1 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Swimlane Templates</div>
               <button
@@ -781,7 +786,7 @@ export function Toolbar() {
 
       {/* Export */}
       <div className="relative group">
-        <ToolbarButton icon={Download} title="Export" onClick={() => {}} />
+        <ToolbarButton icon={Download} title="Export" onClick={() => { }} />
         <div className="absolute right-0 top-full mt-1 hidden group-hover:block bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 min-w-[160px] z-50">
           <button
             onClick={handleExportPNG}

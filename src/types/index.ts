@@ -83,7 +83,7 @@ export interface NodeData {
   isMindmap?: boolean;
   level?: number;
   mmOrder?: number;
-  
+
   // Timeline properties
   isTimeline?: boolean;
   eventType?: 'event' | 'milestone' | 'period' | 'decision' | 'phase' | 'task';
@@ -93,7 +93,7 @@ export interface NodeData {
   description?: string;
   priority?: 'low' | 'medium' | 'high';
   status?: 'planned' | 'in-progress' | 'completed' | 'cancelled';
-  
+
   // Visual properties
   imageUrl?: string;
   naturalWidth?: number;
@@ -103,10 +103,10 @@ export interface NodeData {
   text?: string;
   textColor?: string;
   locked?: boolean;
-  
+
   // Folder explorer properties
   folderExplorer?: FolderExplorerMetadata;
-  
+
   // Collapse/expand property
   collapsed?: boolean;
 }
@@ -238,8 +238,8 @@ export interface GraphContextType {
   mindmapConnectorStyle: 'smooth' | 'orthogonal-rounded' | 'orthogonal-sharp' | 'straight';
   setMindmapConnectorStyle: (style: 'smooth' | 'orthogonal-rounded' | 'orthogonal-sharp' | 'straight') => void;
   // New layout settings
-  mindmapLayoutMode: 'standard' | 'compact';
-  setMindmapLayoutMode: (mode: 'standard' | 'compact') => void;
+  mindmapLayoutMode: 'compact' | 'standard' | 'spacious';
+  setMindmapLayoutMode: (mode: 'compact' | 'standard' | 'spacious') => void;
   // Markdown and folder explorer settings
   markdownEnabled: boolean;
   setMarkdownEnabled: (enabled: boolean) => void;
