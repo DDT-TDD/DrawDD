@@ -429,14 +429,97 @@ export function showEmptyCanvasContextMenu(
                   window.dispatchEvent(new CustomEvent('drawdd-mode-change', { detail: { mode: 'mindmap' } }));
                 }
               } else {
-                // Regular text - maybe create a text node?
-                // For now just notify user or do nothing if not markmap
-                console.log('Clipboard contains text but not markdown structure');
+                // Create a text node from clipboard text
+                const point = graph.clientToLocal({ x: clientX, y: clientY });
+                graph.addNode({
+                  shape: 'rect',
+                  x: point.x - 60,
+                  y: point.y - 20,
+                  width: 160,
+                  height: 40,
+                  attrs: {
+                    body: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 },
+                    label: { text: text.trim(), fontSize: 14, fill: '#333' },
+                  },
+                });
               }
             }
           } catch (e) {
             console.error('Paste failed:', e);
           }
+        }
+      }
+    },
+    {
+      label: 'Paste Text',
+      icon: '📝',
+      action: async () => {
+        try {
+          const text = await navigator.clipboard.readText();
+          if (text && text.trim().length > 0) {
+            const point = graph.clientToLocal({ x: clientX, y: clientY });
+            const node = graph.addNode({
+              shape: 'rect',
+              x: point.x - 80,
+              y: point.y - 20,
+              width: 160,
+              height: 40,
+              attrs: {
+                body: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 },
+                label: { text: text.trim(), fontSize: 14, fill: '#333' },
+              },
+            });
+            graph.cleanSelection();
+            graph.select(node);
+          }
+        } catch (e) {
+          console.error('Paste text failed:', e);
+        }
+      }
+    },
+    {
+      label: 'Paste Image',
+      icon: '🖼️',
+      action: async () => {
+        try {
+          const clipboardItems = await navigator.clipboard.read();
+          for (const item of clipboardItems) {
+            const imageType = item.types.find(t => t.startsWith('image/'));
+            if (imageType) {
+              const blob = await item.getType(imageType);
+              const reader = new FileReader();
+              reader.onload = (evt) => {
+                const dataUrl = evt.target?.result as string;
+                const img = new Image();
+                img.onload = () => {
+                  const maxDim = 320;
+                  const scale = Math.min(maxDim / img.width, maxDim / img.height, 1);
+                  const width = Math.round(img.width * scale);
+                  const height = Math.round(img.height * scale);
+                  const point = graph.clientToLocal({ x: clientX, y: clientY });
+                  const node = graph.addNode({
+                    x: point.x - width / 2,
+                    y: point.y - height / 2,
+                    width,
+                    height,
+                    shape: 'image',
+                    attrs: {
+                      image: {
+                        'xlink:href': dataUrl,
+                      },
+                    },
+                  });
+                  graph.cleanSelection();
+                  graph.select(node);
+                };
+                img.src = dataUrl;
+              };
+              reader.readAsDataURL(blob);
+              break;
+            }
+          }
+        } catch (e) {
+          console.error('Paste image failed:', e);
         }
       }
     },

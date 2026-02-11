@@ -27,7 +27,7 @@ export function applyMindmapLayout(
   graph: Graph,
   direction: MindmapLayoutDirection,
   startNode?: Node,
-  layoutMode: 'standard' | 'compact' = 'standard'
+  layoutMode: 'compact' | 'standard' | 'spacious' = 'standard'
 ) {
   const nodes = graph.getNodes();
   if (nodes.length === 0) return;
@@ -76,7 +76,7 @@ export function applyTreeLayout(
   graph: Graph,
   direction: LayoutDirection = 'LR',
   startNode?: Node,
-  layoutMode: 'standard' | 'compact' = 'standard'
+  layoutMode: 'compact' | 'standard' | 'spacious' = 'standard'
 ) {
   const nodes = graph.getNodes();
   if (nodes.length === 0) return;
@@ -84,8 +84,8 @@ export function applyTreeLayout(
   const root = startNode || nodes.find(n => graph.getIncomingEdges(n)?.length === 0) || nodes[0];
 
   // Adjust gaps based on layout mode
-  const LEVEL_GAP = layoutMode === 'compact' ? 100 : 140;
-  const SIBLING_GAP = layoutMode === 'compact' ? 30 : 50;
+  const LEVEL_GAP = layoutMode === 'compact' ? 80 : layoutMode === 'spacious' ? 200 : 140;
+  const SIBLING_GAP = layoutMode === 'compact' ? 20 : layoutMode === 'spacious' ? 70 : 50;
 
   const rootPos = root.getPosition();
   const tree = buildTree(graph, root);
@@ -93,7 +93,7 @@ export function applyTreeLayout(
   applyPositionsImproved(tree, direction, LEVEL_GAP, SIBLING_GAP, rootPos);
 }
 
-function applyBalancedLayout(graph: Graph, root: Node, layoutMode: 'standard' | 'compact' = 'standard') {
+function applyBalancedLayout(graph: Graph, root: Node, layoutMode: 'compact' | 'standard' | 'spacious' = 'standard') {
   const outgoing = graph.getOutgoingEdges(root) || [];
   const children = outgoing.map(edge => {
     const targetId = edge.getTargetCellId();
@@ -122,8 +122,8 @@ function applyBalancedLayout(graph: Graph, root: Node, layoutMode: 'standard' | 
 
   const rootPos = root.getPosition();
   // Adjust gaps based on layout mode
-  const LEVEL_GAP = layoutMode === 'compact' ? 100 : 140;
-  const SIBLING_GAP = layoutMode === 'compact' ? 30 : 50;
+  const LEVEL_GAP = layoutMode === 'compact' ? 80 : layoutMode === 'spacious' ? 200 : 140;
+  const SIBLING_GAP = layoutMode === 'compact' ? 20 : layoutMode === 'spacious' ? 70 : 50;
 
   if (rightChildren.length > 0) {
     const rightTree = {
@@ -150,7 +150,7 @@ function applyBalancedLayout(graph: Graph, root: Node, layoutMode: 'standard' | 
   root.setPosition(rootPos.x, rootPos.y);
 }
 
-function applyRadialLayout(graph: Graph, root: Node, layoutMode: 'standard' | 'compact' = 'standard') {
+function applyRadialLayout(graph: Graph, root: Node, layoutMode: 'compact' | 'standard' | 'spacious' = 'standard') {
   const tree = buildTree(graph, root);
   const rootPos = root.getPosition();
   const rootCenter = {
@@ -198,9 +198,9 @@ function assignRadialAngles(node: TreeNode, startAngle: number, endAngle: number
   });
 }
 
-function positionRadialNodes(node: TreeNode, depth: number, cx: number, cy: number, layoutMode: 'standard' | 'compact' = 'standard') {
+function positionRadialNodes(node: TreeNode, depth: number, cx: number, cy: number, layoutMode: 'compact' | 'standard' | 'spacious' = 'standard') {
   const angle = typeof node._angle === 'number' ? node._angle : 0;
-  const RADIUS_GAP = layoutMode === 'compact' ? 160 : 220;
+  const RADIUS_GAP = layoutMode === 'compact' ? 130 : layoutMode === 'spacious' ? 300 : 220;
   const radius = depth * RADIUS_GAP;
 
   const x = cx + Math.cos(angle) * radius;

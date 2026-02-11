@@ -12,6 +12,7 @@ try {
 }
 
 let mainWindow;
+let lastOpenDir = null; // Track last-used directory for faster file open dialogs
 
 function ensureDrawddExtension(filePath) {
   if (filePath.toLowerCase().endsWith('.drwdd')) return filePath;
@@ -27,7 +28,7 @@ function getIconPath() {
     path.join(__dirname, '../public/icons/icon.png'),
     path.join(__dirname, '../dist/icon.ico'),
   ];
-  
+
   for (const iconPath of possiblePaths) {
     if (fs.existsSync(iconPath)) {
       return iconPath;
@@ -124,7 +125,7 @@ function createWindow() {
 // Create application menu - Full featured menu like draw.io
 function createMenu() {
   const isMac = process.platform === 'darwin';
-  
+
   const template = [
     // File Menu
     {
@@ -152,6 +153,7 @@ function createMenu() {
           accelerator: 'CmdOrCtrl+O',
           click: async () => {
             const result = await dialog.showOpenDialog(mainWindow, {
+              defaultPath: lastOpenDir || app.getPath('documents'),
               filters: [
                 { name: 'All Supported', extensions: ['drwdd', 'json', 'xmind', 'mmap', 'km', 'mm', 'vsdx'] },
                 { name: 'DRAWDD Files', extensions: ['drwdd'] },
@@ -165,6 +167,7 @@ function createMenu() {
               properties: ['openFile']
             });
             if (!result.canceled && result.filePaths.length > 0) {
+              lastOpenDir = path.dirname(result.filePaths[0]);
               mainWindow.webContents.send('menu-command', 'open-file', result.filePaths[0]);
             }
           }
@@ -506,10 +509,10 @@ ipcMain.handle('save-file-as', async (_event, defaultName, content) => {
     }
     const finalPath = ensureDrawddExtension(result.filePath);
     fs.writeFileSync(finalPath, content, 'utf8');
-    
+
     // Add to recent documents
     app.addRecentDocument(finalPath);
-    
+
     return {
       success: true,
       filePath: finalPath,
@@ -528,15 +531,15 @@ ipcMain.handle('open-file-by-path', async (_event, filePath) => {
     }
     const content = fs.readFileSync(filePath, 'utf8');
     const fileName = path.basename(filePath);
-    
+
     // Add to recent documents
     app.addRecentDocument(filePath);
-    
-    return { 
-      success: true, 
-      content, 
+
+    return {
+      success: true,
+      content,
       fileName,
-      filePath 
+      filePath
     };
   } catch (error) {
     return { success: false, error: error?.message || String(error) };
@@ -599,10 +602,10 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeHidden = false) 
     const scanDir = async (currentPath, depth = 0) => {
       const stats = await fs.promises.stat(currentPath);
       const name = path.basename(currentPath);
-      
+
       // Check if hidden (starts with . on Unix or has hidden attribute on Windows)
       const isHidden = name.startsWith('.');
-      
+
       if (!stats.isDirectory()) {
         // It's a file
         return {
@@ -612,7 +615,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeHidden = false) 
           isHidden
         };
       }
-      
+
       // It's a directory
       const node = {
         name,
@@ -621,18 +624,18 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeHidden = false) 
         isHidden,
         children: []
       };
-      
+
       try {
         const entries = await fs.promises.readdir(currentPath, { withFileTypes: true });
-        
+
         for (const entry of entries) {
           const entryPath = path.join(currentPath, entry.name);
-          
+
           // Skip hidden files/folders if not included
           if (!includeHidden && entry.name.startsWith('.')) {
             continue;
           }
-          
+
           try {
             // Check for circular symlinks
             const realPath = await fs.promises.realpath(entryPath);
@@ -640,7 +643,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeHidden = false) 
               // Potential circular reference, skip
               continue;
             }
-            
+
             const childNode = await scanDir(entryPath, depth + 1);
             node.children.push(childNode);
           } catch (err) {
@@ -652,10 +655,10 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeHidden = false) 
         // Can't read directory (permission error), return directory node without children
         console.warn(`Cannot read directory ${currentPath}: ${err.message}`);
       }
-      
+
       return node;
     };
-    
+
     const fileTree = await scanDir(dirPath);
     return { success: true, fileTree };
   } catch (error) {

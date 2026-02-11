@@ -1,7 +1,7 @@
 {
   "name": "drawdd",
   "private": false,
-  "version": "2.1.0",
+  "version": "2.1.2",
   "description": "DRAWDD - Open Source Diagramming Tool for flowcharts, mindmaps, and more",
   "author": "DRAWDD Team",
   "license": "MIT",

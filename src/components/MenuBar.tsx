@@ -32,7 +32,7 @@ interface MenuBarProps {
 }
 
 export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBarProps) {
-  const { 
+  const {
     graph, mode, setMode, zoom, setZoom, showGrid, setShowGrid,
     showLeftSidebar, setShowLeftSidebar,
     showRightSidebar, setShowRightSidebar,
@@ -56,17 +56,17 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
   // Load recent files on mount, when menu opens, and when files change
   useEffect(() => {
     setRecentFiles(getRecentFiles());
-    
+
     const handleRecentFilesChanged = () => {
       setRecentFiles(getRecentFiles());
     };
-    
+
     window.addEventListener('drawdd:recent-files-changed', handleRecentFilesChanged);
     return () => {
       window.removeEventListener('drawdd:recent-files-changed', handleRecentFilesChanged);
     };
   }, []);
-  
+
   // Also reload when menu opens
   useEffect(() => {
     if (activeMenu === 'File') {
@@ -142,7 +142,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
         // Always use the actual filename from the opened file (user sees this in their file explorer)
         // This overrides any embedded name like "Untitled Diagram"
         parsed.name = fileName;
-        
+
         // Check if it's a DiagramFile (has pages) or old DrawddDocument format
         if (parsed.pages && Array.isArray(parsed.pages)) {
           // New format with pages - load entire file with all pages
@@ -197,11 +197,11 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
         // .mm files can be FreeMind or FreePlan format
         // Try to detect which one by checking for FreePlan-specific features
         const text = await file.text();
-        const isFreePlan = text.includes('richcontent') || 
-                          text.includes('cloud') || 
-                          text.includes('arrowlink') ||
-                          text.includes('FREEPLANE');
-        
+        const isFreePlan = text.includes('richcontent') ||
+          text.includes('cloud') ||
+          text.includes('arrowlink') ||
+          text.includes('FREEPLANE');
+
         let mindmap;
         if (isFreePlan) {
           // Re-create file object for FreePlan parser
@@ -212,7 +212,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
           const freeMindFile = new File([text], file.name, { type: file.type });
           mindmap = await importFreeMind(freeMindFile);
         }
-        
+
         mindmapToGraph(graph, mindmap);
         setMode('mindmap');
         if ((window as any).__drawdd_updateFileName) {
@@ -228,12 +228,12 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
       } else {
         alert('Unsupported file format. Supported: .json, .xmind, .mmap, .km, .mm, .vsdx');
       }
-      
+
       // Add to recent files after successful import
       const fileType = ext as 'json' | 'xmind' | 'mmap' | 'km' | 'mm' | 'vsdx';
       addRecentFile({ name: file.name, type: fileType });
       setRecentFiles(getRecentFiles());
-      
+
     } catch (error) {
       console.error('Import error:', error);
       alert('Failed to import file: ' + (error instanceof Error ? error.message : 'Unknown error'));
@@ -286,15 +286,15 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     if (graph) {
       // Get fresh graph data
       const currentGraphData = JSON.stringify(graph.toJSON());
-      
+
       // Get current file structure from window global (set by App.tsx)
       const currentFile = drawddWindow.__currentDiagramFile;
       if (currentFile) {
         const fileName = currentFile.name || 'Untitled Diagram';
         const fileToSave = {
           ...currentFile,
-          pages: currentFile.pages.map(p => 
-            p.id === currentFile.activePageId 
+          pages: currentFile.pages.map(p =>
+            p.id === currentFile.activePageId
               ? { ...p, data: currentGraphData }
               : p
           )
@@ -360,15 +360,15 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     if (graph) {
       // Get fresh graph data
       const currentGraphData = JSON.stringify(graph.toJSON());
-      
+
       const currentFile = drawddWindow.__currentDiagramFile;
       const currentName = currentFile?.name || drawddWindow.__drawdd_getFileName?.() || 'Untitled Diagram';
-      
+
       if (isElectron && electronAPI) {
         const fileToSave = currentFile ? {
           ...currentFile,
-          pages: currentFile.pages.map(p => 
-            p.id === currentFile.activePageId 
+          pages: currentFile.pages.map(p =>
+            p.id === currentFile.activePageId
               ? { ...p, data: currentGraphData }
               : p
           )
@@ -391,13 +391,13 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
           setActiveMenu(null);
           return; // User cancelled
         }
-        
+
         if (currentFile) {
           const fileToSave = {
             ...currentFile,
             name: newName,
-            pages: currentFile.pages.map(p => 
-              p.id === currentFile.activePageId 
+            pages: currentFile.pages.map(p =>
+              p.id === currentFile.activePageId
                 ? { ...p, data: currentGraphData }
                 : p
             )
@@ -425,10 +425,10 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     const container = graph?.container as HTMLElement | undefined;
     const shouldHide = !exportConnectionPoints;
     const shouldHideGrid = !exportGrid && showGrid;
-    
+
     if (shouldHide && container) container.classList.add('hide-ports');
     if (shouldHideGrid && graph) graph.hideGrid();
-    
+
     try {
       await cb();
     } finally {
@@ -830,9 +830,9 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     if (!graph) return;
     const cells = graph.getSelectedCells().filter(c => c.isNode());
     if (cells.length < 2) return;
-    
+
     const boxes = cells.map(c => c.getBBox());
-    
+
     switch (type) {
       case 'left': {
         const minX = Math.min(...boxes.map(b => b.x));
@@ -871,54 +871,54 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
   // ============ Folder Explorer Operations ============
   const handleRefreshAllLinkedBranches = async () => {
     if (!graph) return;
-    
+
     try {
       // Import required utilities
       const { scanDirectory } = await import('../services/electron');
       const { removeDescendants, generateChildNodes } = await import('../utils/folderExplorer');
       const { applyMindmapLayout } = await import('../utils/layout');
-      
+
       // Get all nodes in the graph
       const allNodes = graph.getNodes();
-      
+
       // Filter for linked folder explorer nodes
       const linkedNodes = allNodes.filter(node => {
         const data = node.getData();
         return data?.folderExplorer?.explorerType === 'linked';
       });
-      
+
       if (linkedNodes.length === 0) {
         alert('No linked folder branches found in the current document.');
         setActiveMenu(null);
         return;
       }
-      
+
       // Get includeHiddenFiles setting
       const includeHidden = localStorage.getItem('drawdd-include-hidden-files') === 'true';
-      
+
       // Refresh each linked branch
       let successCount = 0;
       let errorCount = 0;
-      
+
       for (const node of linkedNodes) {
         const metadata = node.getData().folderExplorer;
-        
+
         try {
           // Scan the directory
           const scanResult = await scanDirectory(metadata.path, includeHidden);
-          
+
           if (!scanResult.success || !scanResult.fileTree) {
             console.error(`Failed to refresh ${metadata.path}:`, scanResult.error);
             errorCount++;
             continue;
           }
-          
+
           // Remove old children
           removeDescendants(graph, node);
-          
+
           // Generate new children
           generateChildNodes(graph, node, scanResult.fileTree, metadata);
-          
+
           // Update timestamp
           node.setData({
             ...node.getData(),
@@ -927,42 +927,42 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
               lastRefreshed: new Date().toISOString(),
             },
           });
-          
+
           successCount++;
         } catch (error) {
           console.error(`Error refreshing ${metadata.path}:`, error);
           errorCount++;
         }
       }
-      
+
       // Apply layout to the entire graph
       const direction = mindmapDirection || 'right';
-      const layoutMode = (localStorage.getItem('drawdd-mindmap-layout-mode') as 'standard' | 'compact') || 'standard';
-      
+      const layoutMode = (localStorage.getItem('drawdd-mindmap-layout-mode') as 'compact' | 'standard' | 'spacious') || 'standard';
+
       // Find all root nodes and apply layout
       const rootNodes = allNodes.filter(node => {
         const incoming = graph.getIncomingEdges(node);
         return !incoming || incoming.length === 0;
       });
-      
+
       setTimeout(() => {
         rootNodes.forEach(rootNode => {
           applyMindmapLayout(graph, direction as any, rootNode, layoutMode);
         });
       }, 0);
-      
+
       // Show result message
       if (errorCount === 0) {
         alert(`Successfully refreshed ${successCount} linked branch${successCount !== 1 ? 'es' : ''}.`);
       } else {
         alert(`Refreshed ${successCount} branch${successCount !== 1 ? 'es' : ''} with ${errorCount} error${errorCount !== 1 ? 's' : ''}.`);
       }
-      
+
     } catch (error) {
       console.error('Refresh all linked branches error:', error);
       alert(`Failed to refresh branches: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-    
+
     setActiveMenu(null);
   };
 
@@ -1032,13 +1032,13 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
   // Build recent files submenu dynamically
   const recentFilesSubmenu: MenuItem[] = recentFiles.length > 0
     ? [
-        ...recentFiles.map((rf, index) => ({
-          label: `${index + 1}. ${rf.name}`,
-          action: () => handleOpenRecentFile(rf)
-        })),
-        { separator: true, label: '' },
-        { label: 'Clear Recent Files', action: handleClearRecentFiles }
-      ]
+      ...recentFiles.map((rf, index) => ({
+        label: `${index + 1}. ${rf.name}`,
+        action: () => handleOpenRecentFile(rf)
+      })),
+      { separator: true, label: '' },
+      { label: 'Clear Recent Files', action: handleClearRecentFiles }
+    ]
     : [{ label: 'No Recent Files', disabled: true }];
 
   const menus: MenuGroup[] = [
@@ -1154,7 +1154,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
       <input
         ref={fileInputRef}
         type="file"
-        accept=".json,.xmind,.mmap,.km,.mm,.vsdx"
+        accept=".drwdd,.json,.xmind,.mmap,.km,.mm,.vsdx"
         className="hidden"
         onChange={handleFileImport}
       />
@@ -1165,7 +1165,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
         className="hidden"
         onChange={handleImageSelect}
       />
-      
+
       {/* Header with Logo - Separate from menu */}
       <div className="flex items-center justify-between bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 py-2">
         <div className="flex items-center gap-3">
@@ -1185,15 +1185,14 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
         {menus.map((menu) => (
           <div key={menu.label} className="relative h-full">
             <button
-              className={`h-full px-6 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex items-center ${
-                activeMenu === menu.label ? 'bg-gray-100 dark:bg-gray-800' : ''
-              }`}
+              className={`h-full px-6 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex items-center ${activeMenu === menu.label ? 'bg-gray-100 dark:bg-gray-800' : ''
+                }`}
               onClick={() => setActiveMenu(activeMenu === menu.label ? null : menu.label)}
               onMouseEnter={() => activeMenu && setActiveMenu(menu.label)}
             >
               {menu.label}
             </button>
-            
+
             {activeMenu === menu.label && (
               <div className="absolute left-0 top-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-2xl min-w-[240px] py-2 z-[1000]">
                 {menu.items.map((item, index) =>
@@ -1214,9 +1213,8 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
                           ) : (
                             <button
                               key={subIndex}
-                              className={`w-full px-5 py-2.5 text-left text-gray-700 dark:text-gray-200 hover:bg-blue-500 hover:text-white transition-colors ${
-                                subItem.disabled ? 'opacity-40 cursor-not-allowed' : ''
-                              }`}
+                              className={`w-full px-5 py-2.5 text-left text-gray-700 dark:text-gray-200 hover:bg-blue-500 hover:text-white transition-colors ${subItem.disabled ? 'opacity-40 cursor-not-allowed' : ''
+                                }`}
                               onClick={() => !subItem.disabled && subItem.action?.()}
                               disabled={subItem.disabled}
                             >
@@ -1229,9 +1227,8 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
                   ) : (
                     <button
                       key={index}
-                      className={`w-full px-5 py-2.5 text-left flex items-center justify-between text-gray-700 dark:text-gray-200 hover:bg-blue-500 hover:text-white transition-colors ${
-                        item.disabled ? 'opacity-40 cursor-not-allowed' : ''
-                      }`}
+                      className={`w-full px-5 py-2.5 text-left flex items-center justify-between text-gray-700 dark:text-gray-200 hover:bg-blue-500 hover:text-white transition-colors ${item.disabled ? 'opacity-40 cursor-not-allowed' : ''
+                        }`}
                       onClick={() => !item.disabled && item.action?.()}
                       disabled={item.disabled}
                     >
@@ -1252,7 +1249,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
       {showShortcuts && (
         <KeyboardShortcutsDialog isOpen={showShortcuts} onClose={() => setShowShortcuts(false)} />
       )}
-      
+
       {/* Help Dialog */}
       {showHelp && (
         <HelpDialog isOpen={showHelp} onClose={() => setShowHelp(false)} />

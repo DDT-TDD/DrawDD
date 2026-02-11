@@ -16,25 +16,16 @@ tailwind.config.js
 release/
 release-builds/
 release-builds_old/
+.gemini/
 
-# Documentation (keep only LICENSE and README.md)
+# Documentation (keep only LICENSE, README, CHANGELOG, RELEASE_NOTES)
 *.md
 !README.md
+!LICENSE
 !LICENSE.md
-CONTRIBUTING.md
-TROUBLESHOOTING.md
-CHANGELOG.md
-LICENSE_AUDIT.md
-RELEASE_CHECKLIST.md
-RELEASE_NOTES*.md
-*_SUMMARY.md
-*_CHECKPOINT.md
-*_PROGRESS.md
-*_CHECKLIST.md
-*_PLAN.md
-*_STATUS.md
-*_FIXES.md
-*_VERIFICATION.md
+!CONTRIBUTING.md
+!CHANGELOG.md
+!RELEASE_NOTES_v*.md
 
 # Test files
 **/*.test.ts
@@ -47,7 +38,7 @@ RELEASE_NOTES*.md
 **/*.integration.test.tsx
 setupTests.ts
 
-# Development dependencies (these should be in devDependencies)
+# Development dependencies
 node_modules/@types/
 node_modules/@testing-library/
 node_modules/@vitejs/
@@ -71,7 +62,7 @@ node_modules/.vite-temp/
 node_modules/.tmp/
 node_modules/.cache/
 
-# Root index.html (use dist/index.html instead)
+# Root index.html
 /index.html
 
 # Lock files

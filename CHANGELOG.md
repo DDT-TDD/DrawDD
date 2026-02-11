@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.2] - 2026-02-11
+
+### Added
+
+#### Context Menu
+- **System Clipboard Support**: Added dedicated "Paste Text" and "Paste Image" menu items to handle system clipboard content directly on the canvas
+
+#### Mindmap Layout
+- **Spacious Mode**: Introduced a new "Spacious" layout mode (200px level gap, 70px sibling gap) for clearer presentation of large maps
+- **Edge Visuals**: Added separate text/background color controls for edge labels (supporting transparency), optional label borders, and default high-contrast styling
+
+### Fixed
+
+#### Stability
+- **Edge Label Crash**: Fixed application lock-up when adding multiline text to connection labels by optimizing SVG text rendering
+- **React Warnings**: Resolved "Attempted to synchronously unmount a root" warning during graph disposal sequences
+
+#### Layout & Rendering
+- **Mindmap Shortcuts**: Fixed layout mode not persisting when using keyboard shortcuts (Tab/Backspace)
+- **Compact Layout**: Improved spacing calculations for tighter node arrangements
+- **Dark Mode Visibility**: Standardized edge label colors to ensure text is visible in both light and dark themes
+- **Multi-Select Icons**: Replaced text-based "Source/Target Arrow" buttons in multi-selection panel with consistent icon-based controls
+
 ## [2.1.1] - 2026-02-04
 
 ### Changed

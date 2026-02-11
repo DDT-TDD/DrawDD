@@ -95,6 +95,10 @@ export function PropertiesPanel() {
   const [sourceArrow, setSourceArrow] = useState<'block' | 'classic' | 'diamond' | 'circle' | 'circlePlus' | 'ellipse' | 'cross' | 'none'>('none');
   const [targetArrow, setTargetArrow] = useState<'block' | 'classic' | 'diamond' | 'circle' | 'circlePlus' | 'ellipse' | 'cross' | 'none'>('none');
   const [edgeLabel, setEdgeLabel] = useState('');
+  const [edgeLabelBg, setEdgeLabelBg] = useState('#ffffff');
+  const [edgeLabelColor, setEdgeLabelColor] = useState('#000000');
+  const [edgeLabelBorderColor, setEdgeLabelBorderColor] = useState('#dddddd');
+  const [showEdgeLabelBorder, setShowEdgeLabelBorder] = useState(false);
 
   // Clipboard State
   const [clipboardSize, setClipboardSize] = useState<{ width: number; height: number } | null>(null);
@@ -396,6 +400,14 @@ export function PropertiesPanel() {
       const edge = activeEdge as Edge;
       const attrs = edge.getAttrs();
       const lineAttrs = (attrs.line || {}) as Record<string, any>;
+      setEdgeLabel((edge.getLabels()[0]?.attrs?.text?.text as string) || '');
+      setEdgeLabelBg((edge.getLabels()[0]?.attrs?.rect?.fill as string) || '#ffffff');
+      setEdgeLabelColor((edge.getLabels()[0]?.attrs?.text?.fill as string) || '#000000');
+
+      const rectStroke = (edge.getLabels()[0]?.attrs?.rect?.stroke as string);
+      const rectStrokeWidth = (edge.getLabels()[0]?.attrs?.rect?.strokeWidth as number);
+      setEdgeLabelBorderColor(rectStroke || '#dddddd');
+      setShowEdgeLabelBorder(rectStrokeWidth > 0);
 
       setEdgeColor((attrs.line?.stroke as string) || '#5F95FF');
       setEdgeWidth((attrs.line?.strokeWidth as number) || 2);
@@ -980,15 +992,97 @@ export function PropertiesPanel() {
     setEdgeLabel(value);
     getEdgeTargets().forEach(edge => {
       if (value) {
-        edge.setLabels([{
-          attrs: {
-            text: { text: value, fill: '#333', fontSize: 12, lineHeight: 1.3, whiteSpace: 'pre-wrap' },
-            rect: { fill: '#fff', stroke: '#ddd', strokeWidth: 1 },
-          },
-          position: 0.5,
-        }]);
+        // Preserve existing label attributes if possible
+        const existingLabel = edge.getLabels()[0];
+        if (existingLabel) {
+          edge.setLabelAt(0, {
+            ...existingLabel,
+            attrs: {
+              ...existingLabel.attrs,
+              text: { ...existingLabel.attrs?.text, text: value },
+            }
+          });
+        } else {
+          // Defaults: Black text, White background, No border (strokeWidth: 0)
+          edge.setLabels([{
+            attrs: {
+              text: { text: value, fill: edgeLabelColor, fontSize: 12 },
+              rect: {
+                fill: edgeLabelBg,
+                stroke: edgeLabelBorderColor,
+                strokeWidth: showEdgeLabelBorder ? 1 : 0,
+                ref: 'text', refWidth: '140%', refHeight: '140%', refX: '-20%', refY: '-20%', rx: 4, ry: 4
+              },
+            },
+            position: 0.5,
+          }]);
+        }
       } else {
         edge.setLabels([]);
+      }
+    });
+  };
+
+  const handleEdgeLabelBgChange = (color: string) => {
+    setEdgeLabelBg(color);
+    getEdgeTargets().forEach(edge => {
+      const existingLabel = edge.getLabels()[0];
+      if (existingLabel) {
+        edge.setLabelAt(0, {
+          ...existingLabel,
+          attrs: {
+            ...existingLabel.attrs,
+            rect: { ...existingLabel.attrs?.rect, fill: color }
+          }
+        });
+      }
+    });
+  };
+
+  const handleEdgeLabelColorChange = (color: string) => {
+    setEdgeLabelColor(color);
+    getEdgeTargets().forEach(edge => {
+      const existingLabel = edge.getLabels()[0];
+      if (existingLabel) {
+        edge.setLabelAt(0, {
+          ...existingLabel,
+          attrs: {
+            ...existingLabel.attrs,
+            text: { ...existingLabel.attrs?.text, fill: color }
+          }
+        });
+      }
+    });
+  };
+
+  const handleEdgeLabelBorderColorChange = (color: string) => {
+    setEdgeLabelBorderColor(color);
+    getEdgeTargets().forEach(edge => {
+      const existingLabel = edge.getLabels()[0];
+      if (existingLabel) {
+        edge.setLabelAt(0, {
+          ...existingLabel,
+          attrs: {
+            ...existingLabel.attrs,
+            rect: { ...existingLabel.attrs?.rect, stroke: color }
+          }
+        });
+      }
+    });
+  };
+
+  const handleEdgeLabelBorderVisibilityChange = (visible: boolean) => {
+    setShowEdgeLabelBorder(visible);
+    getEdgeTargets().forEach(edge => {
+      const existingLabel = edge.getLabels()[0];
+      if (existingLabel) {
+        edge.setLabelAt(0, {
+          ...existingLabel,
+          attrs: {
+            ...existingLabel.attrs,
+            rect: { ...existingLabel.attrs?.rect, strokeWidth: visible ? 1 : 0 }
+          }
+        });
       }
     });
   };
@@ -1214,13 +1308,12 @@ export function PropertiesPanel() {
                 const truncatedLabel = labelText.length > 25 ? labelText.substring(0, 22) + '...' : labelText;
                 const isLast = index === selectedNodes.length - 1;
                 return (
-                  <div 
-                    key={node.id} 
-                    className={`flex items-center gap-2 text-xs px-2 py-1.5 rounded ${
-                      isLast 
-                        ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800' 
-                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-                    }`}
+                  <div
+                    key={node.id}
+                    className={`flex items-center gap-2 text-xs px-2 py-1.5 rounded ${isLast
+                      ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                      }`}
                     title={labelText}
                   >
                     <span className="w-5 h-5 flex items-center justify-center rounded bg-gray-200 dark:bg-gray-700 text-[10px] font-medium">
@@ -1247,8 +1340,8 @@ export function PropertiesPanel() {
                   const sourceLabel = sourceCell?.isNode() ? String((sourceCell.getAttrs()?.label as any)?.text || 'Shape').substring(0, 10) : '?';
                   const targetLabel = targetCell?.isNode() ? String((targetCell.getAttrs()?.label as any)?.text || 'Shape').substring(0, 10) : '?';
                   return (
-                    <div 
-                      key={edge.id} 
+                    <div
+                      key={edge.id}
                       className="flex items-center gap-1.5 text-[10px] px-2 py-1 rounded text-gray-600 dark:text-gray-400"
                     >
                       <span className="w-4 h-4 flex items-center justify-center rounded bg-gray-200 dark:bg-gray-700 text-[9px] font-medium shrink-0">
@@ -1422,8 +1515,8 @@ export function PropertiesPanel() {
                 const targetLabel = targetCell?.isNode() ? String((targetCell.getAttrs()?.label as any)?.text || 'Shape').substring(0, 12) : '?';
                 const edgeLabel = (edge.getLabels()?.[0]?.attrs?.label as any)?.text || '';
                 return (
-                  <div 
-                    key={edge.id} 
+                  <div
+                    key={edge.id}
                     className="flex items-center gap-1.5 text-[10px] px-2 py-1.5 rounded text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
                     title={`${sourceLabel} → ${targetLabel}${edgeLabel ? ` (${edgeLabel})` : ''}`}
                   >
@@ -1466,6 +1559,39 @@ export function PropertiesPanel() {
             </div>
           </Section>
 
+          <Section title="Line Type">
+            <div className="grid grid-cols-2 gap-2">
+              {(['normal', 'rounded', 'smooth', 'ortho'] as const).map(type => (
+                <button
+                  key={type}
+                  onClick={() => {
+                    const connector = type === 'smooth' ? 'smooth' : 'rounded';
+                    const router = type === 'ortho' ? 'manhattan' : 'normal';
+
+                    selectedEdges.forEach(edge => {
+                      if (type === 'smooth') {
+                        edge.setConnector('smooth');
+                        edge.setRouter('normal');
+                      } else if (type === 'rounded') {
+                        edge.setConnector('rounded', { radius: 8 });
+                        edge.setRouter('normal');
+                      } else if (type === 'ortho') {
+                        edge.setConnector('rounded', { radius: 8 });
+                        edge.setRouter('manhattan');
+                      } else {
+                        edge.setConnector('normal');
+                        edge.setRouter('normal');
+                      }
+                    });
+                  }}
+                  className="py-2 px-3 rounded border text-xs capitalize border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300 transition-colors"
+                >
+                  {type === 'normal' ? 'Straight' : type === 'rounded' ? 'Rounded' : type === 'smooth' ? 'Curved' : 'Orthogonal'}
+                </button>
+              ))}
+            </div>
+          </Section>
+
           <Section title="Line Color">
             <ColorPalette
               selectedColor={selectedEdges[0]?.getAttrs()?.line?.stroke as string || '#333'}
@@ -1498,48 +1624,66 @@ export function PropertiesPanel() {
           </Section>
 
           <Section title="Source Arrow (Start)">
-            <div className="grid grid-cols-5 gap-1">
-              {arrowTypes.map((type) => (
+            <div className="grid grid-cols-4 gap-1">
+              {([
+                { type: 'none', icon: '—', label: 'None' },
+                { type: 'classic', icon: '→', label: 'Arrow' },
+                { type: 'block', icon: '▶', label: 'Triangle' },
+                { type: 'diamond', icon: '◇', label: 'Diamond' },
+                { type: 'circle', icon: '●', label: 'Circle' },
+                { type: 'circlePlus', icon: '⊕', label: 'Plus Circle' },
+                { type: 'ellipse', icon: '○', label: 'Ellipse' },
+                { type: 'cross', icon: '✕', label: 'Cross' },
+              ] as const).map(item => (
                 <button
-                  key={type}
+                  key={item.type}
                   onClick={() => {
-                    setSourceArrow(type);
+                    setSourceArrow(item.type);
                     selectedEdges.forEach(edge => {
-                      if (type === 'none') {
+                      if (item.type === 'none') {
                         edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), sourceMarker: '' } });
                       } else {
-                        edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), sourceMarker: { name: type, width: 12, height: 8 } } });
+                        edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), sourceMarker: { name: item.type, width: 12, height: 8 } } });
                       }
                     });
                   }}
                   className="flex flex-col items-center gap-0.5 p-1.5 rounded border border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400 transition-colors"
-                  title={type}
+                  title={item.label}
                 >
-                  <span className="text-[10px] text-gray-600 dark:text-gray-400 capitalize">{type === 'none' ? '—' : type.slice(0, 3)}</span>
+                  <span className="text-sm">{item.icon}</span>
                 </button>
               ))}
             </div>
           </Section>
 
           <Section title="Target Arrow (End)">
-            <div className="grid grid-cols-5 gap-1">
-              {arrowTypes.map((type) => (
+            <div className="grid grid-cols-4 gap-1">
+              {([
+                { type: 'none', icon: '—', label: 'None' },
+                { type: 'classic', icon: '→', label: 'Arrow' },
+                { type: 'block', icon: '▶', label: 'Triangle' },
+                { type: 'diamond', icon: '◇', label: 'Diamond' },
+                { type: 'circle', icon: '●', label: 'Circle' },
+                { type: 'circlePlus', icon: '⊕', label: 'Plus Circle' },
+                { type: 'ellipse', icon: '○', label: 'Ellipse' },
+                { type: 'cross', icon: '✕', label: 'Cross' },
+              ] as const).map(item => (
                 <button
-                  key={type}
+                  key={item.type}
                   onClick={() => {
-                    setTargetArrow(type);
+                    setTargetArrow(item.type);
                     selectedEdges.forEach(edge => {
-                      if (type === 'none') {
+                      if (item.type === 'none') {
                         edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), targetMarker: '' } });
                       } else {
-                        edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), targetMarker: { name: type, width: 12, height: 8 } } });
+                        edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), targetMarker: { name: item.type, width: 12, height: 8 } } });
                       }
                     });
                   }}
                   className="flex flex-col items-center gap-0.5 p-1.5 rounded border border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400 transition-colors"
-                  title={type}
+                  title={item.label}
                 >
-                  <span className="text-[10px] text-gray-600 dark:text-gray-400 capitalize">{type === 'none' ? '—' : type.slice(0, 3)}</span>
+                  <span className="text-sm">{item.icon}</span>
                 </button>
               ))}
             </div>
@@ -2084,8 +2228,8 @@ export function PropertiesPanel() {
                           key={priority}
                           onClick={() => handleTimelinePriorityChange(priority)}
                           className={`px-2 py-1.5 text-xs rounded border ${timelinePriority === priority
-                              ? 'bg-blue-500 text-white border-blue-600'
-                              : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+                            ? 'bg-blue-500 text-white border-blue-600'
+                            : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
                             }`}
                         >
                           {priority.charAt(0).toUpperCase() + priority.slice(1)}
@@ -2104,8 +2248,8 @@ export function PropertiesPanel() {
                           key={status}
                           onClick={() => handleTimelineStatusChange(status)}
                           className={`px-2 py-1.5 text-xs rounded border ${timelineStatus === status
-                              ? 'bg-blue-500 text-white border-blue-600'
-                              : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+                            ? 'bg-blue-500 text-white border-blue-600'
+                            : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
                             }`}
                         >
                           {status.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
@@ -2286,6 +2430,29 @@ export function PropertiesPanel() {
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 resize-none"
                 placeholder="Enter label..."
               />
+              <div className="mt-2">
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Text Color</label>
+                <ColorRow color={edgeLabelColor} onChange={handleEdgeLabelColorChange} />
+              </div>
+              <div className="mt-2">
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Label Background</label>
+                <ColorRow color={edgeLabelBg} onChange={handleEdgeLabelBgChange} />
+              </div>
+              <div className="mt-2 flex items-center justify-between">
+                <label className="text-xs text-gray-500 dark:text-gray-400">Show Border</label>
+                <button
+                  onClick={() => handleEdgeLabelBorderVisibilityChange(!showEdgeLabelBorder)}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${showEdgeLabelBorder ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}
+                >
+                  <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${showEdgeLabelBorder ? 'translate-x-5' : 'translate-x-1'}`} />
+                </button>
+              </div>
+              {showEdgeLabelBorder && (
+                <div className="mt-2">
+                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Border Color</label>
+                  <ColorRow color={edgeLabelBorderColor} onChange={handleEdgeLabelBorderColorChange} />
+                </div>
+              )}
             </Section>
 
             <Section title="Line Actions">
@@ -2355,14 +2522,12 @@ export function PropertiesPanel() {
                 </span>
                 <button
                   onClick={() => handleLineHopsChange(!lineHops)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    lineHops ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
-                  }`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${lineHops ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                    }`}
                 >
                   <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      lineHops ? 'translate-x-6' : 'translate-x-1'
-                    }`}
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${lineHops ? 'translate-x-6' : 'translate-x-1'
+                      }`}
                   />
                 </button>
               </div>
@@ -2561,7 +2726,7 @@ function ColorRow({ color, onChange }: { color: string; onChange: (c: string) =>
   // HTML color input only accepts hex colors, not "transparent" or other values
   const isValidHexColor = /^#[0-9A-Fa-f]{6}$/.test(color);
   const colorInputValue = isValidHexColor ? color : '#ffffff';
-  
+
   return (
     <div className="flex items-center gap-2">
       <input
