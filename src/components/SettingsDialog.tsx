@@ -58,6 +58,8 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
     graph,
     exportConnectionPoints,
     setExportConnectionPoints,
+    exportCollapseIndicators,
+    setExportCollapseIndicators,
     spellcheckLanguage,
     setSpellcheckLanguage,
     markdownEnabled,
@@ -357,6 +359,22 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                   <div className="flex flex-col">
                     <span className="text-sm font-medium text-gray-900 dark:text-white">Show connection points in exports</span>
                     <span className="text-xs text-gray-500 dark:text-gray-400">Off by default to avoid port dots; turn on if you need them in PNG/SVG/PDF.</span>
+                  </div>
+                </label>
+              </div>
+
+              {/* Export Collapse Indicators */}
+              <div>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!!exportCollapseIndicators}
+                    onChange={(e) => setExportCollapseIndicators?.(e.target.checked)}
+                    className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-gray-900 dark:text-white">Show collapse indicators in exports</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">Show the +/− buttons on mindmap nodes in PNG/SVG/PDF exports. On by default.</span>
                   </div>
                 </label>
               </div>

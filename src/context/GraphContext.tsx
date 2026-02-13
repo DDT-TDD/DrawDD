@@ -26,6 +26,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
   const [exportConnectionPoints, setExportConnectionPoints] = useState(false);
   const [gridSize, setGridSize] = useState<number>(10);
   const [exportGrid, setExportGrid] = useState<boolean>(false);
+  const [exportCollapseIndicators, setExportCollapseIndicators] = useState<boolean>(true);
   const [spellcheckLanguage, setSpellcheckLanguage] = useState<string>(() => {
     return localStorage.getItem('drawdd-spellcheck-lang') || 'en-GB';
   });
@@ -56,6 +57,11 @@ export function GraphProvider({ children }: { children: ReactNode }) {
     // Migrate old 'orthogonal' to 'orthogonal-rounded'
     if (saved === 'orthogonal') return 'orthogonal-rounded';
     return saved || 'smooth'; // Default to smooth curved lines
+  });
+
+  // Flowchart default connector style
+  const [flowchartConnectorStyle, setFlowchartConnectorStyle] = useState<'rounded' | 'smooth' | 'straight' | 'flowchart'>(() => {
+    return (localStorage.getItem('drawdd-flowchart-connector') as any) || 'rounded'; // Default to rounded
   });
 
   // New layout and feature settings
@@ -103,6 +109,8 @@ export function GraphProvider({ children }: { children: ReactNode }) {
         setGridSize,
         exportGrid,
         setExportGrid,
+        exportCollapseIndicators,
+        setExportCollapseIndicators,
         spellcheckLanguage,
         setSpellcheckLanguage: (lang: string) => {
           setSpellcheckLanguage(lang);
@@ -143,6 +151,12 @@ export function GraphProvider({ children }: { children: ReactNode }) {
         setMindmapConnectorStyle: (style: 'smooth' | 'orthogonal-rounded' | 'orthogonal-sharp' | 'straight') => {
           setMindmapConnectorStyle(style);
           localStorage.setItem('drawdd-mindmap-connector', style);
+        },
+        // Flowchart connector style
+        flowchartConnectorStyle,
+        setFlowchartConnectorStyle: (style: 'rounded' | 'smooth' | 'straight' | 'flowchart') => {
+          setFlowchartConnectorStyle(style);
+          localStorage.setItem('drawdd-flowchart-connector', style);
         },
         // New layout and feature settings
         mindmapLayoutMode,

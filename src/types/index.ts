@@ -220,6 +220,8 @@ export interface GraphContextType {
   setGridSize?: (size: number) => void;
   exportGrid?: boolean;
   setExportGrid?: (show: boolean) => void;
+  exportCollapseIndicators?: boolean;
+  setExportCollapseIndicators?: (show: boolean) => void;
   spellcheckLanguage: string;
   setSpellcheckLanguage: (lang: string) => void;
   // Mindmap settings
@@ -237,6 +239,9 @@ export interface GraphContextType {
   setMindmapSortOrder: (order: 'clockwise' | 'counter-clockwise' | 'top-to-bottom' | 'left-to-right') => void;
   mindmapConnectorStyle: 'smooth' | 'orthogonal-rounded' | 'orthogonal-sharp' | 'straight';
   setMindmapConnectorStyle: (style: 'smooth' | 'orthogonal-rounded' | 'orthogonal-sharp' | 'straight') => void;
+  // Flowchart default connector style
+  flowchartConnectorStyle: 'rounded' | 'smooth' | 'straight' | 'flowchart';
+  setFlowchartConnectorStyle: (style: 'rounded' | 'smooth' | 'straight' | 'flowchart') => void;
   // New layout settings
   mindmapLayoutMode: 'compact' | 'standard' | 'spacious';
   setMindmapLayoutMode: (mode: 'compact' | 'standard' | 'spacious') => void;

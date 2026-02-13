@@ -73,6 +73,7 @@ export function PropertiesPanel() {
   const [shadowOffsetY, setShadowOffsetY] = useState(3);
   const [shadowColor, setShadowColor] = useState('#00000040');
   const [nodeShape, setNodeShape] = useState<'rect' | 'ellipse' | 'none'>('rect');
+  const [borderStyle, setBorderStyle] = useState<'solid' | 'dashed' | 'dotted'>('solid');
 
   // Image and decoration properties
   const [imageUrl, setImageUrl] = useState('');
@@ -360,6 +361,11 @@ export function PropertiesPanel() {
       setTextColor((attrs.label?.fill as string) || '#333333');
       setOpacity(node.getAttrByPath('body/opacity') as number ?? 1);
       setCornerRadius((attrs.body?.rx as number) || 0);
+      // Read border style from strokeDasharray
+      const bodyDashArray = attrs.body?.strokeDasharray as string;
+      if (bodyDashArray?.includes('8 4') || bodyDashArray?.includes('8,4')) setBorderStyle('dashed');
+      else if (bodyDashArray?.includes('2 2') || bodyDashArray?.includes('2,2') || bodyDashArray?.includes('3 3') || bodyDashArray?.includes('3,3')) setBorderStyle('dotted');
+      else setBorderStyle('solid');
       setTextAlign((attrs.label?.textAnchor as 'left' | 'center' | 'right') || 'center');
       setFontWeight((attrs.label?.fontWeight as 'normal' | 'bold') || 'normal');
       setFontStyle((attrs.label?.fontStyle as 'normal' | 'italic') || 'normal');
@@ -559,6 +565,15 @@ export function PropertiesPanel() {
     const targets = selectedNodes.length > 0 ? selectedNodes : (selectedCell && isNode ? [selectedCell as Node] : []);
     targets.forEach(node => {
       node.setAttrs({ body: { strokeWidth: width } });
+    });
+  };
+
+  const handleBorderStyleChange = (style: 'solid' | 'dashed' | 'dotted') => {
+    setBorderStyle(style);
+    const dashArray = style === 'dashed' ? '8 4' : style === 'dotted' ? '2 2' : '';
+    const targets = selectedNodes.length > 0 ? selectedNodes : (selectedCell && isNode ? [selectedCell as Node] : []);
+    targets.forEach(node => {
+      node.setAttrs({ body: { strokeDasharray: dashArray || undefined } });
     });
   };
 
@@ -2282,6 +2297,30 @@ export function PropertiesPanel() {
                   onChange={(e) => handleStrokeWidthChange(Number(e.target.value))}
                   className="w-full accent-blue-500"
                 />
+              </div>
+              <div className="mt-2">
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  Border Style
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['solid', 'dashed', 'dotted'] as const).map((style) => (
+                    <button
+                      key={style}
+                      onClick={() => handleBorderStyleChange(style)}
+                      className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-colors ${borderStyle === style
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30'
+                        : 'border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400'
+                        }`}
+                    >
+                      <div className="w-8 h-0.5 bg-gray-600 dark:bg-gray-400" style={{
+                        backgroundImage: style === 'dashed' ? 'repeating-linear-gradient(90deg, currentColor 0, currentColor 8px, transparent 8px, transparent 12px)' :
+                          style === 'dotted' ? 'repeating-linear-gradient(90deg, currentColor 0, currentColor 2px, transparent 2px, transparent 4px)' : 'none',
+                        backgroundColor: style === 'solid' ? 'currentColor' : 'transparent',
+                      }} />
+                      <span className="text-xs text-gray-600 dark:text-gray-400 capitalize">{style}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="mt-2">
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">

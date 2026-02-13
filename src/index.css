@@ -11,7 +11,7 @@
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  
+
   /* Light theme colors */
   --bg-primary: #f8fafc;
   --bg-secondary: #ffffff;
@@ -44,7 +44,9 @@
   box-sizing: border-box;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -160,7 +162,38 @@ button:focus-visible {
   visibility: hidden !important;
 }
 
+/* Hide collapse indicators in exports */
+.hide-collapse-indicators .rich-content-node button {
+  display: none !important;
+}
+
 /* Ensure text is selectable in inputs */
-input, textarea {
+input,
+textarea {
   user-select: text;
+}
+
+/* Edge selection: wider click target and visual highlight */
+.x6-edge {
+  cursor: pointer;
+}
+
+/* Make the edge path easier to click by using a transparent wider stroke for hit-testing */
+.x6-edge .x6-edge-line-bg {
+  stroke-width: 14 !important;
+  stroke: transparent !important;
+  fill: none !important;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+/* Visual highlight for selected edges */
+.x6-edge.x6-edge-selected .x6-edge-line {
+  filter: drop-shadow(0 0 3px rgba(95, 149, 255, 0.7));
+}
+
+/* Ensure edge vertices (waypoints) are always interactable */
+.x6-edge .x6-edge-tool .x6-edge-tool-vertices circle {
+  cursor: move;
+  pointer-events: all;
 }

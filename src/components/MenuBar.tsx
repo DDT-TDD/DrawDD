@@ -40,7 +40,8 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     mindmapDirection, setMindmapDirection,
     timelineDirection, setTimelineDirection,
     exportConnectionPoints,
-    exportGrid
+    exportGrid,
+    exportCollapseIndicators
   } = useGraph();
   const { theme, setTheme } = useTheme();
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
@@ -425,15 +426,21 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     const container = graph?.container as HTMLElement | undefined;
     const shouldHide = !exportConnectionPoints;
     const shouldHideGrid = !exportGrid && showGrid;
+    const shouldHideCollapse = !exportCollapseIndicators;
 
     if (shouldHide && container) container.classList.add('hide-ports');
     if (shouldHideGrid && graph) graph.hideGrid();
+    if (shouldHideCollapse && container) container.classList.add('hide-collapse-indicators');
+
+    // Wait a frame for CSS changes to apply
+    await new Promise(resolve => setTimeout(resolve, 100));
 
     try {
       await cb();
     } finally {
       if (shouldHide && container) container.classList.remove('hide-ports');
       if (shouldHideGrid && graph) graph.showGrid();
+      if (shouldHideCollapse && container) container.classList.remove('hide-collapse-indicators');
     }
   };
 
