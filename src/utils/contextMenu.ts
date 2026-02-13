@@ -612,6 +612,31 @@ export function showEmptyCanvasContextMenu(
       }
     },
     {
+      label: 'Add Line',
+      icon: '📏',
+      action: () => {
+        const edge = graph.addEdge({
+          source: { x: x - 80, y },
+          target: { x: x + 80, y },
+          attrs: {
+            line: {
+              stroke: '#5F95FF',
+              strokeWidth: 2,
+              targetMarker: {
+                name: 'block',
+                width: 12,
+                height: 8,
+              },
+            },
+          },
+          router: { name: 'normal' },
+          connector: { name: 'rounded', args: { radius: 8 } },
+        });
+        graph.cleanSelection();
+        graph.select(edge);
+      }
+    },
+    {
       label: 'Insert Image...',
       icon: '🖼️',
       action: () => {

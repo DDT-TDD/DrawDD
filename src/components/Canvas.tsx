@@ -82,6 +82,7 @@ export function Canvas() {
     mindmapSortOrder,
     mindmapConnectorStyle,
     mindmapLayoutMode,
+    flowchartConnectorStyle,
     setCanvasBackground
   } = useGraph();
   const graphRef = useRef<Graph | null>(null);
@@ -120,7 +121,8 @@ export function Canvas() {
     lineColorRef.current = getLineColor(colorScheme);
     (window as any).__drawdd_lineColor = lineColorRef.current;
     (window as any).__drawdd_colorScheme = colorScheme;
-  }, [colorScheme]);
+    (window as any).__drawdd_flowchartConnectorStyle = flowchartConnectorStyle;
+  }, [colorScheme, flowchartConnectorStyle]);
 
   // Sync mindmap and timeline direction to window for keyboard shortcut access
   useEffect(() => {
@@ -288,7 +290,7 @@ export function Canvas() {
         connectionStrategy: 'pinRelative',
         anchor: 'center',
         connectionPoint: 'boundary',
-        allowBlank: false,
+        allowBlank: true, // Allow creating standalone lines (not connected to nodes)
         snap: {
           radius: 20,
         },
@@ -314,10 +316,35 @@ export function Canvas() {
             lineAttrs.targetMarker = null;
           }
 
+          // For non-mindmap, use the user's flowchart connector preference
+          const flowchartStyle = (window as any).__drawdd_flowchartConnectorStyle || 'rounded';
+          let edgeRouter: any = undefined;
+          let edgeConnector: any = undefined;
+          if (isMindmap) {
+            edgeRouter = { name: 'normal' };
+            edgeConnector = { name: 'smooth' };
+          } else {
+            // Apply user's default flowchart connector style
+            if (flowchartStyle === 'smooth') {
+              edgeRouter = { name: 'normal' };
+              edgeConnector = { name: 'smooth' };
+            } else if (flowchartStyle === 'flowchart') {
+              edgeRouter = { name: 'manhattan', args: { startDirections: ['top', 'right', 'bottom', 'left'], endDirections: ['top', 'right', 'bottom', 'left'] } };
+              edgeConnector = { name: 'rounded', args: { radius: 10 } };
+            } else if (flowchartStyle === 'straight') {
+              edgeRouter = { name: 'normal' };
+              edgeConnector = { name: 'normal' };
+            } else {
+              // 'rounded' (default) - normal router with rounded connector
+              edgeRouter = { name: 'normal' };
+              edgeConnector = { name: 'rounded', args: { radius: 8 } };
+            }
+          }
+
           return this.createEdge({
             attrs: { line: lineAttrs },
-            router: isMindmap ? { name: 'normal' } : undefined,
-            connector: isMindmap ? { name: 'smooth' } : undefined,
+            router: edgeRouter,
+            connector: edgeConnector,
             zIndex: 0,
           });
         },
@@ -352,7 +379,7 @@ export function Canvas() {
         rubberband: true,
         movable: true,
         showNodeSelectionBox: true,
-        showEdgeSelectionBox: true,
+        showEdgeSelectionBox: false, // Disabled: box overlay blocks vertex/waypoint interaction
       })
     );
 

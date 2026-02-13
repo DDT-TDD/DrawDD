@@ -14,7 +14,7 @@ import { APP_VERSION } from './types';
 import type { DiagramFile, DiagramPage } from './types';
 import { PanelLeftClose, PanelRightClose, PanelLeft, PanelRight } from 'lucide-react';
 import { applyTreeLayout, applyFishboneLayout, applyTimelineLayout } from './utils/layout';
-import { importFromJSON } from './utils/importExport';
+import { importFromJSON, importKityMinder, importXMind, importMindManager, importFreeMind, importFreePlan, mindmapToGraph } from './utils/importExport';
 import { addRecentFile } from './utils/recentFiles';
 import { injectKatexCSS } from './utils/markdown';
 import { registerHtmlNode } from './config/htmlNode';
@@ -75,7 +75,8 @@ function AppContent() {
     showLeftSidebar, setShowLeftSidebar,
     showRightSidebar, setShowRightSidebar,
     graph, zoom, setZoom, showGrid, setShowGrid,
-    setMindmapDirection, setTimelineDirection, setCanvasBackground
+    setMindmapDirection, setTimelineDirection, setCanvasBackground,
+    setMode
   } = useGraph();
   const [showFindReplace, setShowFindReplace] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -575,12 +576,50 @@ function AppContent() {
                 if (electronAPI?.openFile) {
                   const result = await electronAPI.openFile(arg);
                   if (result.success && result.content) {
-                    const doc = JSON.parse(result.content);
-                    importFromJSON(graph, doc, {
-                      setMindmapDirection,
-                      setTimelineDirection,
-                      setCanvasBackground,
-                    });
+                    const ext = result.fileName?.split('.').pop()?.toLowerCase() || '';
+
+                    // Route by extension - non-JSON formats need special handling
+                    if (ext === 'km') {
+                      // KityMinder JSON format
+                      const blob = new Blob([result.content], { type: 'application/json' });
+                      const file = new File([blob], result.fileName);
+                      const mindmap = await importKityMinder(file);
+                      mindmapToGraph(graph, mindmap);
+                      setMode('mindmap');
+                    } else if (ext === 'xmind') {
+                      const blob = new Blob([result.content]);
+                      const file = new File([blob], result.fileName);
+                      const mindmap = await importXMind(file);
+                      mindmapToGraph(graph, mindmap);
+                      setMode('mindmap');
+                    } else if (ext === 'mmap') {
+                      const blob = new Blob([result.content]);
+                      const file = new File([blob], result.fileName);
+                      const mindmap = await importMindManager(file);
+                      mindmapToGraph(graph, mindmap);
+                      setMode('mindmap');
+                    } else if (ext === 'mm') {
+                      const blob = new Blob([result.content], { type: 'text/xml' });
+                      const file = new File([blob], result.fileName);
+                      // Try FreeMind first, then FreePlan
+                      try {
+                        const mindmap = await importFreeMind(file);
+                        mindmapToGraph(graph, mindmap);
+                      } catch {
+                        const mindmap = await importFreePlan(file);
+                        mindmapToGraph(graph, mindmap);
+                      }
+                      setMode('mindmap');
+                    } else {
+                      // Default: DrawDD JSON format (.drwdd, .json)
+                      const doc = JSON.parse(result.content);
+                      importFromJSON(graph, doc, {
+                        setMindmapDirection,
+                        setTimelineDirection,
+                        setCanvasBackground,
+                      });
+                    }
+
                     if ((window as any).__drawdd_updateFileName) {
                       (window as any).__drawdd_updateFileName(result.fileName);
                     }
@@ -588,7 +627,6 @@ function AppContent() {
                       (window as any).__drawdd_setFilePath(result.filePath);
                     }
                     // Add to recent files
-                    const ext = result.fileName.split('.').pop()?.toLowerCase() || 'json';
                     addRecentFile({ name: result.fileName, type: ext as any, path: result.filePath });
                   } else {
                     console.error('Failed to open file:', result.error);

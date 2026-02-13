@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-const CACHE_NAME = 'drawdd-v1';
+const CACHE_NAME = 'drawdd-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -33,7 +33,8 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Fetch event - serve from cache, fallback to network
+// Fetch event - NETWORK FIRST strategy (try network, fall back to cache)
+// This ensures users always get the latest version when online
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   
@@ -44,35 +45,21 @@ self.addEventListener('fetch', (event) => {
   if (!request.url.startsWith(self.location.origin)) return;
 
   event.respondWith(
-    caches.match(request).then((cachedResponse) => {
-      // Return cached response if available
-      if (cachedResponse) {
-        // Fetch and update cache in background
-        event.waitUntil(
-          fetch(request).then((response) => {
-            if (response.ok) {
-              caches.open(CACHE_NAME).then((cache) => {
-                cache.put(request, response);
-              });
-            }
-          }).catch(() => {})
-        );
-        return cachedResponse;
-      }
-
-      // Fetch from network and cache
-      return fetch(request).then((response) => {
-        // Don't cache non-successful responses
-        if (!response.ok) return response;
-
-        // Clone response for caching
+    fetch(request).then((response) => {
+      // Got a good network response - cache it and return
+      if (response.ok) {
         const responseToCache = response.clone();
         caches.open(CACHE_NAME).then((cache) => {
           cache.put(request, responseToCache);
         });
-
-        return response;
-      }).catch(() => {
+      }
+      return response;
+    }).catch(() => {
+      // Network failed - try cache
+      return caches.match(request).then((cachedResponse) => {
+        if (cachedResponse) {
+          return cachedResponse;
+        }
         // Return offline page for navigation requests
         if (request.mode === 'navigate') {
           return caches.match('/index.html');

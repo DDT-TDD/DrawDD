@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { saveAs } from 'file-saver';
 import { useGraph } from '../context/GraphContext';
-import { exportToJSON, importFromJSON, importXMind, importMindManager, mindmapToGraph } from '../utils/importExport';
+import { exportToJSON, importFromJSON, importXMind, importMindManager, importKityMinder, mindmapToGraph } from '../utils/importExport';
 import { DiagramTypeSelector } from './DiagramTypeSelector';
 import { MindmapDirectionSelector } from './MindmapDirectionSelector';
 import { TimelineDirectionSelector } from './TimelineDirectionSelector';
@@ -39,7 +39,7 @@ import { labelAllDecisionBranches } from '../utils/decisionLabels';
 import type { DrawddDocument } from '../types';
 
 export function Toolbar() {
-  const { graph, mode, setMode, zoom, setZoom, canvasBackground, showGrid, mindmapDirection, timelineDirection, mindmapLayoutMode, setCanvasBackground, setShowGrid, setMindmapDirection, setTimelineDirection, setMindmapLayoutMode, exportConnectionPoints, exportGrid } = useGraph();
+  const { graph, mode, setMode, zoom, setZoom, canvasBackground, showGrid, mindmapDirection, timelineDirection, mindmapLayoutMode, setCanvasBackground, setShowGrid, setMindmapDirection, setTimelineDirection, setMindmapLayoutMode, exportConnectionPoints, exportGrid, exportCollapseIndicators, flowchartConnectorStyle, setFlowchartConnectorStyle } = useGraph();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectionCount, setSelectionCount] = useState(0);
@@ -119,9 +119,11 @@ export function Toolbar() {
       const container = graph.container as HTMLElement | undefined;
       const shouldHide = !exportConnectionPoints;
       const shouldHideGrid = !exportGrid && showGrid;
+      const shouldHideCollapse = !exportCollapseIndicators;
 
       if (shouldHide && container) container.classList.add('hide-ports');
       if (shouldHideGrid) graph.hideGrid();
+      if (shouldHideCollapse && container) container.classList.add('hide-collapse-indicators');
 
       // Wait a frame for changes to apply
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -141,6 +143,7 @@ export function Toolbar() {
         // Restore after export
         if (shouldHide && container) container.classList.remove('hide-ports');
         if (shouldHideGrid) graph.showGrid();
+        if (shouldHideCollapse && container) container.classList.remove('hide-collapse-indicators');
       }, {
         padding: 20,
         backgroundColor: canvasBackground?.color || '#ffffff',
@@ -153,9 +156,11 @@ export function Toolbar() {
       const container = graph.container as HTMLElement | undefined;
       const shouldHide = !exportConnectionPoints;
       const shouldHideGrid = !exportGrid && showGrid;
+      const shouldHideCollapse = !exportCollapseIndicators;
 
       if (shouldHide && container) container.classList.add('hide-ports');
       if (shouldHideGrid) graph.hideGrid();
+      if (shouldHideCollapse && container) container.classList.add('hide-collapse-indicators');
 
       // Wait a frame for changes to apply
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -167,6 +172,7 @@ export function Toolbar() {
         // Restore after export
         if (shouldHide && container) container.classList.remove('hide-ports');
         if (shouldHideGrid) graph.showGrid();
+        if (shouldHideCollapse && container) container.classList.remove('hide-collapse-indicators');
       });
     }
   };
@@ -234,8 +240,12 @@ export function Toolbar() {
         const mindmap = await importMindManager(file);
         mindmapToGraph(graph, mindmap);
         setMode('mindmap');
+      } else if (ext === 'km') {
+        const mindmap = await importKityMinder(file);
+        mindmapToGraph(graph, mindmap);
+        setMode('mindmap');
       } else {
-        alert('Unsupported file format. Supported: .drwdd, .json, .xmind, .mmap');
+        alert('Unsupported file format. Supported: .drwdd, .json, .xmind, .mmap, .km');
       }
     } catch (error) {
       console.error('Import error:', error);
@@ -289,6 +299,16 @@ export function Toolbar() {
   const handleApplyRouting = (style: 'flowchart' | 'simple' | 'curved' | 'metro' | 'direct') => {
     if (!graph) return;
 
+    // Map toolbar style names to flowchartConnectorStyle values and persist the default
+    const styleMap: Record<string, 'rounded' | 'smooth' | 'straight' | 'flowchart'> = {
+      flowchart: 'flowchart',
+      simple: 'flowchart', // orthogonal sharp = flowchart routing
+      curved: 'smooth',
+      direct: 'straight',
+      metro: 'flowchart',
+    };
+    const mappedStyle = styleMap[style] || 'rounded';
+    setFlowchartConnectorStyle(mappedStyle);
     // Use same logic as PropertiesPanel handleApplyEdgesToAll for consistency
     graph.getEdges().forEach(edge => {
       // Get current source/target to preserve connection points
@@ -441,8 +461,8 @@ export function Toolbar() {
         <button
           onClick={() => setMode('flowchart')}
           className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === 'flowchart'
-              ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm'
-              : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+            ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm'
+            : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
             }`}
         >
           <LayoutGrid size={16} />
@@ -451,8 +471,8 @@ export function Toolbar() {
         <button
           onClick={() => setMode('mindmap')}
           className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === 'mindmap'
-              ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm'
-              : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+            ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm'
+            : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
             }`}
         >
           <GitBranch size={16} />
@@ -461,8 +481,8 @@ export function Toolbar() {
         <button
           onClick={() => setMode('timeline')}
           className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === 'timeline'
-              ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm'
-              : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+            ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm'
+            : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
             }`}
         >
           📅
@@ -477,8 +497,8 @@ export function Toolbar() {
           <button
             onClick={() => setMindmapLayoutMode('compact')}
             className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${mindmapLayoutMode === 'compact'
-                ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm'
-                : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+              ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm'
+              : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
               }`}
             title="Compact spacing (tighter gaps)"
           >
@@ -487,8 +507,8 @@ export function Toolbar() {
           <button
             onClick={() => setMindmapLayoutMode('standard')}
             className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${mindmapLayoutMode === 'standard'
-                ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm'
-                : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+              ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm'
+              : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
               }`}
             title="Standard spacing"
           >
@@ -497,8 +517,8 @@ export function Toolbar() {
           <button
             onClick={() => setMindmapLayoutMode('spacious')}
             className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${mindmapLayoutMode === 'spacious'
-                ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm'
-                : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+              ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm'
+              : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
               }`}
             title="Spacious spacing (wider gaps)"
           >
@@ -697,48 +717,41 @@ export function Toolbar() {
             </div>
           </div>
 
-          {/* Smart Routing */}
-          <div className="relative group">
-            <ToolbarButton icon={ArrowRightLeft} title="Connector Routing Style" onClick={() => handleApplyRouting('flowchart')} />
-            <div className="absolute left-0 top-full mt-1 hidden group-hover:block bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 min-w-[180px] z-50">
-              <div className="px-3 py-1 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Routing Style</div>
-              <button
-                onClick={() => handleApplyRouting('flowchart')}
-                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-              >
-                📐 Flowchart (Manhattan)
-              </button>
-              <button
-                onClick={() => handleApplyRouting('simple')}
-                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-              >
-                📏 Simple (Orthogonal)
-              </button>
-              <button
-                onClick={() => handleApplyRouting('curved')}
-                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-              >
-                🌊 Smooth Curves
-              </button>
-              <button
-                onClick={() => handleApplyRouting('metro')}
-                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-              >
-                🚇 Metro Style
-              </button>
-              <button
-                onClick={() => handleApplyRouting('direct')}
-                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-              >
-                ➡️ Direct (Straight)
-              </button>
-            </div>
-          </div>
-
           {/* Decision Labels */}
           <ToolbarButton icon={Workflow} title="Auto-Label Decision Branches (Yes/No)" onClick={handleLabelDecisions} />
         </>
       )}
+
+      {/* Smart Routing - available in all modes */}
+      <div className="relative group">
+        <ToolbarButton icon={ArrowRightLeft} title="Default Line Type" onClick={() => handleApplyRouting('flowchart')} />
+        <div className="absolute left-0 top-full mt-1 hidden group-hover:block bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 min-w-[220px] z-50">
+          <div className="px-3 py-1 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Default Line Type</div>
+          {[
+            { style: 'flowchart' as const, mapped: 'flowchart', label: '📐 Rounded Orthogonal', desc: 'Manhattan routing with rounded corners' },
+            { style: 'simple' as const, mapped: 'flowchart', label: '📏 Sharp Orthogonal', desc: 'Manhattan routing with sharp corners' },
+            { style: 'curved' as const, mapped: 'smooth', label: '🌊 Smooth Curves', desc: 'Flowing curved lines' },
+            { style: 'metro' as const, mapped: 'flowchart', label: '🚇 Metro Style', desc: '45° angle connections' },
+            { style: 'direct' as const, mapped: 'straight', label: '➡️ Direct (Straight)', desc: 'Point-to-point straight lines' },
+          ].map((item) => (
+            <button
+              key={item.style}
+              onClick={() => handleApplyRouting(item.style)}
+              className={`flex flex-col gap-0.5 w-full px-4 py-2 text-sm transition-colors text-left ${flowchartConnectorStyle === item.mapped && (
+                (item.style === 'flowchart' && flowchartConnectorStyle === 'flowchart') ||
+                (item.style === 'curved' && flowchartConnectorStyle === 'smooth') ||
+                (item.style === 'direct' && flowchartConnectorStyle === 'straight')
+              )
+                ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 font-medium'
+                : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+            >
+              <span>{item.label}</span>
+              <span className="text-xs text-gray-400 dark:text-gray-500 font-normal">{item.desc}</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-2" />
 
@@ -778,7 +791,7 @@ export function Toolbar() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".drwdd,.json,.xmind,.mmap"
+        accept=".drwdd,.json,.xmind,.mmap,.km"
         className="hidden"
         onChange={handleFileImport}
       />

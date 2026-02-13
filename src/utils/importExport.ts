@@ -630,7 +630,16 @@ export function mindmapToGraph(graph: Graph, root: MindmapNode): void {
   // Apply proper layout to prevent overlap
   const layoutMode = (localStorage.getItem('drawdd-mindmap-layout-mode') as 'standard' | 'compact') || 'standard';
   applyMindmapLayout(graph, 'both', rootNode, layoutMode);
-  graph.centerContent();
+
+  // Force view reset to ensure content is visible
+  // Use a dual-step approach to ensure X6 internal loop updates bbox
+  setTimeout(() => {
+    graph.zoom(1);
+    graph.centerContent();
+    requestAnimationFrame(() => {
+      graph.zoomToFit({ padding: 40, maxScale: 1.5 });
+    });
+  }, 50);
 }
 
 function createMindmapNodes(
@@ -746,6 +755,8 @@ interface KityMinderNode {
     note?: string;
     hyperlink?: string;
     image?: string;
+    resource?: string[];
+    [key: string]: unknown;
   };
   children?: KityMinderNode[];
 }
@@ -781,11 +792,144 @@ function convertKityMinderNode(node: KityMinderNode): MindmapNode {
     expanded: node.data?.expandState !== 'collapse',
   };
 
+  // Preserve note
+  if (node.data?.note) {
+    result.note = node.data.note;
+  }
+
+  // Map hyperlink → link
+  if (node.data?.hyperlink) {
+    result.link = node.data.hyperlink;
+  }
+
+  // Preserve priority (KityMinder uses 1-9)
+  if (node.data?.priority) {
+    result.priority = node.data.priority;
+  }
+
+  // Preserve progress (KityMinder uses 0-9 scale, map to percentage)
+  if (node.data?.progress !== undefined && node.data.progress !== null) {
+    // KityMinder progress: 0=none, 1=start, 2-8=in progress, 9=done
+    // Map to percentage: 0→0, 1→10, 2→25, ..., 9→100
+    const progressMap: Record<number, number> = {
+      0: 0, 1: 10, 2: 25, 3: 35, 4: 50, 5: 60, 6: 70, 7: 80, 8: 90, 9: 100
+    };
+    result.progress = progressMap[node.data.progress] ?? Math.round((node.data.progress / 9) * 100);
+  }
+
   if (node.children && node.children.length > 0) {
     result.children = node.children.map(convertKityMinderNode);
   }
 
   return result;
+}
+
+// ============ KityMinder Export ============
+
+/**
+ * Export the current graph as KityMinder JSON (.km) format.
+ * The .km format is: { root: { data: {...}, children: [...] }, template, theme, version }
+ */
+export function exportToKityMinder(graph: Graph): string {
+  const nodes = graph.getNodes();
+  if (nodes.length === 0) {
+    return JSON.stringify({
+      root: { data: { text: 'Empty' }, children: [] },
+      template: 'default',
+      theme: 'fresh-blue',
+      version: '1.4.43'
+    }, null, 2);
+  }
+
+  // Find root nodes (nodes with no incoming edges)
+  const roots = nodes.filter(node => {
+    const incoming = graph.getIncomingEdges(node);
+    return !incoming || incoming.length === 0;
+  });
+
+  const rootNode = roots[0] || nodes[0];
+  const kmRoot = convertGraphNodeToKityMinder(graph, rootNode);
+
+  return JSON.stringify({
+    root: kmRoot,
+    template: 'default',
+    theme: 'fresh-blue',
+    version: '1.4.43'
+  }, null, 2);
+}
+
+function convertGraphNodeToKityMinder(graph: Graph, node: Node): KityMinderNode {
+  const data = node.getData() as any;
+  const label = String(node.getAttrs()?.label?.text || 'Untitled');
+
+  // Strip emoji prefix/suffix decorations from label to get clean text
+  const cleanText = label
+    .replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]+ /gu, '')
+    .replace(/ [\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]+$/gu, '')
+    .trim() || label;
+
+  const kmData: KityMinderNode['data'] = {
+    id: node.id,
+    text: cleanText,
+    created: Date.now(),
+  };
+
+  // Map collapsed state
+  if (data?.collapsed) {
+    kmData.expandState = 'collapse';
+  }
+
+  // Map note
+  if (data?.note) {
+    kmData.note = data.note;
+  }
+
+  // Map link → hyperlink
+  if (data?.link) {
+    kmData.hyperlink = data.link;
+  }
+
+  // Map priority
+  if (data?.priority) {
+    kmData.priority = data.priority;
+  }
+
+  // Map progress (percentage → KityMinder 0-9 scale)
+  if (data?.progress !== undefined && data?.progress !== null) {
+    // Reverse mapping: 0→0, 1-10→1, 11-25→2, ..., 91-100→9
+    const pct = data.progress;
+    if (pct <= 0) kmData.progress = 0;
+    else if (pct <= 10) kmData.progress = 1;
+    else if (pct <= 25) kmData.progress = 2;
+    else if (pct <= 35) kmData.progress = 3;
+    else if (pct <= 50) kmData.progress = 4;
+    else if (pct <= 60) kmData.progress = 5;
+    else if (pct <= 70) kmData.progress = 6;
+    else if (pct <= 80) kmData.progress = 7;
+    else if (pct <= 90) kmData.progress = 8;
+    else kmData.progress = 9;
+  }
+
+  // Map image
+  if (data?.imageUrl) {
+    kmData.image = data.imageUrl;
+  }
+
+  // Get children via outgoing edges
+  const outgoing = graph.getOutgoingEdges(node) || [];
+  const children = outgoing
+    .map(edge => {
+      const targetId = edge.getTargetCellId();
+      return targetId ? graph.getCellById(targetId) as Node : null;
+    })
+    .filter((n): n is Node => n !== null);
+
+  const kmNode: KityMinderNode = {
+    data: kmData,
+    children: children.map(child => convertGraphNodeToKityMinder(graph, child)),
+  };
+
+  return kmNode;
 }
 
 // ============ FreeMind Import ============

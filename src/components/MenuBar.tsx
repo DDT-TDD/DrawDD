@@ -3,7 +3,7 @@ import { useGraph } from '../context/GraphContext';
 import { useTheme } from '../context/ThemeContext';
 import { saveAs } from 'file-saver';
 import { jsPDF } from 'jspdf';
-import { exportToJSON, exportToHTML, exportToMarkdown, exportToTextOutline, importFromJSON, importXMind, importMindManager, importKityMinder, importFreeMind, importFreePlan, importVisio, mindmapToGraph, visioToGraph } from '../utils/importExport';
+import { exportToJSON, exportToHTML, exportToMarkdown, exportToTextOutline, exportToKityMinder, importFromJSON, importXMind, importMindManager, importKityMinder, importFreeMind, importFreePlan, importVisio, mindmapToGraph, visioToGraph } from '../utils/importExport';
 import { applyTreeLayout, applyFishboneLayout, applyTimelineLayout, type LayoutDirection } from '../utils/layout';
 import { getRecentFiles, addRecentFile, clearRecentFiles, type RecentFile } from '../utils/recentFiles';
 import { KeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
@@ -40,7 +40,8 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     mindmapDirection, setMindmapDirection,
     timelineDirection, setTimelineDirection,
     exportConnectionPoints,
-    exportGrid
+    exportGrid,
+    exportCollapseIndicators
   } = useGraph();
   const { theme, setTheme } = useTheme();
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
@@ -92,6 +93,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     __drawdd_exportPDF?: () => void;
     __drawdd_exportHTML?: () => void;
     __drawdd_exportJSON?: () => void;
+    __drawdd_exportKityMinder?: () => void;
     __drawdd_newFile?: () => void;
     __drawdd_newPage?: () => void;
     __drawdd_markSaved?: () => void;
@@ -425,15 +427,21 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     const container = graph?.container as HTMLElement | undefined;
     const shouldHide = !exportConnectionPoints;
     const shouldHideGrid = !exportGrid && showGrid;
+    const shouldHideCollapse = !exportCollapseIndicators;
 
     if (shouldHide && container) container.classList.add('hide-ports');
     if (shouldHideGrid && graph) graph.hideGrid();
+    if (shouldHideCollapse && container) container.classList.add('hide-collapse-indicators');
+
+    // Wait a frame for CSS changes to apply
+    await new Promise(resolve => setTimeout(resolve, 100));
 
     try {
       await cb();
     } finally {
       if (shouldHide && container) container.classList.remove('hide-ports');
       if (shouldHideGrid && graph) graph.showGrid();
+      if (shouldHideCollapse && container) container.classList.remove('hide-collapse-indicators');
     }
   };
 
@@ -606,6 +614,20 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     setActiveMenu(null);
   };
 
+  const handleExportKityMinder = () => {
+    if (graph) {
+      try {
+        const kmJson = exportToKityMinder(graph);
+        const blob = new Blob([kmJson], { type: 'application/json;charset=utf-8' });
+        saveAs(blob, 'diagram.km');
+      } catch (e) {
+        console.error('KityMinder export error:', e);
+        alert('Failed to export KityMinder file: ' + (e instanceof Error ? e.message : 'Unknown error'));
+      }
+    }
+    setActiveMenu(null);
+  };
+
   // Expose export functions to window for Electron menu access
   useEffect(() => {
     drawddWindow.__drawdd_save = handleSave;
@@ -616,6 +638,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     drawddWindow.__drawdd_exportPDF = handleExportPDF;
     drawddWindow.__drawdd_exportHTML = handleExportHTML;
     drawddWindow.__drawdd_exportJSON = handleExportJSON;
+    drawddWindow.__drawdd_exportKityMinder = handleExportKityMinder;
     return () => {
       delete drawddWindow.__drawdd_save;
       delete drawddWindow.__drawdd_saveAs;
@@ -625,6 +648,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
       delete drawddWindow.__drawdd_exportPDF;
       delete drawddWindow.__drawdd_exportHTML;
       delete drawddWindow.__drawdd_exportJSON;
+      delete drawddWindow.__drawdd_exportKityMinder;
     };
   });
 
@@ -1062,6 +1086,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
         { label: 'Export as JSON', action: handleExportJSON },
         { label: 'Export as Markdown', action: handleExportMarkdown },
         { label: 'Export as Text Outline', action: handleExportTextOutline },
+        { label: 'Export as KityMinder (.km)', action: handleExportKityMinder },
       ],
     },
     {

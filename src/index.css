@@ -11,7 +11,7 @@
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  
+
   /* Light theme colors */
   --bg-primary: #f8fafc;
   --bg-secondary: #ffffff;
@@ -44,10 +44,55 @@
   box-sizing: border-box;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   width: 100%;
   height: 100%;
   overflow: hidden;
+}
+
+/* ====================================================================
+   CRITICAL FIXES: Tailwind CSS v4 Preflight overrides for AntV X6
+   Tailwind v4's Preflight applies aggressive CSS resets via * and
+   element selectors that break X6's SVG-based graph rendering.
+   ==================================================================== */
+
+/* Fix 1: Grid pattern - Tailwind sets background-repeat:no-repeat on * */
+.x6-graph-grid {
+  background-repeat: repeat !important;
+}
+
+/* Fix 2: SVG display - Tailwind sets `display:block` on all <svg> elements.
+   X6 graph SVG needs block display, but nested/internal SVGs must not be forced
+   to block which can break SVG composition and hit-testing. */
+.x6-graph svg:not(.x6-graph-svg) {
+  display: inline !important;
+}
+
+/* Fix 3: Quick Connect arrows (draw.io-style hover arrows for auto-connect).
+   These are dynamically created SVG elements appended to the graph stage.
+   Ensure they remain visible, interactive, and correctly layered above nodes. */
+.quick-connect-arrows {
+  pointer-events: all !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.quick-connect-arrows g {
+  pointer-events: all !important;
+  cursor: pointer !important;
+}
+
+.quick-connect-arrows circle,
+.quick-connect-arrows path {
+  visibility: visible !important;
+}
+
+/* Fix 4: Ensure X6 graph container elements are not clipped or hidden */
+.x6-graph-svg-viewport,
+.x6-graph-svg-stage {
+  overflow: visible !important;
 }
 
 /* Dark mode styles */
@@ -160,7 +205,38 @@ button:focus-visible {
   visibility: hidden !important;
 }
 
+/* Hide collapse indicators in exports */
+.hide-collapse-indicators .rich-content-node button {
+  display: none !important;
+}
+
 /* Ensure text is selectable in inputs */
-input, textarea {
+input,
+textarea {
   user-select: text;
+}
+
+/* Edge selection: wider click target and visual highlight */
+.x6-edge {
+  cursor: pointer;
+}
+
+/* Make the edge path easier to click by using a transparent wider stroke for hit-testing */
+.x6-edge .x6-edge-line-bg {
+  stroke-width: 14 !important;
+  stroke: transparent !important;
+  fill: none !important;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+/* Visual highlight for selected edges */
+.x6-edge.x6-edge-selected .x6-edge-line {
+  filter: drop-shadow(0 0 3px rgba(95, 149, 255, 0.7));
+}
+
+/* Ensure edge vertices (waypoints) are always interactable */
+.x6-edge .x6-edge-tool .x6-edge-tool-vertices circle {
+  cursor: move;
+  pointer-events: all;
 }

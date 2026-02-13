@@ -87,20 +87,20 @@ export class QuickConnectManager {
         this.updateArrowPositions();
       }
     });
-    
+
     this.graph.on('translate', () => {
       if (this.currentNode) {
         this.updateArrowPositions();
       }
     });
-    
+
     // Also track when the node itself moves
     this.graph.on('node:moved', ({ node }) => {
       if (this.currentNode && this.currentNode.id === node.id) {
         this.updateArrowPositions();
       }
     });
-    
+
     // Hide on click elsewhere
     this.graph.on('blank:click', () => this.hideArrows());
     this.graph.on('cell:click', ({ cell }) => {
@@ -130,7 +130,7 @@ export class QuickConnectManager {
    */
   private updateArrowPositions(): void {
     if (!this.currentNode || !this.container) return;
-    
+
     const bbox = this.currentNode.getBBox();
     const centerX = bbox.x + bbox.width / 2;
     const centerY = bbox.y + bbox.height / 2;
@@ -161,12 +161,12 @@ export class QuickConnectManager {
     const bbox = node.getBBox();
     const centerX = bbox.x + bbox.width / 2;
     const centerY = bbox.y + bbox.height / 2;
-    
+
     // Create SVG container for arrows
     // Append to the cells/stage layer so arrows transform with zoom/pan
     const svg = this.graph.view.svg;
     if (!svg) return;
-    
+
     // Find the stage/viewport layer that contains cells (this layer already has transforms applied)
     // In X6, cells are rendered in a <g> element with class "x6-graph-svg-stage"
     let stageLayer = svg.querySelector('.x6-graph-svg-stage') as SVGGElement | null;
@@ -174,13 +174,13 @@ export class QuickConnectManager {
       // Fallback: try to find the first <g> that looks like the main content layer
       stageLayer = svg.querySelector('g') as SVGGElement | null;
     }
-    
+
     const appendTarget = stageLayer || svg;
 
     this.container = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     this.container.setAttribute('class', 'quick-connect-arrows');
     this.container.style.pointerEvents = 'all';
-    
+
     // Add mouse tracking on container to prevent premature hiding
     this.container.addEventListener('mouseenter', () => {
       this.isMouseOverContainer = true;
@@ -195,7 +195,7 @@ export class QuickConnectManager {
         this.scheduleHide(this.currentNode, 200);
       }
     });
-    
+
     // Append to the stage layer so transforms are correctly applied
     appendTarget.appendChild(this.container);
 
@@ -215,7 +215,7 @@ export class QuickConnectManager {
   private createArrowElement(x: number, y: number, rotation: number, direction: ArrowDirection): SVGGElement {
     const size = this.options.arrowSize;
     const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    
+
     group.setAttribute('transform', `translate(${x}, ${y}) rotate(${rotation})`);
     group.style.cursor = 'pointer';
     group.style.pointerEvents = 'all';
@@ -234,7 +234,7 @@ export class QuickConnectManager {
 
     // Arrow shape (pointing right, rotation handles direction)
     const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    const arrowPath = `M ${-size/4} ${-size/4} L ${size/4} 0 L ${-size/4} ${size/4} Z`;
+    const arrowPath = `M ${-size / 4} ${-size / 4} L ${size / 4} 0 L ${-size / 4} ${size / 4} Z`;
     arrow.setAttribute('d', arrowPath);
     arrow.setAttribute('fill', 'white');
     arrow.style.pointerEvents = 'none'; // Let circle handle clicks
@@ -284,7 +284,7 @@ export class QuickConnectManager {
     const bbox = sourceNode.getBBox();
     const { nodeSpacing, colorScheme, defaultShape } = this.options;
     const theme = getNextThemeColors(colorScheme);
-    
+
     // Check if we're in timeline mode
     const currentMode = (window as any).__drawdd_mode;
     const isTimeline = currentMode === 'timeline';
@@ -321,7 +321,7 @@ export class QuickConnectManager {
     }
 
     // Create new node with appropriate data based on mode
-    const nodeData = isTimeline || sourceData.isTimeline 
+    const nodeData = isTimeline || sourceData.isTimeline
       ? { isTimeline: true, eventType: 'event' }
       : {};
 
@@ -370,19 +370,10 @@ export class QuickConnectManager {
       connector: { name: 'rounded', args: { radius: 8 } },
     });
 
-    // Select the new node
-    this.graph.cleanSelection();
-    this.graph.select(newNode);
-
-    // Hide arrows
-    this.hideArrows();
-
-    // Trigger text edit on new node
-    setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('drawdd:edit-cell-text', {
-        detail: { cellId: newNode.id }
-      }));
-    }, 100);
+    // Do NOT select the new node — keep the quick connect arrows visible
+    // so the user can chain-create multiple nodes in a row.
+    // Show arrows on the newly created node for continued chaining.
+    this.showArrows(newNode);
   }
 
   /**
@@ -393,7 +384,7 @@ export class QuickConnectManager {
     if (isSource) {
       return direction;
     }
-    
+
     const opposites: Record<ArrowDirection, ArrowDirection> = {
       top: 'bottom',
       bottom: 'top',

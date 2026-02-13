@@ -23,16 +23,36 @@
   <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>
   <script>
-    // Register Service Worker
+    // Register Service Worker - ONLY in production builds
+    // In development (Vite dev server), the SW caches stale assets and breaks hot reload
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-          .then((registration) => {
-            console.log('SW registered:', registration.scope);
-          })
-          .catch((error) => {
-            console.log('SW registration failed:', error);
+      window.addEventListener('load', function() {
+        // Detect development mode by checking for common Vite dev server ports
+        // or the presence of Vite HMR client script
+        var isDev = (location.port === '5173' || location.port === '5174' || !!document.querySelector('script[type="module"][src*="@vite"]'));
+        if (isDev) {
+          // Unregister any existing service workers in dev mode to prevent stale cache issues
+          navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            registrations.forEach(function(registration) {
+              registration.unregister();
+              console.log('SW unregistered for dev mode:', registration.scope);
+            });
           });
+          // Also clear all caches to prevent stale content
+          if (caches) {
+            caches.keys().then(function(names) {
+              names.forEach(function(name) { caches.delete(name); });
+            });
+          }
+        } else {
+          navigator.serviceWorker.register('/sw.js')
+            .then(function(registration) {
+              console.log('SW registered:', registration.scope);
+            })
+            .catch(function(error) {
+              console.log('SW registration failed:', error);
+            });
+        }
       });
     }
   </script>

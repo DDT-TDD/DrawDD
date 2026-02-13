@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.3] - 2026-02-13
+
+### Added
+
+#### Lines & Connections
+- **Standalone Lines**: Right-click canvas → "Add Line" to create lines independent of node connections
+- **Default Line Type Setting**: New toolbar dropdown (all modes) to set the default connector style for new edges (Rounded Orthogonal, Sharp Orthogonal, Curved, Straight, Metro) — with active-state highlighting and descriptions
+- **Shape Border Style**: Added solid/dashed/dotted border style selector for shapes in the Properties Panel Border section
+
+#### Export
+- **Collapse Indicator Toggle**: New setting in Settings → Canvas to show/hide mindmap collapse (+/−) buttons in PNG, SVG, JPEG, and PDF exports (defaults to shown)
+
+### Fixed
+
+#### Quick Connect
+- **No Auto-Selection**: Quick Connect arrow clicks no longer auto-select the newly created node; arrows now appear on the new node for chain creation
+
+#### Edge Selection
+- **Easier Edge Clicking**: Wider invisible hit area (14px) around edges for easier selection
+- **Visual Selection Feedback**: Selected edges now show a glow highlight instead of an obstructing selection box
+- **Vertex Interaction**: Disabled edge selection box overlay that was blocking waypoint/vertex manipulation
+
 ## [2.1.2] - 2026-02-11
 
 ### Added
