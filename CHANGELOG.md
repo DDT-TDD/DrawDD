@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.4] - 2026-03-10
+
+### Added
+
+#### Export
+- **draw.io Export (.drawio)**: Added native export to draw.io-compatible XML format (`mxfile` / `mxGraphModel`)
+- **Menu Integration**: draw.io export is available from File export actions in both the main MenuBar and Toolbar export dropdown
+
+### Changed
+
+#### Save Workflow
+- **Toolbar Save Behavior**: Toolbar Save now uses the real application save pipeline (`Save`/`Save As` behavior) instead of exporting JSON
+
+#### draw.io Fidelity
+- **Shape Mapping**: Improved draw.io export shape/style mapping for `rect`, `ellipse`, `circle`, `diamond`, `polygon`, `image`, and `rich-content-node`
+
+### Fixed
+
+#### Electron API Reliability
+- **Preload API Collision**: Fixed duplicate `openFile` key in `electron/preload.cjs` that could silently override file-open behavior
+- **Explicit APIs**: Split open operations into dedicated methods for opening files by path vs opening with default OS application
+
+#### Repository Hygiene
+- **Ignore Rules Updated**: Added local export artifact ignore patterns (`*.drawio`, `*.drwdd`) to relevant ignore files
+
 ## [2.1.3] - 2026-02-13
 
 ### Added

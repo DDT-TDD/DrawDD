@@ -52,6 +52,10 @@ copilot-instructions.md
 # Agent Artifacts
 .gemini
 
+# Exported diagram artifacts (local/manual exports)
+*.drawio
+*.drwdd
+
 # Development documentation (ignore all md files except specific ones)
 *.md
 !README.md

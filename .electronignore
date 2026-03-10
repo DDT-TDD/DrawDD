@@ -71,6 +71,10 @@ node_modules/.package-lock.json
 # Root index.html (we use dist/index.html)
 index.html
 
+# Local exported diagram artifacts
+*.drawio
+*.drwdd
+
 # Lock files
 package-lock.json
 yarn.lock

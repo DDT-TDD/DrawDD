@@ -24,6 +24,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Open a file by path (for recent files)
   openFile: (filePath) => ipcRenderer.invoke('open-file-by-path', filePath),
 
+  // Open a file with the OS default application (folder explorer action)
+  openWithDefaultApp: (filePath) => ipcRenderer.invoke('open-file', filePath),
+
   // Get recent files from OS
   getRecentFiles: () => ipcRenderer.invoke('get-recent-files'),
 
@@ -32,9 +35,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Folder Explorer: Select folder dialog
   selectFolder: () => ipcRenderer.invoke('select-folder'),
-
-  // Folder Explorer: Open file with default application
-  openFile: (filePath) => ipcRenderer.invoke('open-file', filePath),
 
   // Folder Explorer: Scan directory recursively
   scanDirectory: (dirPath, includeHidden) => ipcRenderer.invoke('scan-directory', dirPath, includeHidden),

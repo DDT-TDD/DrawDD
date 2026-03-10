@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { saveAs } from 'file-saver';
 import { useGraph } from '../context/GraphContext';
-import { exportToJSON, importFromJSON, importXMind, importMindManager, importKityMinder, mindmapToGraph } from '../utils/importExport';
+import { exportToJSON, exportToDrawioXML, importFromJSON, importXMind, importMindManager, importKityMinder, mindmapToGraph } from '../utils/importExport';
 import { DiagramTypeSelector } from './DiagramTypeSelector';
 import { MindmapDirectionSelector } from './MindmapDirectionSelector';
 import { TimelineDirectionSelector } from './TimelineDirectionSelector';
@@ -195,6 +195,19 @@ export function Toolbar() {
         });
         const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' });
         saveAs(blob, 'drawdd-export.drwdd');
+      }
+    }
+  };
+
+  const handleExportDrawio = () => {
+    if (graph) {
+      try {
+        const xml = exportToDrawioXML(graph);
+        const blob = new Blob([xml], { type: 'application/xml;charset=utf-8' });
+        saveAs(blob, 'drawdd-export.drawio');
+      } catch (error) {
+        console.error('draw.io export error:', error);
+        alert('Failed to export draw.io file: ' + (error instanceof Error ? error.message : 'Unknown error'));
       }
     }
   };
@@ -822,6 +835,13 @@ export function Toolbar() {
             <FileJson size={16} />
             Export as JSON
           </button>
+          <button
+            onClick={handleExportDrawio}
+            className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            <FileCode size={16} />
+            Export as draw.io
+          </button>
         </div>
       </div>
 
@@ -829,7 +849,7 @@ export function Toolbar() {
 
       {/* Save */}
       <button
-        onClick={handleExportJSON}
+        onClick={() => (window as any).__drawdd_save?.()}
         className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
       >
         <Save size={16} />

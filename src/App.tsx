@@ -515,6 +515,9 @@ function AppContent() {
         case 'export-json':
           if ((window as any).__drawdd_exportJSON) (window as any).__drawdd_exportJSON();
           break;
+        case 'export-drawio':
+          if ((window as any).__drawdd_exportDrawio) (window as any).__drawdd_exportDrawio();
+          break;
         case 'export-html':
           if ((window as any).__drawdd_exportHTML) (window as any).__drawdd_exportHTML();
           break;

@@ -33,7 +33,8 @@ export interface ScanDirectoryResult {
 // Electron API interface
 interface ElectronAPI {
   selectFolder: () => Promise<SelectFolderResult>;
-  openFile: (filePath: string) => Promise<OpenFileResult>;
+  openFile: (filePath: string) => Promise<any>;
+  openWithDefaultApp?: (filePath: string) => Promise<OpenFileResult>;
   scanDirectory: (dirPath: string, includeHidden: boolean) => Promise<ScanDirectoryResult>;
 }
 
@@ -79,6 +80,11 @@ export const openFile = async (filePath: string): Promise<OpenFileResult> => {
   if (!isElectron()) {
     return mockAPI.openFile(filePath);
   }
+  if (window.electronAPI.openWithDefaultApp) {
+    return window.electronAPI.openWithDefaultApp(filePath);
+  }
+
+  // Backward compatibility for older preload APIs
   return window.electronAPI.openFile(filePath);
 };
 

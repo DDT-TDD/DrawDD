@@ -60,9 +60,27 @@ const toRemove = [
   'RELEASE_NOTES_v1.1.2.md',
   'RELEASE_NOTES_v1.1.3.md',
   'RELEASE_NOTES_v2.0.0.md',
+  'RELEASE_NOTES_v2.0.1.md',
+  'RELEASE_NOTES_v2.1.0.md',
+  'RELEASE_NOTES_v2.1.1.md',
+  'RELEASE_NOTES_v2.1.2.md',
+  'RELEASE_NOTES_v2.1.3.md',
+  'RELEASE_NOTES_v2.1.4.md',
   'REMAINING_IMPLEMENTATION.md',
   'STABILITY_FIXES_APPLIED.md',
   'TROUBLESHOOTING.md',
+  'COMPLETE_COLLAPSE_REWRITE.md',
+  'CRITICAL_FIXES_APPLIED.md',
+  'CRITICAL_ISSUE_SUMMARY.md',
+  'CRITICAL_VISIBILITY_REGRESSION_FIX.md',
+  'CURRENT_STATUS.md',
+  'FINAL_FIX_SUMMARY.md',
+  'FINAL_REGRESSION_FIX.md',
+  'FOREIGNOBJECT_FIX.md',
+  'NODE_VISIBILITY_FIX_V2.md',
+  'NODE_VISIBILITY_REGRESSION_FIX.md',
+  'PACKAGE_SIZE_FIX.md',
+  'REACT_COMPONENT_NOT_RENDERING.md',
   
   // Dev dependencies in node_modules
   'node_modules/@types',
@@ -178,3 +196,32 @@ removeTestFiles(appPath);
 console.log(`\n✓ Cleanup complete!`);
 console.log(`  Removed ${removedCount} items`);
 console.log(`  Freed ${(totalSize / 1024 / 1024).toFixed(2)} MB`);
+
+// ── Rename release folder to versioned portable name ──────────────────────
+try {
+  // appPath is e.g. release-builds/DRAWDD-win32-x64/resources/app
+  // We want to rename release-builds/DRAWDD-win32-x64 → release-builds/DRAWDD_<version>.portable
+  const packagerOutputDir = path.resolve(appPath, '..', '..');   // release-builds/DRAWDD-win32-x64
+  const releasesDir = path.resolve(appPath, '..', '..', '..');   // release-builds/
+
+  // Read version from package.json in the app resources
+  let version = 'unknown';
+  const pkgPath = path.join(appPath, 'package.json');
+  if (fs.existsSync(pkgPath)) {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+    version = pkg.version || version;
+  }
+
+  const newName = `DRAWDD_${version}.portable`;
+  const newDir = path.join(releasesDir, newName);
+
+  if (fs.existsSync(newDir)) {
+    fs.rmSync(newDir, { recursive: true, force: true });
+    console.log(`\n  Removed existing: ${newName}`);
+  }
+
+  fs.renameSync(packagerOutputDir, newDir);
+  console.log(`\n✓ Renamed output → ${newName}`);
+} catch (err) {
+  console.warn(`\n✗ Rename failed: ${err.message}`);
+}

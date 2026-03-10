@@ -65,6 +65,10 @@ node_modules/.cache/
 # Root index.html
 /index.html
 
+# Local exported diagram artifacts
+*.drawio
+*.drwdd
+
 # Lock files
 package-lock.json
 yarn.lock

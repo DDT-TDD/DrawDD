@@ -3,7 +3,7 @@ import { useGraph } from '../context/GraphContext';
 import { useTheme } from '../context/ThemeContext';
 import { saveAs } from 'file-saver';
 import { jsPDF } from 'jspdf';
-import { exportToJSON, exportToHTML, exportToMarkdown, exportToTextOutline, exportToKityMinder, importFromJSON, importXMind, importMindManager, importKityMinder, importFreeMind, importFreePlan, importVisio, mindmapToGraph, visioToGraph } from '../utils/importExport';
+import { exportToJSON, exportToDrawioXML, exportToHTML, exportToMarkdown, exportToTextOutline, exportToKityMinder, importFromJSON, importXMind, importMindManager, importKityMinder, importFreeMind, importFreePlan, importVisio, mindmapToGraph, visioToGraph } from '../utils/importExport';
 import { applyTreeLayout, applyFishboneLayout, applyTimelineLayout, type LayoutDirection } from '../utils/layout';
 import { getRecentFiles, addRecentFile, clearRecentFiles, type RecentFile } from '../utils/recentFiles';
 import { KeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
@@ -93,6 +93,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     __drawdd_exportPDF?: () => void;
     __drawdd_exportHTML?: () => void;
     __drawdd_exportJSON?: () => void;
+    __drawdd_exportDrawio?: () => void;
     __drawdd_exportKityMinder?: () => void;
     __drawdd_newFile?: () => void;
     __drawdd_newPage?: () => void;
@@ -540,6 +541,20 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     setActiveMenu(null);
   };
 
+  const handleExportDrawio = () => {
+    if (graph) {
+      try {
+        const xml = exportToDrawioXML(graph);
+        const blob = new Blob([xml], { type: 'application/xml;charset=utf-8' });
+        saveAs(blob, 'diagram.drawio');
+      } catch (e) {
+        console.error('draw.io export error:', e);
+        alert('Failed to export draw.io file: ' + (e instanceof Error ? e.message : 'Unknown error'));
+      }
+    }
+    setActiveMenu(null);
+  };
+
   const handleExportJPEG = async () => {
     if (graph) {
       try {
@@ -638,6 +653,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     drawddWindow.__drawdd_exportPDF = handleExportPDF;
     drawddWindow.__drawdd_exportHTML = handleExportHTML;
     drawddWindow.__drawdd_exportJSON = handleExportJSON;
+    drawddWindow.__drawdd_exportDrawio = handleExportDrawio;
     drawddWindow.__drawdd_exportKityMinder = handleExportKityMinder;
     return () => {
       delete drawddWindow.__drawdd_save;
@@ -648,6 +664,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
       delete drawddWindow.__drawdd_exportPDF;
       delete drawddWindow.__drawdd_exportHTML;
       delete drawddWindow.__drawdd_exportJSON;
+      delete drawddWindow.__drawdd_exportDrawio;
       delete drawddWindow.__drawdd_exportKityMinder;
     };
   });
@@ -1084,6 +1101,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
         { label: 'Export as SVG', action: handleExportSVG },
         { label: 'Export as PDF', action: handleExportPDF },
         { label: 'Export as JSON', action: handleExportJSON },
+        { label: 'Export as draw.io (.drawio)', action: handleExportDrawio },
         { label: 'Export as Markdown', action: handleExportMarkdown },
         { label: 'Export as Text Outline', action: handleExportTextOutline },
         { label: 'Export as KityMinder (.km)', action: handleExportKityMinder },

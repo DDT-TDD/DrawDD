@@ -1327,6 +1327,179 @@ export function visioToGraph(graph: Graph, data: VisioData): void {
   });
 }
 
+// ============ draw.io Export ============
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function toMxColor(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  if (/^#[0-9a-fA-F]{3,8}$/.test(trimmed)) {
+    if (trimmed.length === 4) {
+      const r = trimmed[1];
+      const g = trimmed[2];
+      const b = trimmed[3];
+      return `#${r}${r}${g}${g}${b}${b}`;
+    }
+    return trimmed.slice(0, 7);
+  }
+
+  return null;
+}
+
+function buildVertexStyle(node: Node): string {
+  const attrs = (node.getAttrs() || {}) as any;
+  const body = attrs.body || {};
+  const label = attrs.label || {};
+  const shape = String((node as any).shape || 'rect').toLowerCase();
+
+  const fillColor = toMxColor(body.fill) || '#ffffff';
+  const strokeColor = toMxColor(body.stroke) || '#000000';
+  const textColor = toMxColor(label.fill) || '#000000';
+  const fontSize = Number(label.fontSize) > 0 ? Number(label.fontSize) : 12;
+  const rounded = Number(body.rx) > 0 || Number(body.ry) > 0 ? '1' : '0';
+
+  let mxShape = 'rectangle';
+  let perimeter = 'rectanglePerimeter';
+
+  if (shape === 'ellipse' || shape === 'circle') {
+    mxShape = 'ellipse';
+    perimeter = 'ellipsePerimeter';
+  } else if (shape === 'diamond') {
+    mxShape = 'rhombus';
+    perimeter = 'rhombusPerimeter';
+  } else if (shape === 'polygon') {
+    // Preserve arbitrary polygon data when available, otherwise use rhombus as a safe polygon fallback.
+    if (typeof body.refPoints === 'string' && body.refPoints.trim()) {
+      mxShape = 'mxgraph.basic.polygon';
+    } else {
+      mxShape = 'rhombus';
+      perimeter = 'rhombusPerimeter';
+    }
+  } else if (shape === 'image') {
+    mxShape = 'image';
+    perimeter = 'rectanglePerimeter';
+  } else if (shape === 'rich-content-node') {
+    mxShape = 'rectangle';
+    perimeter = 'rectanglePerimeter';
+  }
+
+  const imageUrl = String(attrs?.image?.xlinkHref || attrs?.image?.['xlink:href'] || '').trim();
+
+  return [
+    `shape=${mxShape}`,
+    `perimeter=${perimeter}`,
+    'whiteSpace=wrap',
+    'html=1',
+    `rounded=${rounded}`,
+    `fillColor=${fillColor}`,
+    `strokeColor=${strokeColor}`,
+    `fontColor=${textColor}`,
+    `fontSize=${fontSize}`,
+    ...(mxShape === 'image' && imageUrl ? [`image=${imageUrl}`, 'imageAspect=0'] : []),
+    ...(mxShape === 'mxgraph.basic.polygon' && typeof body.refPoints === 'string' ? [`points=${body.refPoints}`] : []),
+  ].join(';') + ';';
+}
+
+function buildEdgeStyle(edge: any): string {
+  const attrs = (edge.getAttrs?.() || {}) as any;
+  const line = attrs.line || {};
+  const label = attrs.label || {};
+
+  const strokeColor = toMxColor(line.stroke) || '#000000';
+  const textColor = toMxColor(label.fill) || '#000000';
+  const fontSize = Number(label.fontSize) > 0 ? Number(label.fontSize) : 12;
+
+  const markerName = String(line?.targetMarker?.name || '').toLowerCase();
+  const endArrow = markerName === 'none' || markerName === '' ? 'none' : 'block';
+  const rounded = line?.router?.name === 'smooth' ? '1' : '0';
+
+  return [
+    'edgeStyle=orthogonalEdgeStyle',
+    `rounded=${rounded}`,
+    'orthogonalLoop=1',
+    'jettySize=auto',
+    'html=1',
+    `strokeColor=${strokeColor}`,
+    `endArrow=${endArrow}`,
+    'endFill=1',
+    `fontColor=${textColor}`,
+    `fontSize=${fontSize}`,
+  ].join(';') + ';';
+}
+
+/**
+ * Export current graph to draw.io compatible XML (.drawio).
+ * Uses plain (uncompressed) mxGraphModel wrapped by mxfile.
+ */
+export function exportToDrawioXML(graph: Graph): string {
+  const modified = new Date().toISOString();
+  const diagramId = `drawdd-${Date.now().toString(36)}`;
+
+  const lines: string[] = [];
+  lines.push('<?xml version="1.0" encoding="UTF-8"?>');
+  lines.push(`<mxfile host="app.diagrams.net" modified="${escapeXml(modified)}" agent="DRAWDD" version="26.0.0" type="device" compressed="false">`);
+  lines.push(`  <diagram id="${escapeXml(diagramId)}" name="Page-1">`);
+  lines.push('    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">');
+  lines.push('      <root>');
+  lines.push('        <mxCell id="0"/>');
+  lines.push('        <mxCell id="1" parent="0"/>');
+
+  for (const node of graph.getNodes()) {
+    const bbox = node.getBBox();
+    const attrs = (node.getAttrs() || {}) as any;
+    const label = String(attrs?.label?.text ?? attrs?.text?.text ?? '');
+    const style = buildVertexStyle(node);
+
+    lines.push(`        <mxCell id="${escapeXml(node.id)}" value="${escapeXml(label)}" style="${escapeXml(style)}" parent="1" vertex="1">`);
+    lines.push(`          <mxGeometry x="${bbox.x}" y="${bbox.y}" width="${bbox.width}" height="${bbox.height}" as="geometry"/>`);
+    lines.push('        </mxCell>');
+  }
+
+  for (const edge of graph.getEdges()) {
+    const sourceId = edge.getSourceCellId?.();
+    const targetId = edge.getTargetCellId?.();
+    if (!sourceId || !targetId) continue;
+
+    const labels = edge.getLabels?.() || [];
+    const edgeLabel = labels[0]?.attrs?.label?.text ?? labels[0]?.attrs?.text?.text ?? '';
+    const style = buildEdgeStyle(edge as any);
+
+    lines.push(`        <mxCell id="${escapeXml(edge.id)}" value="${escapeXml(String(edgeLabel))}" style="${escapeXml(style)}" parent="1" source="${escapeXml(sourceId)}" target="${escapeXml(targetId)}" edge="1">`);
+
+    const vertices = edge.getVertices?.() || [];
+    if (vertices.length > 0) {
+      lines.push('          <mxGeometry relative="1" as="geometry">');
+      lines.push('            <Array as="points">');
+      for (const p of vertices) {
+        lines.push(`              <mxPoint x="${p.x}" y="${p.y}"/>`);
+      }
+      lines.push('            </Array>');
+      lines.push('          </mxGeometry>');
+    } else {
+      lines.push('          <mxGeometry relative="1" as="geometry"/>');
+    }
+
+    lines.push('        </mxCell>');
+  }
+
+  lines.push('      </root>');
+  lines.push('    </mxGraphModel>');
+  lines.push('  </diagram>');
+  lines.push('</mxfile>');
+
+  return lines.join('\n');
+}
+
 // ============ HTML Export ============
 
 export function exportToHTML(graph: Graph, settings?: {

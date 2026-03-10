@@ -206,6 +206,10 @@ function createMenu() {
             {
               label: 'Export as JSON',
               click: () => mainWindow.webContents.send('menu-command', 'export-json')
+            },
+            {
+              label: 'Export as draw.io (.drawio)',
+              click: () => mainWindow.webContents.send('menu-command', 'export-drawio')
             }
           ]
         },
