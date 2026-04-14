@@ -38,11 +38,17 @@ import { createSwimlanes, SWIMLANE_TEMPLATES } from '../utils/swimlane';
 import { labelAllDecisionBranches } from '../utils/decisionLabels';
 import type { DrawddDocument } from '../types';
 
+interface DrawddWindow extends Window {
+  __drawdd_loadFile?: (fileData: unknown) => void;
+  __drawdd_importToNewTab?: (name: string, importFn: () => void) => void;
+}
+
 export function Toolbar() {
   const { graph, mode, setMode, zoom, setZoom, canvasBackground, showGrid, mindmapDirection, timelineDirection, mindmapLayoutMode, setCanvasBackground, setShowGrid, setMindmapDirection, setTimelineDirection, setMindmapLayoutMode, exportConnectionPoints, exportGrid, exportCollapseIndicators, flowchartConnectorStyle, setFlowchartConnectorStyle } = useGraph();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectionCount, setSelectionCount] = useState(0);
+  const drawddWindow = window as DrawddWindow;
 
   // Track selection changes
   useEffect(() => {
@@ -145,6 +151,7 @@ export function Toolbar() {
         if (shouldHideGrid) graph.showGrid();
         if (shouldHideCollapse && container) container.classList.remove('hide-collapse-indicators');
       }, {
+        ratio: '2',
         padding: 20,
         backgroundColor: canvasBackground?.color || '#ffffff',
       });
@@ -227,35 +234,57 @@ export function Toolbar() {
       if (ext === 'json' || ext === 'drwdd') {
         const text = await file.text();
         const parsed = JSON.parse(text);
+        const fileName = file.name.replace(/\.drwdd$|\.drawdd\.json$|\.[^/.]+$/i, '');
+        parsed.name = fileName;
 
-        // Check if it's a DiagramFile (has pages) or old DrawddDocument format
-        if (parsed.pages && Array.isArray(parsed.pages)) {
-          // New format with pages - load first page
-          const firstPage = parsed.pages[0];
-          if (firstPage?.data) {
-            graph.fromJSON(JSON.parse(firstPage.data));
-          }
+        if (drawddWindow.__drawdd_loadFile) {
+          drawddWindow.__drawdd_loadFile(parsed);
         } else {
-          // Old format - direct import
-          const doc: DrawddDocument = parsed;
-          importFromJSON(graph, doc, {
-            setCanvasBackground,
-            setShowGrid,
-            setMindmapDirection,
-            setTimelineDirection
-          });
+          // Fallback for environments that do not expose tab helpers.
+          if (parsed.pages && Array.isArray(parsed.pages)) {
+            const firstPage = parsed.pages[0];
+            if (firstPage?.data) {
+              graph.fromJSON(JSON.parse(firstPage.data));
+            }
+          } else {
+            const doc: DrawddDocument = parsed;
+            importFromJSON(graph, doc, {
+              setCanvasBackground,
+              setShowGrid,
+              setMindmapDirection,
+              setTimelineDirection
+            });
+          }
         }
       } else if (ext === 'xmind') {
         const mindmap = await importXMind(file);
-        mindmapToGraph(graph, mindmap);
+        if (drawddWindow.__drawdd_importToNewTab) {
+          drawddWindow.__drawdd_importToNewTab(file.name.replace(/\.[^/.]+$/i, ''), () => {
+            mindmapToGraph(graph, mindmap);
+          });
+        } else {
+          mindmapToGraph(graph, mindmap);
+        }
         setMode('mindmap');
       } else if (ext === 'mmap') {
         const mindmap = await importMindManager(file);
-        mindmapToGraph(graph, mindmap);
+        if (drawddWindow.__drawdd_importToNewTab) {
+          drawddWindow.__drawdd_importToNewTab(file.name.replace(/\.[^/.]+$/i, ''), () => {
+            mindmapToGraph(graph, mindmap);
+          });
+        } else {
+          mindmapToGraph(graph, mindmap);
+        }
         setMode('mindmap');
       } else if (ext === 'km') {
         const mindmap = await importKityMinder(file);
-        mindmapToGraph(graph, mindmap);
+        if (drawddWindow.__drawdd_importToNewTab) {
+          drawddWindow.__drawdd_importToNewTab(file.name.replace(/\.[^/.]+$/i, ''), () => {
+            mindmapToGraph(graph, mindmap);
+          });
+        } else {
+          mindmapToGraph(graph, mindmap);
+        }
         setMode('mindmap');
       } else {
         alert('Unsupported file format. Supported: .drwdd, .json, .xmind, .mmap, .km');

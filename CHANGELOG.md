@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.5] - 2026-04-14
+
+### Fixed
+
+#### File Opening & Tabs
+- **No Silent Tab Overwrite**: Opening `.drwdd`, `.json`, `.xmind`, `.mmap`, `.km`, `.mm`, and `.vsdx` files now opens content in a new tab instead of overwriting the current working tab
+- **Recent Files Consistency**: Recent-file opening now follows the same new-tab behavior as the main open flow
+- **Electron File Path Tracking**: Fixed stale file-path wiring so files opened from Electron correctly retain their path for subsequent saves
+- **Current Tab Preservation**: The active tab state is now persisted before new content is opened, preventing in-memory edits from being lost during open/import flows
+
+#### Export Quality
+- **High-Resolution Export**: PNG, JPEG, and PDF exports now render at 2x resolution, producing sharp images regardless of canvas zoom level or screen size
+- **PDF Export DPI**: PDF pages now embed a high-resolution image while maintaining correct logical page dimensions
+
+### Changed
+
+#### Import Workflow
+- **Unified Open Behavior**: Menu bar, toolbar import, Electron open, and recent-file actions now share the same tab-safe loading pipeline for both multi-page DRAWDD files and legacy JSON documents
+
+#### Repository Hygiene
+- **Ignore Rules Updated**: Added `.eslintcache` and `*.tsbuildinfo` to `.gitignore` to avoid committing local build cache artifacts
+
 ## [2.1.4] - 2026-03-10
 
 ### Added

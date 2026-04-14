@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import React, { createContext, useContext, useState, type ReactNode } from 'react';
 import type { Graph, Node, Edge } from '@antv/x6';
 import type { GraphContextType, CanvasBackground, MindmapLayoutDirection } from '../types';
 

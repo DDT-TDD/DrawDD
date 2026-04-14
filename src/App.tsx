@@ -429,37 +429,70 @@ function AppContent() {
       const file = files.find(f => f.id === activeFileId);
       return file?.name || 'Untitled Diagram';
     };
-    // Load entire file with all pages
-    (window as any).__drawdd_loadFile = (fileData: DiagramFile) => {
-      // Always open in a new tab
-      const newFile: DiagramFile = {
-        ...fileData,
-        id: `file-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-        isModified: false
-      };
+    // Load entire file with all pages (supports both multi-page and old DrawddDocument format)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__drawdd_loadFile = (fileData: any) => {
+      // Save current page data before opening new tab to prevent data loss
+      saveCurrentPageData();
 
-      setFiles(prev => [...prev, newFile]);
-      setActiveFileId(newFile.id);
+      if (fileData.pages && Array.isArray(fileData.pages)) {
+        // Multi-page format - open in a new tab
+        const newFile: DiagramFile = {
+          ...fileData,
+          id: `file-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+          isModified: false
+        };
 
-      // Load first page into graph
-      if (graph && newFile.pages.length > 0) {
-        const firstPage = newFile.pages.find(p => p.id === newFile.activePageId) || newFile.pages[0];
-        if (firstPage.data) {
-          try {
-            graph.fromJSON(JSON.parse(firstPage.data));
+        setFiles(prev => [...prev, newFile]);
+        setActiveFileId(newFile.id);
 
-            // CRITICAL FIX: Ensure all nodes are visible after loading
-            const nodes = graph.getNodes();
-            nodes.forEach(node => {
-              if (!node.isVisible()) {
-                node.setVisible(true);
-              }
-            });
-          } catch (e) {
-            console.error('Failed to load page data:', e);
+        // Load first page into graph
+        if (graph && newFile.pages.length > 0) {
+          const firstPage = newFile.pages.find(p => p.id === newFile.activePageId) || newFile.pages[0];
+          if (firstPage.data) {
+            try {
+              graph.fromJSON(JSON.parse(firstPage.data));
+
+              // CRITICAL FIX: Ensure all nodes are visible after loading
+              const nodes = graph.getNodes();
+              nodes.forEach(node => {
+                if (!node.isVisible()) {
+                  node.setVisible(true);
+                }
+              });
+            } catch (e) {
+              console.error('Failed to load page data:', e);
+              graph.clearCells();
+            }
+          } else {
             graph.clearCells();
           }
         }
+      } else if (fileData.nodes || fileData.edges) {
+        // Old DrawddDocument format - import with full normalization into a new tab
+        const newFile = createNewFile(fileData.name || 'Imported Diagram');
+        if (fileData.filePath) newFile.filePath = fileData.filePath;
+        setFiles(prev => [...prev, newFile]);
+        setActiveFileId(newFile.id);
+        if (graph) {
+          importFromJSON(graph, fileData, {
+            setMindmapDirection,
+            setTimelineDirection,
+            setCanvasBackground,
+          });
+        }
+      }
+    };
+    // Import non-JSON content (mindmaps, etc.) into a new tab
+    (window as any).__drawdd_importToNewTab = (name: string, importFn: () => void, filePath?: string) => {
+      saveCurrentPageData();
+      const newFile = createNewFile(name);
+      if (filePath) newFile.filePath = filePath;
+      setFiles(prev => [...prev, newFile]);
+      setActiveFileId(newFile.id);
+      if (graph) {
+        graph.clearCells();
+        importFn();
       }
     };
     return () => {
@@ -475,6 +508,7 @@ function AppContent() {
       delete (window as any).__drawdd_updateFilePath;
       delete (window as any).__drawdd_getFilePath;
       delete (window as any).__drawdd_loadFile;
+      delete (window as any).__drawdd_importToNewTab;
     };
   }, [handleNewFile, handleNewPage, activeFileId, graph, files]);
 
@@ -571,7 +605,7 @@ function AppContent() {
           setShowGrid(!showGrid);
           break;
         case 'open-file':
-          // Electron sends file path as arg, open it directly
+          // Electron sends file path as arg, open it in a NEW TAB
           if (arg && graph) {
             (async () => {
               try {
@@ -580,55 +614,61 @@ function AppContent() {
                   const result = await electronAPI.openFile(arg);
                   if (result.success && result.content) {
                     const ext = result.fileName?.split('.').pop()?.toLowerCase() || '';
+                    // Strip file extension for display name
+                    let fileName = result.fileName || '';
+                    if (fileName.endsWith('.drwdd')) fileName = fileName.replace('.drwdd', '');
+                    else if (fileName.endsWith('.drawdd.json')) fileName = fileName.replace('.drawdd.json', '');
+                    else fileName = fileName.replace(/\.[^/.]+$/, '');
 
-                    // Route by extension - non-JSON formats need special handling
+                    // Route by extension - all formats open in a new tab
                     if (ext === 'km') {
-                      // KityMinder JSON format
                       const blob = new Blob([result.content], { type: 'application/json' });
                       const file = new File([blob], result.fileName);
                       const mindmap = await importKityMinder(file);
-                      mindmapToGraph(graph, mindmap);
-                      setMode('mindmap');
+                      if ((window as any).__drawdd_importToNewTab) {
+                        (window as any).__drawdd_importToNewTab(fileName, () => { mindmapToGraph(graph, mindmap); }, result.filePath);
+                        setMode('mindmap');
+                      }
                     } else if (ext === 'xmind') {
                       const blob = new Blob([result.content]);
                       const file = new File([blob], result.fileName);
                       const mindmap = await importXMind(file);
-                      mindmapToGraph(graph, mindmap);
-                      setMode('mindmap');
+                      if ((window as any).__drawdd_importToNewTab) {
+                        (window as any).__drawdd_importToNewTab(fileName, () => { mindmapToGraph(graph, mindmap); }, result.filePath);
+                        setMode('mindmap');
+                      }
                     } else if (ext === 'mmap') {
                       const blob = new Blob([result.content]);
                       const file = new File([blob], result.fileName);
                       const mindmap = await importMindManager(file);
-                      mindmapToGraph(graph, mindmap);
-                      setMode('mindmap');
+                      if ((window as any).__drawdd_importToNewTab) {
+                        (window as any).__drawdd_importToNewTab(fileName, () => { mindmapToGraph(graph, mindmap); }, result.filePath);
+                        setMode('mindmap');
+                      }
                     } else if (ext === 'mm') {
                       const blob = new Blob([result.content], { type: 'text/xml' });
                       const file = new File([blob], result.fileName);
-                      // Try FreeMind first, then FreePlan
+                      let mindmap;
                       try {
-                        const mindmap = await importFreeMind(file);
-                        mindmapToGraph(graph, mindmap);
+                        mindmap = await importFreeMind(file);
                       } catch {
-                        const mindmap = await importFreePlan(file);
-                        mindmapToGraph(graph, mindmap);
+                        mindmap = await importFreePlan(file);
                       }
-                      setMode('mindmap');
+                      if ((window as any).__drawdd_importToNewTab) {
+                        (window as any).__drawdd_importToNewTab(fileName, () => { mindmapToGraph(graph, mindmap); }, result.filePath);
+                        setMode('mindmap');
+                      }
                     } else {
-                      // Default: DrawDD JSON format (.drwdd, .json)
+                      // DrawDD JSON format (.drwdd, .json) - route through __drawdd_loadFile
+                      // which handles both multi-page and old DrawddDocument format
                       const doc = JSON.parse(result.content);
-                      importFromJSON(graph, doc, {
-                        setMindmapDirection,
-                        setTimelineDirection,
-                        setCanvasBackground,
-                      });
+                      doc.name = fileName;
+                      doc.filePath = result.filePath;
+                      if ((window as any).__drawdd_loadFile) {
+                        (window as any).__drawdd_loadFile(doc);
+                      }
                     }
 
-                    if ((window as any).__drawdd_updateFileName) {
-                      (window as any).__drawdd_updateFileName(result.fileName);
-                    }
-                    if ((window as any).__drawdd_setFilePath) {
-                      (window as any).__drawdd_setFilePath(result.filePath);
-                    }
                     // Add to recent files
                     addRecentFile({ name: result.fileName, type: ext as any, path: result.filePath });
                   } else {

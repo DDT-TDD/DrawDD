@@ -25,6 +25,8 @@ release/
 .tmp
 .vite
 .vite-temp
+.eslintcache
+*.tsbuildinfo
 
 # Editor directories and files
 .vscode/
