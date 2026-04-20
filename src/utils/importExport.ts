@@ -1338,6 +1338,31 @@ function escapeXml(value: string): string {
     .replace(/'/g, '&apos;');
 }
 
+/**
+ * Strip HTML tags from a draw.io label value and return plain text.
+ * draw.io stores labels with html=1, using tags like <div>, <br>, <b>, etc.
+ */
+function stripHtmlTags(html: string): string {
+  if (!html) return '';
+  // Replace <br>, <br/>, <br /> with newlines, then strip all other tags
+  let text = html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]*>/g, '');
+  // Decode common HTML entities
+  text = text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ');
+  // Trim trailing newlines
+  return text.replace(/\n+$/, '').trim();
+}
+
 function toMxColor(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
@@ -1367,6 +1392,12 @@ function buildVertexStyle(node: Node): string {
   const textColor = toMxColor(label.fill) || '#000000';
   const fontSize = Number(label.fontSize) > 0 ? Number(label.fontSize) : 12;
   const rounded = Number(body.rx) > 0 || Number(body.ry) > 0 ? '1' : '0';
+  const strokeWidth = Number(body.strokeWidth) > 0 ? Number(body.strokeWidth) : 1;
+  const opacity = body.opacity != null && Number(body.opacity) < 1 ? Math.round(Number(body.opacity) * 100) : 100;
+  const dashed = typeof body.strokeDasharray === 'string' && body.strokeDasharray.trim() ? '1' : '0';
+  const bold = label.fontWeight === 'bold' ? '1' : '0';
+  const italic = label.fontStyle === 'italic' ? '1' : '0';
+  const underline = label.textDecoration === 'underline' ? '1' : '0';
 
   let mxShape = 'rectangle';
   let perimeter = 'rectanglePerimeter';
@@ -1403,8 +1434,14 @@ function buildVertexStyle(node: Node): string {
     `rounded=${rounded}`,
     `fillColor=${fillColor}`,
     `strokeColor=${strokeColor}`,
+    `strokeWidth=${strokeWidth}`,
     `fontColor=${textColor}`,
     `fontSize=${fontSize}`,
+    ...(opacity < 100 ? [`opacity=${opacity}`] : []),
+    ...(dashed === '1' ? ['dashed=1'] : []),
+    ...(bold === '1' ? ['bold=1'] : []),
+    ...(italic === '1' ? ['italic=1'] : []),
+    ...(underline === '1' ? ['underline=1'] : []),
     ...(mxShape === 'image' && imageUrl ? [`image=${imageUrl}`, 'imageAspect=0'] : []),
     ...(mxShape === 'mxgraph.basic.polygon' && typeof body.refPoints === 'string' ? [`points=${body.refPoints}`] : []),
   ].join(';') + ';';
@@ -1418,6 +1455,8 @@ function buildEdgeStyle(edge: any): string {
   const strokeColor = toMxColor(line.stroke) || '#000000';
   const textColor = toMxColor(label.fill) || '#000000';
   const fontSize = Number(label.fontSize) > 0 ? Number(label.fontSize) : 12;
+  const strokeWidth = Number(line.strokeWidth) > 0 ? Number(line.strokeWidth) : 1;
+  const dashed = typeof line.strokeDasharray === 'string' && line.strokeDasharray.trim() ? '1' : '0';
 
   const markerName = String(line?.targetMarker?.name || '').toLowerCase();
   const endArrow = markerName === 'none' || markerName === '' ? 'none' : 'block';
@@ -1430,10 +1469,12 @@ function buildEdgeStyle(edge: any): string {
     'jettySize=auto',
     'html=1',
     `strokeColor=${strokeColor}`,
+    `strokeWidth=${strokeWidth}`,
     `endArrow=${endArrow}`,
     'endFill=1',
     `fontColor=${textColor}`,
     `fontSize=${fontSize}`,
+    ...(dashed === '1' ? ['dashed=1'] : []),
   ].join(';') + ';';
 }
 
@@ -1498,6 +1539,429 @@ export function exportToDrawioXML(graph: Graph): string {
   lines.push('</mxfile>');
 
   return lines.join('\n');
+}
+
+// ============ draw.io Import ============
+
+/**
+ * Parse a draw.io style string into a key→value record.
+ * Example: "shape=ellipse;fillColor=#ff0000;strokeColor=#000000;"
+ */
+function parseDrawioStyle(style: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  style.split(';').forEach(part => {
+    const eq = part.indexOf('=');
+    if (eq === -1) {
+      if (part.trim()) result['__type'] = part.trim();
+    } else {
+      const key = part.slice(0, eq).trim();
+      const val = part.slice(eq + 1).trim();
+      if (key) result[key] = val;
+    }
+  });
+  return result;
+}
+
+/**
+ * Map a draw.io shape identifier to an X6 shape name.
+ */
+function drawioShapeToX6(styleMap: Record<string, string>): string {
+  const shape = (styleMap['shape'] || styleMap['__type'] || '').toLowerCase();
+  if (shape === 'ellipse' || shape === 'circle') return 'ellipse';
+  if (shape === 'rhombus' || shape === 'diamond') return 'diamond';
+  if (shape === 'triangle') return 'polygon';
+  if (shape === 'image') return 'image';
+  if (shape === 'parallelogram' || shape.includes('parallelogram')) return 'polygon';
+  if (shape.includes('cylinder') || shape.includes('database')) return 'ellipse';
+  if (shape.includes('cloud')) return 'ellipse';
+  if (shape.includes('hexagon')) return 'polygon';
+  // Default: rectangle
+  return 'rect';
+}
+
+/**
+ * Decompress a base64-encoded, zlib-deflated draw.io diagram string.
+ * Uses the browser-native DecompressionStream API (supported in Chrome 80+,
+ * Firefox 113+, Safari 16.4+, Edge 80+).
+ */
+async function decompressDrawioDiagram(encoded: string): Promise<string> {
+  // draw.io uses URI-encoded then base64'd then deflate-raw compressed data
+  const binary = atob(encoded);
+  const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+
+  try {
+    // Try deflate-raw first (most common in draw.io)
+    const ds = new DecompressionStream('deflate-raw');
+    const writer = ds.writable.getWriter();
+    const reader = ds.readable.getReader();
+    writer.write(bytes);
+    writer.close();
+
+    const chunks: Uint8Array[] = [];
+    let done = false;
+    while (!done) {
+      const { value, done: d } = await reader.read();
+      done = d;
+      if (value) chunks.push(value);
+    }
+
+    const total = chunks.reduce((n, c) => n + c.length, 0);
+    const out = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      out.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    const decoded = new TextDecoder('utf-8').decode(out);
+    // draw.io URI-encodes before base64, so decode that too
+    return decodeURIComponent(decoded);
+  } catch {
+    // Try deflate (with zlib header) as fallback
+    try {
+      const ds = new DecompressionStream('deflate');
+      const writer = ds.writable.getWriter();
+      const reader = ds.readable.getReader();
+      writer.write(bytes);
+      writer.close();
+
+      const chunks: Uint8Array[] = [];
+      let done = false;
+      while (!done) {
+        const { value, done: d } = await reader.read();
+        done = d;
+        if (value) chunks.push(value);
+      }
+
+      const total = chunks.reduce((n, c) => n + c.length, 0);
+      const out = new Uint8Array(total);
+      let offset = 0;
+      for (const chunk of chunks) {
+        out.set(chunk, offset);
+        offset += chunk.length;
+      }
+
+      const decoded = new TextDecoder('utf-8').decode(out);
+      return decodeURIComponent(decoded);
+    } catch {
+      throw new Error(
+        'Cannot decompress this draw.io file. It uses an unsupported compression format.\n\n' +
+        'To fix: open the file in draw.io, then go to Extras → Edit Diagram and copy the XML, ' +
+        'or re-save it as "Uncompressed XML" (File → Properties → uncheck Compress).'
+      );
+    }
+  }
+}
+
+/**
+ * Extract the raw mxGraphModel XML from an mxfile document.
+ * The <diagram> content may be either plain XML or a compressed+base64 string.
+ */
+async function extractMxGraphModelXml(mxfileDoc: Document): Promise<string> {
+  const diagramEl = mxfileDoc.querySelector('diagram');
+  if (!diagramEl) {
+    throw new Error('No <diagram> element found in draw.io file.');
+  }
+
+  const rawContent = diagramEl.textContent?.trim() || '';
+
+  // If the content is empty or starts with '<', it's already uncompressed inline XML.
+  // Some files put the mxGraphModel directly inside the <diagram> element.
+  const inlineModel = diagramEl.querySelector('mxGraphModel');
+  if (inlineModel) {
+    return inlineModel.outerHTML;
+  }
+
+  // If the raw text content looks like XML, parse it directly
+  if (rawContent.startsWith('<')) {
+    return rawContent;
+  }
+
+  // Otherwise it's base64-encoded compressed XML
+  if (rawContent.length > 0) {
+    return await decompressDrawioDiagram(rawContent);
+  }
+
+  throw new Error('draw.io <diagram> element is empty.');
+}
+
+/**
+ * Import a draw.io .drawio or .xml file and load its contents onto the graph.
+ * Supports:
+ *  - Uncompressed XML (what DrawDD exports)
+ *  - Compressed XML (what the real draw.io app produces by default)
+ *  - Multi-page files (imports the first diagram page)
+ */
+export async function importFromDrawio(file: File, graph: Graph): Promise<void> {
+  const text = await file.text();
+  const parser = new DOMParser();
+
+  // The outer document should be an <mxfile> or an <mxGraphModel> directly
+  const doc = parser.parseFromString(text, 'text/xml');
+
+  const parseError = doc.querySelector('parsererror');
+  if (parseError) {
+    throw new Error('Invalid draw.io file: XML parse error. ' + parseError.textContent?.slice(0, 200));
+  }
+
+  let modelXml: string;
+  const rootTag = doc.documentElement.tagName.toLowerCase();
+
+  if (rootTag === 'mxfile') {
+    // Standard draw.io file: extract and possibly decompress the diagram content
+    modelXml = await extractMxGraphModelXml(doc);
+  } else if (rootTag === 'mxgraphmodel') {
+    // Raw mxGraphModel (no mxfile wrapper)
+    modelXml = text;
+  } else {
+    throw new Error(`Unexpected root element <${rootTag}>. Expected <mxfile> or <mxGraphModel>.`);
+  }
+
+  // Parse the mxGraphModel XML
+  const modelDoc = parser.parseFromString(modelXml, 'text/xml');
+  const modelParseError = modelDoc.querySelector('parsererror');
+  if (modelParseError) {
+    throw new Error('Failed to parse draw.io diagram XML: ' + modelParseError.textContent?.slice(0, 200));
+  }
+
+  const cells = Array.from(modelDoc.querySelectorAll('mxCell'));
+
+  // Separate vertices and edges, skip the two mandatory root cells (id="0", id="1")
+  interface DrawioVertex {
+    id: string;
+    label: string;
+    style: Record<string, string>;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    parent: string;
+  }
+
+  interface DrawioEdge {
+    id: string;
+    label: string;
+    style: Record<string, string>;
+    source: string;
+    target: string;
+    points: Array<{ x: number; y: number }>;
+  }
+
+  const vertices: DrawioVertex[] = [];
+  const edges: DrawioEdge[] = [];
+
+  // First pass: build a parent→geometry map for resolving relative coordinates in groups/containers.
+  // Also collect edge IDs so we can detect child-label cells (labels stored as child mxCells of edges).
+  const cellGeoMap = new Map<string, { x: number; y: number }>();
+  const edgeIds = new Set<string>();
+
+  for (const cell of cells) {
+    const id = cell.getAttribute('id') || '';
+    if (id === '0' || id === '1') continue;
+    const geo = cell.querySelector('mxGeometry');
+    if (geo && geo.getAttribute('relative') !== '1') {
+      cellGeoMap.set(id, {
+        x: parseFloat(geo.getAttribute('x') || '0'),
+        y: parseFloat(geo.getAttribute('y') || '0'),
+      });
+    }
+    if (cell.getAttribute('edge') === '1') {
+      edgeIds.add(id);
+    }
+  }
+
+  // Resolve absolute position by walking parent chain
+  function resolveAbsolutePos(parentId: string, localX: number, localY: number): { x: number; y: number } {
+    let x = localX;
+    let y = localY;
+    let pid = parentId;
+    while (pid && pid !== '0' && pid !== '1') {
+      const parentGeo = cellGeoMap.get(pid);
+      if (parentGeo) {
+        x += parentGeo.x;
+        y += parentGeo.y;
+      }
+      // Find this parent's own parent
+      const parentCell = cells.find(c => c.getAttribute('id') === pid);
+      pid = parentCell?.getAttribute('parent') || '';
+    }
+    return { x, y };
+  }
+
+  // Edge label child cells: draw.io sometimes stores edge labels as a separate mxCell
+  // with vertex="1" connectable="0" and parent=<edge-id>. Collect them to merge later.
+  const edgeLabelMap = new Map<string, string>();
+
+  for (const cell of cells) {
+    const id = cell.getAttribute('id') || '';
+    if (id === '0' || id === '1') continue;
+
+    const rawValue = cell.getAttribute('value') || '';
+    const value = stripHtmlTags(rawValue);
+    const styleStr = cell.getAttribute('style') || '';
+    const styleMap = parseDrawioStyle(styleStr);
+    const isVertex = cell.getAttribute('vertex') === '1';
+    const isEdge = cell.getAttribute('edge') === '1';
+    const parentId = cell.getAttribute('parent') || '1';
+
+    // Check if this vertex is actually an edge label (child of an edge cell)
+    if (isVertex && edgeIds.has(parentId)) {
+      // This is an edge label cell — store the label text for later
+      if (value) {
+        edgeLabelMap.set(parentId, value);
+      }
+      continue;
+    }
+
+    if (isVertex) {
+      const geo = cell.querySelector('mxGeometry');
+      const localX = parseFloat(geo?.getAttribute('x') || '0');
+      const localY = parseFloat(geo?.getAttribute('y') || '0');
+      // Resolve absolute position if cell is inside a group/container (parent != "1")
+      const absPos = parentId !== '1' && parentId !== '0'
+        ? resolveAbsolutePos(parentId, localX, localY)
+        : { x: localX, y: localY };
+
+      vertices.push({
+        id,
+        label: value,
+        style: styleMap,
+        x: absPos.x,
+        y: absPos.y,
+        width: parseFloat(geo?.getAttribute('width') || '120'),
+        height: parseFloat(geo?.getAttribute('height') || '60'),
+        parent: parentId,
+      });
+    } else if (isEdge) {
+      const source = cell.getAttribute('source') || '';
+      const target = cell.getAttribute('target') || '';
+      // Collect waypoints if any
+      const pointEls = cell.querySelectorAll('mxGeometry Array[as="points"] mxPoint');
+      const points = Array.from(pointEls).map(p => ({
+        x: parseFloat(p.getAttribute('x') || '0'),
+        y: parseFloat(p.getAttribute('y') || '0'),
+      }));
+      edges.push({ id, label: value, style: styleMap, source, target, points });
+    }
+  }
+
+  // Merge edge labels from child cells into their parent edges
+  for (const e of edges) {
+    if (!e.label && edgeLabelMap.has(e.id)) {
+      e.label = edgeLabelMap.get(e.id)!;
+    }
+  }
+
+  if (vertices.length === 0 && edges.length === 0) {
+    throw new Error('No diagram content found in draw.io file. The file may be empty or use an unsupported format.');
+  }
+
+  // Clear the graph and add all cells
+  graph.clearCells();
+
+  // Build a set of valid vertex IDs so we can skip edges with missing endpoints
+  const vertexIds = new Set(vertices.map(v => v.id));
+
+  // Add nodes
+  for (const v of vertices) {
+    const shape = drawioShapeToX6(v.style);
+    const fillColor = v.style['fillColor'] || '#ffffff';
+    const strokeColor = v.style['strokeColor'] || '#000000';
+    const fontColor = v.style['fontColor'] || '#000000';
+    const fontSize = parseFloat(v.style['fontSize'] || '12') || 12;
+    const rounded = v.style['rounded'] === '1';
+    const opacity = parseFloat(v.style['opacity'] || '100') / 100;
+    const dashed = v.style['dashed'] === '1';
+
+    const nodeAttrs: any = {
+      body: {
+        fill: fillColor === 'none' ? 'transparent' : fillColor,
+        stroke: strokeColor === 'none' ? 'transparent' : strokeColor,
+        strokeWidth: parseFloat(v.style['strokeWidth'] || '1'),
+        rx: rounded ? 10 : 0,
+        ry: rounded ? 10 : 0,
+        opacity,
+        strokeDasharray: dashed ? '6,3' : undefined,
+      },
+      label: {
+        text: v.label,
+        fill: fontColor,
+        fontSize,
+        fontWeight: v.style['bold'] === '1' ? 'bold' : 'normal',
+        fontStyle: v.style['italic'] === '1' ? 'italic' : 'normal',
+        textDecoration: v.style['underline'] === '1' ? 'underline' : 'none',
+        textAnchor: 'middle',
+        dominantBaseline: 'middle',
+      },
+    };
+
+    // Image shape handling
+    if (shape === 'image' && v.style['image']) {
+      nodeAttrs.image = { xlinkHref: v.style['image'] };
+    }
+
+    graph.addNode({
+      id: v.id,
+      shape,
+      x: v.x,
+      y: v.y,
+      width: Math.max(20, v.width),
+      height: Math.max(20, v.height),
+      attrs: nodeAttrs,
+      ports: FULL_PORTS_CONFIG as any,
+    });
+  }
+
+  // Add edges (only if both endpoints exist as vertices in this diagram)
+  for (const e of edges) {
+    // Edges with no source/target are floating annotations — skip them
+    if (!e.source || !e.target) continue;
+    if (!vertexIds.has(e.source) || !vertexIds.has(e.target)) continue;
+
+    const strokeColor = e.style['strokeColor'] || '#000000';
+    const fontColor = e.style['fontColor'] || '#000000';
+    const fontSize = parseFloat(e.style['fontSize'] || '12') || 12;
+    const endArrow = e.style['endArrow'];
+    const noArrow = endArrow === 'none' || endArrow === '';
+    const dashed = e.style['dashed'] === '1';
+    const rounded = e.style['rounded'] === '1';
+
+    const edgeAttrs: any = {
+      line: {
+        stroke: strokeColor === 'none' ? 'transparent' : strokeColor,
+        strokeWidth: parseFloat(e.style['strokeWidth'] || '1'),
+        strokeDasharray: dashed ? '6,3' : undefined,
+        targetMarker: noArrow ? null : { name: 'block', size: 6 },
+      },
+      label: {
+        text: e.label || '',
+        fill: fontColor,
+        fontSize,
+      },
+    };
+
+    const edgeDef: any = {
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      attrs: edgeAttrs,
+      connector: rounded ? { name: 'rounded', args: { radius: 10 } } : { name: 'normal' },
+      router: { name: 'normal' },
+    };
+
+    // Re-apply waypoints if present
+    if (e.points.length > 0) {
+      edgeDef.vertices = e.points;
+    }
+
+    graph.addEdge(edgeDef);
+  }
+
+  // Fit the view to the imported content
+  setTimeout(() => {
+    graph.zoomToFit({ padding: 40, maxScale: 1.5 });
+    graph.centerContent();
+  }, 50);
 }
 
 // ============ HTML Export ============

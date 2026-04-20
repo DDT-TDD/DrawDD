@@ -10,7 +10,7 @@ export interface RecentFile {
   name: string;
   path?: string;
   timestamp: number;
-  type: 'json' | 'xmind' | 'mmap' | 'km' | 'mm' | 'vsdx';
+  type: 'json' | 'xmind' | 'mmap' | 'km' | 'mm' | 'vsdx' | 'drawio' | 'xml';
 }
 
 /**

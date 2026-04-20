@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { saveAs } from 'file-saver';
 import { useGraph } from '../context/GraphContext';
-import { exportToJSON, exportToDrawioXML, importFromJSON, importXMind, importMindManager, importKityMinder, mindmapToGraph } from '../utils/importExport';
+import { exportToJSON, exportToDrawioXML, importFromJSON, importFromDrawio, importXMind, importMindManager, importKityMinder, importFreeMind, importFreePlan, importVisio, mindmapToGraph, visioToGraph } from '../utils/importExport';
 import { DiagramTypeSelector } from './DiagramTypeSelector';
 import { MindmapDirectionSelector } from './MindmapDirectionSelector';
 import { TimelineDirectionSelector } from './TimelineDirectionSelector';
@@ -211,7 +211,7 @@ export function Toolbar() {
       try {
         const xml = exportToDrawioXML(graph);
         const blob = new Blob([xml], { type: 'application/xml;charset=utf-8' });
-        saveAs(blob, 'drawdd-export.drawio');
+        saveAs(blob, 'diagram.drawio');
       } catch (error) {
         console.error('draw.io export error:', error);
         alert('Failed to export draw.io file: ' + (error instanceof Error ? error.message : 'Unknown error'));
@@ -286,8 +286,51 @@ export function Toolbar() {
           mindmapToGraph(graph, mindmap);
         }
         setMode('mindmap');
+      } else if (ext === 'mm') {
+        // .mm files can be FreeMind or FreePlan format
+        const text = await file.text();
+        const isFreePlan = text.includes('richcontent') ||
+          text.includes('cloud') ||
+          text.includes('arrowlink') ||
+          text.includes('FREEPLANE');
+        let mindmap;
+        if (isFreePlan) {
+          const freePlanFile = new File([text], file.name, { type: file.type });
+          mindmap = await importFreePlan(freePlanFile);
+        } else {
+          const freeMindFile = new File([text], file.name, { type: file.type });
+          mindmap = await importFreeMind(freeMindFile);
+        }
+        if (drawddWindow.__drawdd_importToNewTab) {
+          drawddWindow.__drawdd_importToNewTab(file.name.replace(/\.[^/.]+$/i, ''), () => {
+            mindmapToGraph(graph, mindmap);
+          });
+        } else {
+          mindmapToGraph(graph, mindmap);
+        }
+        setMode('mindmap');
+      } else if (ext === 'vsdx') {
+        const visioData = await importVisio(file);
+        if (drawddWindow.__drawdd_importToNewTab) {
+          drawddWindow.__drawdd_importToNewTab(file.name.replace(/\.[^/.]+$/i, ''), () => {
+            visioToGraph(graph, visioData);
+          });
+        } else {
+          visioToGraph(graph, visioData);
+        }
+        setMode('flowchart');
+      } else if (ext === 'drawio' || ext === 'xml') {
+        // draw.io / mxGraph XML import (both compressed and uncompressed)
+        if (drawddWindow.__drawdd_importToNewTab) {
+          drawddWindow.__drawdd_importToNewTab(file.name.replace(/\.[^/.]+$/i, ''), async () => {
+            await importFromDrawio(file, graph);
+          });
+        } else {
+          await importFromDrawio(file, graph);
+        }
+        setMode('flowchart');
       } else {
-        alert('Unsupported file format. Supported: .drwdd, .json, .xmind, .mmap, .km');
+        alert('Unsupported file format. Supported: .drwdd, .json, .xmind, .mmap, .km, .mm, .vsdx, .drawio, .xml');
       }
     } catch (error) {
       console.error('Import error:', error);
@@ -833,11 +876,11 @@ export function Toolbar() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".drwdd,.json,.xmind,.mmap,.km"
+        accept=".drwdd,.json,.xmind,.mmap,.km,.mm,.vsdx,.drawio,.xml"
         className="hidden"
         onChange={handleFileImport}
       />
-      <ToolbarButton icon={Upload} title="Import (DRWDD, JSON, XMind, MindManager)" onClick={handleImportClick} />
+      <ToolbarButton icon={Upload} title="Import (.drwdd, .json, .xmind, .mmap, .km, .mm, .vsdx, .drawio)" onClick={handleImportClick} />
 
       {/* Export */}
       <div className="relative group">

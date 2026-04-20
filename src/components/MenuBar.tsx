@@ -3,7 +3,7 @@ import { useGraph } from '../context/GraphContext';
 import { useTheme } from '../context/ThemeContext';
 import { saveAs } from 'file-saver';
 import { jsPDF } from 'jspdf';
-import { exportToJSON, exportToDrawioXML, exportToHTML, exportToMarkdown, exportToTextOutline, exportToKityMinder, importFromJSON, importXMind, importMindManager, importKityMinder, importFreeMind, importFreePlan, importVisio, mindmapToGraph, visioToGraph } from '../utils/importExport';
+import { exportToJSON, exportToDrawioXML, exportToHTML, exportToMarkdown, exportToTextOutline, exportToKityMinder, importFromJSON, importFromDrawio, importXMind, importMindManager, importKityMinder, importFreeMind, importFreePlan, importVisio, mindmapToGraph, visioToGraph } from '../utils/importExport';
 import { applyTreeLayout, applyFishboneLayout, applyTimelineLayout, type LayoutDirection } from '../utils/layout';
 import { getRecentFiles, addRecentFile, clearRecentFiles, type RecentFile } from '../utils/recentFiles';
 import { KeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
@@ -245,12 +245,26 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
             (window as any).__drawdd_updateFileName(fileName);
           }
         }
+      } else if (ext === 'drawio' || ext === 'xml') {
+        // draw.io / mxGraph XML import (both compressed and uncompressed)
+        if ((window as any).__drawdd_importToNewTab) {
+          (window as any).__drawdd_importToNewTab(fileName, async () => {
+            await importFromDrawio(file, graph);
+          });
+          setMode('flowchart');
+        } else {
+          await importFromDrawio(file, graph);
+          setMode('flowchart');
+          if ((window as any).__drawdd_updateFileName) {
+            (window as any).__drawdd_updateFileName(fileName);
+          }
+        }
       } else {
-        alert('Unsupported file format. Supported: .json, .xmind, .mmap, .km, .mm, .vsdx');
+        alert('Unsupported file format. Supported: .drwdd, .json, .xmind, .mmap, .km, .mm, .vsdx, .drawio, .xml');
       }
 
       // Add to recent files after successful import
-      const fileType = ext as 'json' | 'xmind' | 'mmap' | 'km' | 'mm' | 'vsdx';
+      const fileType = (ext || 'json') as 'json' | 'xmind' | 'mmap' | 'km' | 'mm' | 'vsdx' | 'drawio' | 'xml';
       addRecentFile({ name: file.name, type: fileType });
       setRecentFiles(getRecentFiles());
 
@@ -668,7 +682,11 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     setActiveMenu(null);
   };
 
-  // Expose export functions to window for Electron menu access
+  // Expose export functions to window for Electron menu access.
+  // Note: intentionally no dep array — these handlers capture fresh graph/state
+  // closures on every render, ensuring Electron native menus always call the
+  // latest version. The pattern is correct; suppress the lint warning locally.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     drawddWindow.__drawdd_save = handleSave;
     drawddWindow.__drawdd_saveAs = handleSaveAs;
@@ -1222,7 +1240,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
       <input
         ref={fileInputRef}
         type="file"
-        accept=".drwdd,.json,.xmind,.mmap,.km,.mm,.vsdx"
+        accept=".drwdd,.json,.xmind,.mmap,.km,.mm,.vsdx,.drawio,.xml"
         className="hidden"
         onChange={handleFileImport}
       />

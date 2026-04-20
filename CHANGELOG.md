@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.6] - 2026-04-20
+
+### Fixed
+
+#### draw.io Import
+- **HTML Label Stripping**: Imported draw.io labels now have HTML tags properly stripped to produce clean plain text, with `<br>` and block-level tags converted to line breaks and HTML entities decoded
+- **Edge Labels as Child Cells**: Edge labels stored as separate child `mxCell` elements (common in draw.io) are now detected and merged into their parent edge during import
+- **Group/Container Relative Geometry**: Cells nested inside draw.io groups or containers now resolve to correct absolute positions by walking the parent chain
+- **Electron Open Dialog**: `.drawio` and `.xml` files can now be opened from the Electron native File → Open dialog
+- **Recent Files Type for .xml**: `.xml` files now correctly record as type `'xml'` in recent files instead of falling through
+
+#### draw.io Export
+- **Vertex Stroke Width**: Node border width is now included in the exported draw.io style
+- **Vertex Opacity**: Node opacity is now exported when less than 100%
+- **Vertex Dashed Borders**: Dashed border styles on nodes are now preserved in the export
+- **Vertex Text Formatting**: Bold, italic, and underline text styles are now included in the export
+- **Edge Stroke Width**: Edge line width is now included in the exported draw.io style
+- **Edge Dashed Lines**: Dashed line styles on edges are now preserved in the export
+- **Consistent Export Filename**: Both Toolbar and MenuBar now export as `diagram.drawio`
+
 ## [2.1.5] - 2026-04-14
 
 ### Fixed

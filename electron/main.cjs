@@ -155,7 +155,7 @@ function createMenu() {
             const result = await dialog.showOpenDialog(mainWindow, {
               defaultPath: lastOpenDir || app.getPath('documents'),
               filters: [
-                { name: 'All Supported', extensions: ['drwdd', 'json', 'xmind', 'mmap', 'km', 'mm', 'vsdx'] },
+                { name: 'All Supported', extensions: ['drwdd', 'json', 'xmind', 'mmap', 'km', 'mm', 'vsdx', 'drawio', 'xml'] },
                 { name: 'DRAWDD Files', extensions: ['drwdd'] },
                 { name: 'Legacy JSON', extensions: ['json'] },
                 { name: 'XMind', extensions: ['xmind'] },
@@ -163,6 +163,7 @@ function createMenu() {
                 { name: 'KityMinder', extensions: ['km'] },
                 { name: 'FreeMind/FreePlan', extensions: ['mm'] },
                 { name: 'Visio', extensions: ['vsdx'] },
+                { name: 'draw.io', extensions: ['drawio', 'xml'] },
               ],
               properties: ['openFile']
             });
