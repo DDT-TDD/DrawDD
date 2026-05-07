@@ -1132,7 +1132,7 @@ export function showCellContextMenu(
         label: 'Solid Line',
         icon: '—',
         action: () => {
-          cell.setAttrs({ line: { strokeDasharray: '' } });
+          cell.setAttrs({ line: { strokeDasharray: null } });
         }
       },
       {

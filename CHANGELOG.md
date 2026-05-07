@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.7] - 2026-05-06
+
+### Fixed
+
+#### Recent Files
+- **Direct File Re-Opening (Electron)**: Files opened via File → Open in Electron now store their filesystem path in recent files, allowing them to be re-opened directly from the Open Recent submenu
+- **Web Recent Files UX**: Clicking a recent file in web mode now opens the file picker directly instead of showing a blocking alert message
+
+#### Line Styles
+- **Solid Line Style Application**: Fixed solid line style not being applied — changing an edge from dashed/dotted back to solid now properly removes the dash pattern
+- **Solid Line via Context Menu**: Right-click → Solid Line now correctly clears the dash pattern on edges
+- **Solid Line via Copy/Paste Format**: Copy Format from a solid edge and Paste Format to a dashed edge now properly removes the dash pattern
+- **Solid Line Active State**: The solid style button in the edge properties panel now correctly highlights when the edge has a solid line
+
 ## [2.1.6] - 2026-04-20
 
 ### Fixed

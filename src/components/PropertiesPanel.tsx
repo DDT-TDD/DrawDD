@@ -332,9 +332,15 @@ export function PropertiesPanel() {
             });
           }
         }
-        // Edge -> Edge
         if (cell.isEdge()) {
-          if (clipboardStyle.line) cell.setAttrs({ line: clipboardStyle.line });
+          if (clipboardStyle.line) {
+            const lineStyle = { ...clipboardStyle.line };
+            // Normalize solid line style: use null to clear dashing via X6 deep merge
+            if (lineStyle.strokeDasharray === '' || lineStyle.strokeDasharray === undefined) {
+              lineStyle.strokeDasharray = null;
+            }
+            cell.setAttrs({ line: lineStyle });
+          }
         }
       });
     }
@@ -570,10 +576,10 @@ export function PropertiesPanel() {
 
   const handleBorderStyleChange = (style: 'solid' | 'dashed' | 'dotted') => {
     setBorderStyle(style);
-    const dashArray = style === 'dashed' ? '8 4' : style === 'dotted' ? '2 2' : '';
+    const dashArray = style === 'dashed' ? '8 4' : style === 'dotted' ? '2 2' : null;
     const targets = selectedNodes.length > 0 ? selectedNodes : (selectedCell && isNode ? [selectedCell as Node] : []);
     targets.forEach(node => {
-      node.setAttrs({ body: { strokeDasharray: dashArray || undefined } });
+      node.setAttrs({ body: { strokeDasharray: dashArray } });
     });
   };
 
@@ -882,7 +888,7 @@ export function PropertiesPanel() {
 
   const handleApplyEdgesToAll = () => {
     if (!graph) return;
-    const dashArray = edgeStyle === 'dashed' ? '8 4' : edgeStyle === 'dotted' ? '2 2' : '';
+    const dashArray = edgeStyle === 'dashed' ? '8 4' : edgeStyle === 'dotted' ? '2 2' : null;
 
     // Always use the user's arrow selection - this is an explicit "Apply to All" action
     const sourceMarker = sourceArrow === 'none' ? '' : { name: sourceArrow, width: 12, height: 8 };
@@ -894,7 +900,7 @@ export function PropertiesPanel() {
         line: {
           stroke: edgeColor,
           strokeWidth: edgeWidth,
-          strokeDasharray: dashArray || undefined,
+          strokeDasharray: dashArray,
           sourceMarker,
           targetMarker,
         },
@@ -930,9 +936,9 @@ export function PropertiesPanel() {
 
   const handleEdgeStyleChange = (style: 'solid' | 'dashed' | 'dotted') => {
     setEdgeStyle(style);
-    const dashArray = style === 'dashed' ? '8 4' : style === 'dotted' ? '2 2' : '';
+    const dashArray = style === 'dashed' ? '8 4' : style === 'dotted' ? '2 2' : null;
     getEdgeTargets().forEach(edge => {
-      edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), strokeDasharray: dashArray || undefined } });
+      edge.setAttrs({ line: { ...(edge.getAttrs().line || {}), strokeDasharray: dashArray } });
     });
   };
 
@@ -1556,7 +1562,7 @@ export function PropertiesPanel() {
                     selectedEdges.forEach(edge => {
                       edge.setAttrs({
                         line: {
-                          strokeDasharray: style === 'dashed' ? '8 4' : style === 'dotted' ? '2 2' : '',
+                          strokeDasharray: style === 'dashed' ? '8 4' : style === 'dotted' ? '2 2' : null,
                         },
                       });
                     });
@@ -1746,13 +1752,13 @@ export function PropertiesPanel() {
                   onClick={() => {
                     edge.setAttrs({
                       line: {
-                        strokeDasharray: style === 'dashed' ? '8 4' : style === 'dotted' ? '2 2' : '',
+                        strokeDasharray: style === 'dashed' ? '8 4' : style === 'dotted' ? '2 2' : null,
                       },
                     });
                   }}
                   className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-colors ${(lineAttrs.strokeDasharray === '8 4' && style === 'dashed') ||
                     (lineAttrs.strokeDasharray === '2 2' && style === 'dotted') ||
-                    (!lineAttrs.strokeDasharray && style === 'solid')
+                    ((!lineAttrs.strokeDasharray || lineAttrs.strokeDasharray === '' || lineAttrs.strokeDasharray === null) && style === 'solid')
                     ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30'
                     : 'border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400'
                     }`}

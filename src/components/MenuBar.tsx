@@ -5,7 +5,7 @@ import { saveAs } from 'file-saver';
 import { jsPDF } from 'jspdf';
 import { exportToJSON, exportToDrawioXML, exportToHTML, exportToMarkdown, exportToTextOutline, exportToKityMinder, importFromJSON, importFromDrawio, importXMind, importMindManager, importKityMinder, importFreeMind, importFreePlan, importVisio, mindmapToGraph, visioToGraph } from '../utils/importExport';
 import { applyTreeLayout, applyFishboneLayout, applyTimelineLayout, type LayoutDirection } from '../utils/layout';
-import { getRecentFiles, addRecentFile, clearRecentFiles, type RecentFile } from '../utils/recentFiles';
+import { getRecentFiles, addRecentFile, clearRecentFiles, cacheRecentFileContent, getCachedFileContent, type RecentFile } from '../utils/recentFiles';
 import { KeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
 import { HelpDialog } from './HelpDialog';
 import { VERSION } from '../version';
@@ -170,6 +170,8 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
             (window as any).__drawdd_updateFileName(fileName);
           }
         }
+        // Cache file content for web re-opening from recent files
+        cacheRecentFileContent(file.name, text);
       } else if (ext === 'xmind') {
         const mindmap = await importXMind(file);
         if ((window as any).__drawdd_importToNewTab) {
@@ -265,7 +267,9 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
 
       // Add to recent files after successful import
       const fileType = (ext || 'json') as 'json' | 'xmind' | 'mmap' | 'km' | 'mm' | 'vsdx' | 'drawio' | 'xml';
-      addRecentFile({ name: file.name, type: fileType });
+      // In Electron, File objects have a .path property with the real filesystem path
+      const filePath = (file as any).path as string | undefined;
+      addRecentFile({ name: file.name, type: fileType, ...(filePath ? { path: filePath } : {}) });
       setRecentFiles(getRecentFiles());
 
     } catch (error) {
@@ -305,9 +309,30 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
         alert('Failed to open file: ' + (error instanceof Error ? error.message : 'Unknown error'));
       }
     } else {
-      // In web, we can't directly access previous files
-      alert(`File: ${recentFile.name}\nPlease use "Open..." to select the file again.\n(Web apps cannot access previous files for security reasons)`);
-      handleOpen();
+      // In web mode, try to load from cached content first
+      const cachedContent = getCachedFileContent(recentFile.name);
+      if (cachedContent && graph) {
+        try {
+          const parsed = JSON.parse(cachedContent);
+          // Strip file extension for display name
+          let fileName = recentFile.name;
+          if (fileName.endsWith('.drwdd')) fileName = fileName.replace('.drwdd', '');
+          else if (fileName.endsWith('.drawdd.json')) fileName = fileName.replace('.drawdd.json', '');
+          else fileName = fileName.replace(/\.[^/.]+$/, '');
+          parsed.name = fileName;
+
+          if ((window as any).__drawdd_loadFile) {
+            (window as any).__drawdd_loadFile(parsed);
+          }
+        } catch (error) {
+          console.error('Error loading cached file:', error);
+          // Fallback: open file picker
+          handleOpen();
+        }
+      } else {
+        // No cached content available - open the file picker
+        handleOpen();
+      }
     }
     setActiveMenu(null);
   };
@@ -343,6 +368,9 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
             const result = await electronAPI.saveFile(currentPath, content);
             if (result.success) {
               drawddWindow.__drawdd_markSaved?.();
+              // Update recent files to bump timestamp
+              addRecentFile({ name: fileName, type: 'json', path: currentPath });
+              setRecentFiles(getRecentFiles());
             } else if (result.error) {
               alert('Failed to save file: ' + result.error);
             }
@@ -368,13 +396,20 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
               return;
             }
             fileToSave.name = newName;
-            const blob = new Blob([JSON.stringify(fileToSave, null, 2)], { type: 'application/json' });
+            const contentStr = JSON.stringify(fileToSave, null, 2);
+            const blob = new Blob([contentStr], { type: 'application/json' });
             saveAs(blob, `${newName}.drwdd`);
             drawddWindow.__drawdd_updateFileName?.(newName);
+            cacheRecentFileContent(newName, contentStr);
+            addRecentFile({ name: newName, type: 'json' });
+            setRecentFiles(getRecentFiles());
           } else {
             const blob = new Blob([content], { type: 'application/json' });
             saveAs(blob, `${fileName}.drwdd`);
             drawddWindow.__drawdd_markSaved?.();
+            cacheRecentFileContent(fileName, content);
+            addRecentFile({ name: fileName, type: 'json' });
+            setRecentFiles(getRecentFiles());
           }
         }
       } else {
@@ -418,6 +453,9 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
           drawddWindow.__drawdd_updateFileName?.(displayName);
           drawddWindow.__drawdd_updateFilePath?.(result.filePath);
           drawddWindow.__drawdd_markSaved?.();
+          // Add to recent files with path
+          addRecentFile({ name: displayName, type: 'json', path: result.filePath });
+          setRecentFiles(getRecentFiles());
         } else if (!result.canceled && result.error) {
           alert('Failed to save file: ' + result.error);
         }
@@ -438,9 +476,13 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
                 : p
             )
           };
-          const blob = new Blob([JSON.stringify(fileToSave, null, 2)], { type: 'application/json' });
+          const contentStr = JSON.stringify(fileToSave, null, 2);
+          const blob = new Blob([contentStr], { type: 'application/json' });
           saveAs(blob, `${newName}.drwdd`);
           drawddWindow.__drawdd_updateFileName?.(newName);
+          cacheRecentFileContent(newName, contentStr);
+          addRecentFile({ name: newName, type: 'json' });
+          setRecentFiles(getRecentFiles());
         } else {
           const doc = exportToJSON(graph, {
             canvasBackground,
@@ -448,9 +490,13 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
             mindmapDirection,
             timelineDirection
           });
-          const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' });
+          const contentStr = JSON.stringify(doc, null, 2);
+          const blob = new Blob([contentStr], { type: 'application/json' });
           saveAs(blob, `${newName}.drwdd`);
           drawddWindow.__drawdd_updateFileName?.(newName);
+          cacheRecentFileContent(newName, contentStr);
+          addRecentFile({ name: newName, type: 'json' });
+          setRecentFiles(getRecentFiles());
         }
       }
     }
