@@ -123,6 +123,12 @@ export function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
                   Knowledge representation with labeled relationships between concepts.
                 </p>
               </div>
+              <div>
+                <h4 className="font-semibold text-gray-800 dark:text-gray-200">Venn Diagram</h4>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Overlapping circles showing set relationships. Supports 2, 3, and 4-circle layouts. Circle colors automatically adapt to the active color theme with per-theme palettes.
+                </p>
+              </div>
             </div>
           </section>
 

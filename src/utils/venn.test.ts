@@ -55,15 +55,18 @@ describe('Venn utilities', () => {
 
   it('builds a deterministic Venn palette from the selected theme', () => {
     const defaultTheme = getVennThemeStyle(getColorScheme('default'), 0, 0.28);
-    const charcoalTheme = getVennThemeStyle(getColorScheme('charcoal'), 0, 0.28);
+    // Ocean Breeze (blue, chromatic) and Sunset Glow (orange, chromatic) have
+    // very different lineColor hues so their anchor-hue palettes are clearly distinct.
+    const oceanTheme = getVennThemeStyle(getColorScheme('ocean-breeze'), 0, 0.28);
+    const sunsetTheme = getVennThemeStyle(getColorScheme('sunset-glow'), 0, 0.28);
     const defaultPurple = getVennThemeStyle(getColorScheme('default'), 3, 0.28);
 
-    // Stroke uses lineColor (the most characteristic theme colour) at 60 %, so it
-    // differs clearly between themes even when backgrounds are similar.
-    expect(defaultTheme.stroke).not.toBe(charcoalTheme.stroke);
+    // Chromatic themes with different anchor hues produce clearly different palettes.
+    expect(oceanTheme.fill).not.toBe(sunsetTheme.fill);
+    expect(oceanTheme.stroke).not.toBe(sunsetTheme.stroke);
     expect(defaultTheme.fillOpacity).toBe(0.28);
     expect(defaultTheme.labelFill).toMatch(/^#/);
-    // Different variant indices produce different fills (different base colours).
+    // Different variant indices produce different fills (different hues).
     expect(defaultTheme.fill).not.toBe(defaultPurple.fill);
     expect(snapshotVisibleBodyStyle(defaultTheme)).toMatchObject({
       fill: defaultTheme.fill,

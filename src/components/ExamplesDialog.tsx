@@ -4,6 +4,8 @@ import { useGraph } from '../context/GraphContext';
 import { applyMindmapLayout, applyTreeLayout } from '../utils/layout';
 import { setNodeLabelWithAutoSize } from '../utils/text';
 import { FULL_PORTS_CONFIG } from '../config/shapes';
+import { getColorScheme } from '../config/colorSchemes';
+import { applyColorSchemeToGraph } from '../utils/colorSchemeApplication';
 
 interface ExamplesDialogProps {
   isOpen: boolean;
@@ -20,7 +22,7 @@ interface ExampleDiagram {
 }
 
 export function ExamplesDialog({ isOpen, onClose }: ExamplesDialogProps) {
-  const { graph, setMode } = useGraph();
+  const { graph, setMode, colorScheme } = useGraph();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
@@ -324,6 +326,125 @@ export function ExamplesDialog({ isOpen, onClose }: ExamplesDialogProps) {
     onClose();
   };
 
+  const loadVennTwoSet = () => {
+    if (!graph) return;
+    graph.clearCells();
+
+    const ports = {
+      groups: {
+        top: { position: 'top', attrs: { circle: { r: 5, magnet: true, stroke: '#2196f3', fill: '#fff', strokeWidth: 2 } } },
+        right: { position: 'right', attrs: { circle: { r: 5, magnet: true, stroke: '#2196f3', fill: '#fff', strokeWidth: 2 } } },
+        bottom: { position: 'bottom', attrs: { circle: { r: 5, magnet: true, stroke: '#2196f3', fill: '#fff', strokeWidth: 2 } } },
+        left: { position: 'left', attrs: { circle: { r: 5, magnet: true, stroke: '#2196f3', fill: '#fff', strokeWidth: 2 } } },
+      },
+      items: [
+        { group: 'top', id: 'top' }, { group: 'right', id: 'right' },
+        { group: 'bottom', id: 'bottom' }, { group: 'left', id: 'left' },
+      ],
+    };
+
+    // Title
+    graph.addNode({
+      x: 150, y: 15, width: 310, height: 38, shape: 'rect',
+      attrs: { body: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 }, label: { text: 'Frontend vs Backend', fill: '#111827', fontSize: 20, fontWeight: 'bold' } },
+      data: { isVenn: true, isVennSet: false, isVennLabel: true }, ports,
+    });
+
+    // Circle A – index 0
+    graph.addNode({
+      x: 45, y: 65, width: 310, height: 260, shape: 'ellipse',
+      attrs: { body: { fill: '#3B82F6', stroke: '#1D4ED8', strokeWidth: 2.5, fillOpacity: 0.28 }, label: { text: 'Frontend', fill: '#1e3a5f', fontSize: 16, fontWeight: 'bold', refX: '50%', refY: '18%', textAnchor: 'middle', textVerticalAnchor: 'middle' } },
+      data: { isVenn: true, isVennSet: true, isVennLabel: false, vennVariantIndex: 0 }, ports,
+    });
+
+    // Circle B – index 1
+    graph.addNode({
+      x: 240, y: 65, width: 310, height: 260, shape: 'ellipse',
+      attrs: { body: { fill: '#F97316', stroke: '#C2410C', strokeWidth: 2.5, fillOpacity: 0.28 }, label: { text: 'Backend', fill: '#7c2d12', fontSize: 16, fontWeight: 'bold', refX: '50%', refY: '18%', textAnchor: 'middle', textVerticalAnchor: 'middle' } },
+      data: { isVenn: true, isVennSet: true, isVennLabel: false, vennVariantIndex: 1 }, ports,
+    });
+
+    // Zone headers
+    graph.addNode({ x: 68, y: 175, width: 130, height: 28, shape: 'rect', attrs: { body: { fill: 'transparent', stroke: 'transparent' }, label: { text: 'Only Frontend', fill: '#1e3a5f', fontSize: 12, fontWeight: 'bold' } }, data: { isVenn: true, isVennSet: false, isVennLabel: true }, ports });
+    graph.addNode({ x: 265, y: 175, width: 80, height: 28, shape: 'rect', attrs: { body: { fill: 'transparent', stroke: 'transparent' }, label: { text: 'Both', fill: '#374151', fontSize: 12, fontWeight: 'bold' } }, data: { isVenn: true, isVennSet: false, isVennLabel: true }, ports });
+    graph.addNode({ x: 400, y: 175, width: 140, height: 28, shape: 'rect', attrs: { body: { fill: 'transparent', stroke: 'transparent' }, label: { text: 'Only Backend', fill: '#7c2d12', fontSize: 12, fontWeight: 'bold' } }, data: { isVenn: true, isVennSet: false, isVennLabel: true }, ports });
+
+    // Items
+    graph.addNode({ x: 60, y: 210, width: 145, height: 24, shape: 'rect', attrs: { body: { fill: 'transparent', stroke: 'transparent' }, label: { text: '• HTML & CSS', fill: '#374151', fontSize: 12 } }, data: { isVenn: true, isVennSet: false, isVennLabel: true }, ports });
+    graph.addNode({ x: 60, y: 234, width: 145, height: 24, shape: 'rect', attrs: { body: { fill: 'transparent', stroke: 'transparent' }, label: { text: '• React / Vue', fill: '#374151', fontSize: 12 } }, data: { isVenn: true, isVennSet: false, isVennLabel: true }, ports });
+    graph.addNode({ x: 60, y: 258, width: 145, height: 24, shape: 'rect', attrs: { body: { fill: 'transparent', stroke: 'transparent' }, label: { text: '• UX Design', fill: '#374151', fontSize: 12 } }, data: { isVenn: true, isVennSet: false, isVennLabel: true }, ports });
+    graph.addNode({ x: 253, y: 210, width: 100, height: 24, shape: 'rect', attrs: { body: { fill: 'transparent', stroke: 'transparent' }, label: { text: '• JavaScript', fill: '#374151', fontSize: 12 } }, data: { isVenn: true, isVennSet: false, isVennLabel: true }, ports });
+    graph.addNode({ x: 253, y: 234, width: 100, height: 24, shape: 'rect', attrs: { body: { fill: 'transparent', stroke: 'transparent' }, label: { text: '• TypeScript', fill: '#374151', fontSize: 12 } }, data: { isVenn: true, isVennSet: false, isVennLabel: true }, ports });
+    graph.addNode({ x: 390, y: 210, width: 155, height: 24, shape: 'rect', attrs: { body: { fill: 'transparent', stroke: 'transparent' }, label: { text: '• Node.js / APIs', fill: '#374151', fontSize: 12 } }, data: { isVenn: true, isVennSet: false, isVennLabel: true }, ports });
+    graph.addNode({ x: 390, y: 234, width: 155, height: 24, shape: 'rect', attrs: { body: { fill: 'transparent', stroke: 'transparent' }, label: { text: '• Databases', fill: '#374151', fontSize: 12 } }, data: { isVenn: true, isVennSet: false, isVennLabel: true }, ports });
+    graph.addNode({ x: 390, y: 258, width: 155, height: 24, shape: 'rect', attrs: { body: { fill: 'transparent', stroke: 'transparent' }, label: { text: '• Server Security', fill: '#374151', fontSize: 12 } }, data: { isVenn: true, isVennSet: false, isVennLabel: true }, ports });
+
+    applyColorSchemeToGraph(graph, getColorScheme(colorScheme));
+    graph.centerContent();
+    setMode('venn');
+    onClose();
+  };
+
+  const loadVennThreeSet = () => {
+    if (!graph) return;
+    graph.clearCells();
+
+    const ports = {
+      groups: {
+        top: { position: 'top', attrs: { circle: { r: 5, magnet: true, stroke: '#2196f3', fill: '#fff', strokeWidth: 2 } } },
+        right: { position: 'right', attrs: { circle: { r: 5, magnet: true, stroke: '#2196f3', fill: '#fff', strokeWidth: 2 } } },
+        bottom: { position: 'bottom', attrs: { circle: { r: 5, magnet: true, stroke: '#2196f3', fill: '#fff', strokeWidth: 2 } } },
+        left: { position: 'left', attrs: { circle: { r: 5, magnet: true, stroke: '#2196f3', fill: '#fff', strokeWidth: 2 } } },
+      },
+      items: [
+        { group: 'top', id: 'top' }, { group: 'right', id: 'right' },
+        { group: 'bottom', id: 'bottom' }, { group: 'left', id: 'left' },
+      ],
+    };
+
+    // Title
+    graph.addNode({
+      x: 150, y: 12, width: 310, height: 38, shape: 'rect',
+      attrs: { body: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 }, label: { text: 'Product Skills Triangle', fill: '#111827', fontSize: 20, fontWeight: 'bold' } },
+      data: { isVenn: true, isVennSet: false, isVennLabel: true }, ports,
+    });
+
+    // Circle A – Technical (top) – index 0
+    graph.addNode({
+      x: 215, y: 65, width: 290, height: 240, shape: 'ellipse',
+      attrs: { body: { fill: '#3B82F6', stroke: '#1D4ED8', strokeWidth: 2.5, fillOpacity: 0.25 }, label: { text: 'Technical', fill: '#1e3a5f', fontSize: 15, fontWeight: 'bold', refX: '50%', refY: '16%', textAnchor: 'middle', textVerticalAnchor: 'middle' } },
+      data: { isVenn: true, isVennSet: true, isVennLabel: false, vennVariantIndex: 0 }, ports,
+    });
+
+    // Circle B – Analytical (bottom-left) – index 1
+    graph.addNode({
+      x: 115, y: 235, width: 290, height: 240, shape: 'ellipse',
+      attrs: { body: { fill: '#EF4444', stroke: '#B91C1C', strokeWidth: 2.5, fillOpacity: 0.25 }, label: { text: 'Analytical', fill: '#7f1d1d', fontSize: 15, fontWeight: 'bold', refX: '50%', refY: '82%', textAnchor: 'middle', textVerticalAnchor: 'middle' } },
+      data: { isVenn: true, isVennSet: true, isVennLabel: false, vennVariantIndex: 1 }, ports,
+    });
+
+    // Circle C – Creative (bottom-right) – index 2
+    graph.addNode({
+      x: 315, y: 235, width: 290, height: 240, shape: 'ellipse',
+      attrs: { body: { fill: '#22C55E', stroke: '#15803D', strokeWidth: 2.5, fillOpacity: 0.25 }, label: { text: 'Creative', fill: '#14532d', fontSize: 15, fontWeight: 'bold', refX: '50%', refY: '82%', textAnchor: 'middle', textVerticalAnchor: 'middle' } },
+      data: { isVenn: true, isVennSet: true, isVennLabel: false, vennVariantIndex: 2 }, ports,
+    });
+
+    // Zone labels
+    graph.addNode({ x: 306, y: 82, width: 100, height: 26, shape: 'rect', attrs: { body: { fill: 'transparent', stroke: 'transparent' }, label: { text: 'Engineering', fill: '#1e3a5f', fontSize: 11, fontWeight: 'bold' } }, data: { isVenn: true, isVennSet: false, isVennLabel: true }, ports });
+    graph.addNode({ x: 118, y: 416, width: 105, height: 26, shape: 'rect', attrs: { body: { fill: 'transparent', stroke: 'transparent' }, label: { text: 'Data Science', fill: '#7f1d1d', fontSize: 11, fontWeight: 'bold' } }, data: { isVenn: true, isVennSet: false, isVennLabel: true }, ports });
+    graph.addNode({ x: 500, y: 416, width: 105, height: 26, shape: 'rect', attrs: { body: { fill: 'transparent', stroke: 'transparent' }, label: { text: 'UX Design', fill: '#14532d', fontSize: 11, fontWeight: 'bold' } }, data: { isVenn: true, isVennSet: false, isVennLabel: true }, ports });
+    graph.addNode({ x: 200, y: 276, width: 95, height: 26, shape: 'rect', attrs: { body: { fill: 'transparent', stroke: 'transparent' }, label: { text: 'Tech Lead', fill: '#374151', fontSize: 11, fontWeight: 'bold' } }, data: { isVenn: true, isVennSet: false, isVennLabel: true }, ports });
+    graph.addNode({ x: 425, y: 276, width: 100, height: 26, shape: 'rect', attrs: { body: { fill: 'transparent', stroke: 'transparent' }, label: { text: 'UX Engineer', fill: '#374151', fontSize: 11, fontWeight: 'bold' } }, data: { isVenn: true, isVennSet: false, isVennLabel: true }, ports });
+    graph.addNode({ x: 302, y: 393, width: 108, height: 26, shape: 'rect', attrs: { body: { fill: 'transparent', stroke: 'transparent' }, label: { text: 'Design Research', fill: '#374151', fontSize: 11, fontWeight: 'bold' } }, data: { isVenn: true, isVennSet: false, isVennLabel: true }, ports });
+    graph.addNode({ x: 302, y: 322, width: 110, height: 26, shape: 'rect', attrs: { body: { fill: 'transparent', stroke: 'transparent' }, label: { text: 'Product Manager', fill: '#374151', fontSize: 11, fontWeight: 'bold' } }, data: { isVenn: true, isVennSet: false, isVennLabel: true }, ports });
+
+    applyColorSchemeToGraph(graph, getColorScheme(colorScheme));
+    graph.centerContent();
+    setMode('venn');
+    onClose();
+  };
+
   const loadTimeline = () => {
     if (!graph) return;
     graph.clearCells();
@@ -549,6 +670,8 @@ export function ExamplesDialog({ isOpen, onClose }: ExamplesDialogProps) {
     { id: 'network', name: 'Network Diagram', description: 'IT infrastructure layout', category: 'Network', icon: '🌐', loader: loadNetworkDiagram },
     { id: 'er-diagram', name: 'ER Diagram', description: 'Database entity relationships', category: 'Database', icon: '🗄️', loader: loadERDiagram },
     { id: 'timeline', name: 'Timeline', description: 'Project milestones over time', category: 'Timeline', icon: '📅', loader: loadTimeline },
+    { id: 'venn-2set', name: 'Venn 2-Set', description: 'Two circles comparing Frontend vs Backend skills', category: 'Venn', icon: '⊙', loader: loadVennTwoSet },
+    { id: 'venn-3set', name: 'Venn 3-Set', description: 'Three-circle skills triangle with intersections', category: 'Venn', icon: '◎', loader: loadVennThreeSet },
   ];
 
   const categories = [...new Set(examples.map(e => e.category))];

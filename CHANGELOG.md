@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.1] - 2026-05-13
+
+### Added
+
+#### Help & Examples
+- **Venn Example Gallery**: Added built-in 2-set and 3-set Venn examples to Help -> Examples Gallery so users can load overlap diagrams directly from the in-app examples menu.
+- **Help Dialog Coverage**: Documented Venn diagrams inside the in-app Help dialog so the Help menu now reflects all supported diagram modes.
+
+### Fixed
+
+#### Venn Diagram Theming
+- **Per-Theme Venn Palettes**: Each color scheme now generates a fully distinct Venn circle palette instead of applying only an imperceptible 10% background tint. Chromatic themes (Ocean Breeze, Sunset Glow, Forest Fresh, Lavender Dream, etc.) rotate five evenly-spaced hues around the color wheel starting from the theme's characteristic `lineColor` hue, giving each theme a genuinely recognizable Venn palette. Achromatic/neutral themes (Default, Charcoal, Executive, High Contrast) continue to use the classic Blue · Red · Green · Purple · Orange palette.
+- **Dark-Mode Opacity**: Venn circles in the Dark Mode theme now use a minimum `fillOpacity` of 0.40 (up from 0.28) so semi-transparent circles remain clearly visible against the dark canvas.
+- **Label Legibility**: Venn set labels now use a deep-tinted shade of the circle color on light themes and a pale-tinted shade on dark themes, ensuring readable contrast in all themes.
+- **Electron Compatibility**: The HSL-based palette derivation is pure JavaScript math with no DOM or browser-specific APIs, so identical Venn theming applies in both the web build and the Windows Electron portable executable.
+
+### Changed
+
+#### Release Audit
+- **Metadata Alignment**: Updated the root package lockfile version metadata to 2.2.1 and refreshed release documentation to match the shipped Help menu examples and regenerated portable build.
+
 ## [2.2.0] - 2026-05-11
 
 ### Added

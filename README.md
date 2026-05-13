@@ -34,6 +34,7 @@ A powerful, open-source diagramming application for creating flowcharts, mindmap
 - Four distinct modes: Flowchart, Mindmap, Timeline, and Venn Diagram
 - Drag-and-drop shape library organized by category
 - Template-driven diagram creation, including dedicated Venn diagram starters
+- Help -> Examples Gallery includes ready-made Venn example canvases for quick starts
 - Mode-aware save/load behavior across tabs, imports, and legacy single-page documents
 - **Real-time property editing**:
   - Colors, labels, borders, fonts
@@ -129,9 +130,10 @@ Create overlap-based comparison diagrams without custom plugins or format breaka
 
 1. Choose **Venn** from the toolbar or the New Diagram dialog.
 2. Start from the built-in **2-Set Comparison**, **3-Set Analysis**, or **4-Circle Grid** templates.
-3. Drag additional circles, labels, set items, and title blocks from the **Venn Circles** sidebar section.
-4. Resize and overlap circles freely while keeping crisp borders and readable labels via fill-only transparency.
-5. Save, reopen, and duplicate Venn pages with the correct mode preserved.
+3. Or open **Help -> Examples Gallery** to load ready-made 2-set and 3-set Venn examples that follow the active color scheme.
+4. Drag additional circles, labels, set items, and title blocks from the **Venn Circles** sidebar section.
+5. Resize and overlap circles freely while keeping crisp borders and readable labels via fill-only transparency.
+6. Save, reopen, and duplicate Venn pages with the correct mode preserved.
 
 ### 🔄 Shape Replacement
 Replace any node's shape while keeping text and connections:

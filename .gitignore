@@ -58,12 +58,13 @@ copilot-instructions.md
 *.drawio
 *.drwdd
 
-# Development documentation (ignore all md files except specific ones)
+# Documentation
+# Track primary project/release docs while ignoring transient working notes.
 *.md
 !README.md
 !CHANGELOG.md
 !CONTRIBUTING.md
-!LICENSE.md
+!RELEASE_CHECKLIST.md
 !RELEASE_NOTES_v*.md
 
 # Test coverage reports

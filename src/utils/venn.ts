@@ -147,16 +147,13 @@ export function resolveBodyStyleForShapeToggle({
   };
 }
 
-function clampChannel(value: number) {
-  return Math.max(0, Math.min(255, Math.round(value)));
-}
+// ─── Hex → HSL / HSL → Hex helpers ─────────────────────────────────────────
 
-function parseHexColor(color: string) {
+function parseHexColor(color: string): [number, number, number] | null {
   const normalized = color.trim();
   if (/^#[0-9a-fA-F]{3}$/.test(normalized)) {
-    return normalized.slice(1).split('').map((digit) => parseInt(digit + digit, 16)) as [number, number, number];
+    return normalized.slice(1).split('').map((d) => parseInt(d + d, 16)) as [number, number, number];
   }
-
   if (/^#[0-9a-fA-F]{6}$/.test(normalized)) {
     return [
       parseInt(normalized.slice(1, 3), 16),
@@ -164,53 +161,131 @@ function parseHexColor(color: string) {
       parseInt(normalized.slice(5, 7), 16),
     ] as [number, number, number];
   }
-
   return null;
 }
 
-function toHex([red, green, blue]: [number, number, number]) {
-  return `#${[red, green, blue].map((value) => clampChannel(value).toString(16).padStart(2, '0')).join('')}`;
+/** Convert a 6-digit hex colour to [hue°, saturation%, lightness%]. */
+function hexToHsl(hex: string): [number, number, number] | null {
+  const rgb = parseHexColor(hex);
+  if (!rgb) return null;
+
+  const r = rgb[0] / 255;
+  const g = rgb[1] / 255;
+  const b = rgb[2] / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+
+  if (max === min) return [0, 0, l * 100];
+
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+
+  let h = 0;
+  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+  else if (max === g) h = ((b - r) / d + 2) / 6;
+  else h = ((r - g) / d + 4) / 6;
+
+  return [h * 360, s * 100, l * 100];
 }
 
-function mixHex(color: string, mixWith: string, weight: number) {
-  const source = parseHexColor(color);
-  const target = parseHexColor(mixWith);
-
-  if (!source || !target) {
-    return color;
-  }
-
-  const clampedWeight = Math.max(0, Math.min(1, weight));
-  return toHex([
-    source[0] * (1 - clampedWeight) + target[0] * clampedWeight,
-    source[1] * (1 - clampedWeight) + target[1] * clampedWeight,
-    source[2] * (1 - clampedWeight) + target[2] * clampedWeight,
-  ] as [number, number, number]);
+/** Convert [hue°, saturation%, lightness%] to a 6-digit hex colour. */
+function hslToHex(h: number, s: number, l: number): string {
+  const sn = Math.max(0, Math.min(100, s)) / 100;
+  const ln = Math.max(0, Math.min(100, l)) / 100;
+  const hn = ((h % 360) + 360) % 360;
+  const a = sn * Math.min(ln, 1 - ln);
+  const f = (n: number) => {
+    const k = (n + hn / 30) % 12;
+    const c = ln - a * Math.max(-1, Math.min(k - 3, Math.min(9 - k, 1)));
+    return Math.round(c * 255).toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
 }
+
+// ─── Per-theme Venn palette derivation ──────────────────────────────────────
+
+/**
+ * Hue map for achromatic (low-saturation) themes – mirrors the classic
+ * VENN_VARIANTS colour identity so neutral themes keep the familiar palette.
+ * Order: Blue · Red · Green · Purple · Orange
+ */
+const ACHROMATIC_HUES: readonly [number, number, number, number, number] = [215, 0, 142, 270, 24];
+
+/** Saturation threshold above which a lineColor is considered chromatic. */
+const CHROMATIC_SAT_THRESHOLD = 18;
+/** Minimum saturation enforced on Venn circle fills. */
+const VENN_SAT_MIN = 55;
+/** Maximum saturation (avoids over-neon colours). */
+const VENN_SAT_CAP = 82;
+/** Fill lightness for light-background themes. */
+const VENN_LIGHTNESS_LIGHT = 52;
+/** Fill lightness for dark-background themes (brighter so circles stay visible). */
+const VENN_LIGHTNESS_DARK = 68;
+/** Background HSL lightness below which a theme is treated as "dark". */
+const DARK_BG_THRESHOLD = 30;
+/** Minimum fillOpacity on dark canvases so circles don't disappear. */
+const DARK_OPACITY_MIN = 0.40;
 
 export interface VennThemeStyle extends BodyStyleSnapshot {
   labelFill: string;
 }
 
+/**
+ * Derive a visually distinct, theme-matched style for a single Venn set circle.
+ *
+ * For **chromatic themes** (coloured lineColor) the five Venn circles are
+ * evenly distributed around the hue wheel starting at the theme's anchor hue,
+ * so every theme produces a unique palette that harmonises with its character.
+ *
+ * For **achromatic themes** (grey / black lineColor) the classic Blue · Red ·
+ * Green · Purple · Orange palette is used so neutral themes keep the familiar
+ * Venn appearance.
+ *
+ * Dark-background themes automatically receive a higher fillOpacity so the
+ * semi-transparent circles remain clearly visible against the dark canvas.
+ */
 export function getVennThemeStyle(scheme: ColorScheme, index: number, fillOpacity = 0.30): VennThemeStyle {
-  const variant = VENN_VARIANTS[Math.abs(Math.trunc(index)) % VENN_VARIANTS.length] ?? VENN_VARIANTS[0];
+  const i = Math.abs(Math.trunc(index)) % 5;
 
-  // Blend the fill lightly toward the theme background so circles integrate
-  // with the canvas while keeping their identity colour (Blue / Red / Green…).
-  const fill = mixHex(variant.fill, scheme.backgroundColor, 0.10);
+  const lineHsl = hexToHsl(scheme.lineColor);
+  const bgHsl = hexToHsl(scheme.backgroundColor);
 
-  // Stroke is the most visible element on semi-transparent circles, so apply
-  // a strong theme influence via lineColor – this makes theme changes clearly
-  // visible without destroying circle identity.
-  const stroke = mixHex(variant.stroke, scheme.lineColor, 0.60);
+  const isDark = bgHsl !== null && bgHsl[2] < DARK_BG_THRESHOLD;
+  const isChromatic = lineHsl !== null && lineHsl[1] > CHROMATIC_SAT_THRESHOLD;
 
-  // Label inherits the theme's text colour at 50 % so it stays legible.
-  const labelFill = mixHex(variant.label, scheme.nodeColors.primary.text, 0.50);
+  // Select hue: chromatic themes rotate evenly from the anchor; achromatic themes
+  // fall back to the classic fixed palette hues.
+  const hue = isChromatic
+    ? (lineHsl![0] + i * 72) % 360
+    : ACHROMATIC_HUES[i];
+
+  // Saturation: clamp to a vivid-but-not-neon range.
+  const saturation = isChromatic
+    ? Math.max(Math.min(lineHsl![1], VENN_SAT_CAP), VENN_SAT_MIN)
+    : 65;
+
+  // Lightness: brighter fills on dark canvases keep circles clearly visible.
+  const lightness = isDark ? VENN_LIGHTNESS_DARK : VENN_LIGHTNESS_LIGHT;
+
+  const fill = hslToHex(hue, saturation, lightness);
+
+  // Stroke: a richer, darker shade of the fill colour.
+  const stroke = hslToHex(hue, Math.min(saturation + 15, 95), lightness - 22);
+
+  // fillOpacity: respect the caller's value but enforce a minimum on dark canvases.
+  const resolvedOpacity = isDark ? Math.max(fillOpacity, DARK_OPACITY_MIN) : fillOpacity;
+
+  // Label: deep-tinted shade on light themes; pale-tinted shade on dark themes –
+  // both stay legible over the semi-transparent circle on its canvas.
+  const labelFill = isDark
+    ? hslToHex(hue, 25, 88)
+    : hslToHex(hue, Math.min(saturation + 20, 100), Math.max(lightness - 32, 12));
 
   return {
     fill,
     stroke,
-    fillOpacity,
+    fillOpacity: resolvedOpacity,
     labelFill,
   };
 }
