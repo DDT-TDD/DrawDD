@@ -67,6 +67,7 @@ export function Canvas() {
     graph: contextGraph,
     setGraph,
     setSelectedCell,
+    setMode,
     setZoom,
     showGrid,
     mindmapDirection,
@@ -139,7 +140,7 @@ export function Canvas() {
   }, [mindmapDirection, timelineDirection, mode]);
 
   // Setup auto-save (saves automatically, no restore prompt)
-  useAutoSave(contextGraph);
+  useAutoSave(contextGraph, { mode, setMode });
 
   // Handle container resize
   useEffect(() => {
@@ -648,6 +649,34 @@ export function Canvas() {
         return false;
       }
 
+      if (currentMode === 'venn') {
+        // Insert: add an intersection label near the selected Venn circle
+        if (cells.length === 1 && cells[0].isNode()) {
+          const parentNode = cells[0] as X6Node;
+          const pos = parentNode.getPosition();
+          const size = parentNode.getSize();
+          const labelNode = graph.addNode({
+            shape: 'rect',
+            x: pos.x + size.width / 2 - 60,
+            y: pos.y + size.height / 2 - 20,
+            width: 120,
+            height: 40,
+            attrs: {
+              body: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 },
+              label: { text: 'A ∩ B', fill: '#374151', fontSize: 13, fontWeight: 'bold', textAnchor: 'middle', textVerticalAnchor: 'middle' },
+            },
+            data: { isVenn: true, isVennLabel: true },
+            ports: FULL_PORTS_CONFIG as any,
+          });
+          graph.cleanSelection();
+          graph.select(labelNode);
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('drawdd:edit-cell-text', { detail: { cell: labelNode } }));
+          }, 50);
+        }
+        return false;
+      }
+
       if (currentMode !== 'mindmap') return true;
 
       if (cells.length === 1 && cells[0].isNode()) {
@@ -757,6 +786,31 @@ export function Canvas() {
       const cells = graph.getSelectedCells();
       if (cells.length === 1 && cells[0].isNode()) {
         const currentNode = cells[0] as X6Node;
+
+        // Venn mode: Enter adds a set item label below the selected node
+        if (mode === 'venn') {
+          const pos = currentNode.getPosition();
+          const size = currentNode.getSize();
+          const itemNode = graph.addNode({
+            shape: 'rect',
+            x: pos.x + 10,
+            y: pos.y + size.height * 0.35,
+            width: 100,
+            height: 28,
+            attrs: {
+              body: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 },
+              label: { text: '• Item', fill: '#374151', fontSize: 12, textAnchor: 'middle', textVerticalAnchor: 'middle' },
+            },
+            data: { isVenn: true, isVennLabel: true },
+            ports: FULL_PORTS_CONFIG as any,
+          });
+          graph.cleanSelection();
+          graph.select(itemNode);
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('drawdd:edit-cell-text', { detail: { cell: itemNode } }));
+          }, 50);
+          return false;
+        }
 
         const currentData = (currentNode as any).getData?.() || {};
         const allowMindmap = currentData.isMindmap === true || mode === 'mindmap' || mode === undefined;
@@ -1615,7 +1669,7 @@ export function Canvas() {
     const graph = graphRef.current;
     if (!graph) return;
 
-    if (mode === 'flowchart' || mode === 'timeline') {
+    if (mode === 'flowchart' || mode === 'timeline' || mode === 'venn') {
       // Create Quick Connect if not already created
       if (!quickConnectRef.current) {
         quickConnectRef.current = createQuickConnect(graph, {

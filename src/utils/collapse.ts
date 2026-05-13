@@ -4,7 +4,78 @@
  */
 
 import type { Graph, Node as X6Node } from '@antv/x6';
-// RICH_CONTENT_NODE_MARKUP is no longer used - collapse indicators are now in React component
+
+const COLLAPSE_INDICATOR_SIZE = 16;
+const COLLAPSE_INDICATOR_RADIUS = 8;
+const COLLAPSE_EXPANDED_ICON = '▼';
+const COLLAPSE_COLLAPSED_ICON = '▶';
+
+type CollapseMarkupItem = {
+  tagName: string;
+  selector: string;
+};
+
+const getAttrs = (node: X6Node): Record<string, any> => {
+  if (typeof (node as any).getAttrs === 'function') {
+    return (node as any).getAttrs() || {};
+  }
+  return {};
+};
+
+const setAttrs = (node: X6Node, attrs: Record<string, any>): void => {
+  if (typeof (node as any).setAttrs === 'function') {
+    (node as any).setAttrs(attrs);
+  }
+};
+
+const getMarkup = (node: X6Node): CollapseMarkupItem[] => {
+  if (typeof (node as any).getMarkup === 'function') {
+    return (node as any).getMarkup() || [];
+  }
+  return [];
+};
+
+const setMarkup = (node: X6Node, markup: CollapseMarkupItem[]): void => {
+  if (typeof (node as any).setMarkup === 'function') {
+    (node as any).setMarkup(markup);
+  }
+};
+
+const hasCollapseMarkup = (markup: CollapseMarkupItem[], selector: string): boolean => {
+  return markup.some(item => item.selector === selector);
+};
+
+const buildCollapseAttrs = (node: X6Node, isCollapsed: boolean) => {
+  const size = node.getSize();
+  const x = size.width - COLLAPSE_INDICATOR_SIZE / 2;
+  const y = size.height / 2;
+
+  return {
+    collapseIndicator: {
+      cx: x,
+      cy: y,
+      r: COLLAPSE_INDICATOR_RADIUS,
+      fill: '#ffffff',
+      stroke: '#333333',
+      strokeWidth: 1,
+      cursor: 'pointer',
+    },
+    collapseIcon: {
+      x,
+      y,
+      text: isCollapsed ? COLLAPSE_COLLAPSED_ICON : COLLAPSE_EXPANDED_ICON,
+      fill: '#333333',
+      fontSize: 10,
+      textAnchor: 'middle',
+      dominantBaseline: 'central',
+      pointerEvents: 'none',
+    },
+  };
+};
+
+const isMindmapNode = (node: X6Node): boolean => {
+  return node.getData()?.isMindmap === true;
+};
 
 /**
  * Simple toggle collapse/expand of a mindmap branch
@@ -90,29 +161,57 @@ function showDescendants(graph: Graph, node: X6Node, visited = new Set<string>()
 }
 
 /**
- * Add a collapse/expand indicator to a node
- * NOTE: For React shapes (rich-content-node), this is now a NO-OP.
- * The collapse indicator is rendered inside the RichContentNode component.
+ * Add a collapse/expand indicator to a node.
  */
-export function addCollapseIndicator(_node: X6Node, _hasChildren: boolean): void {
-  // NO-OP: Collapse indicators are now rendered inside the React component (RichContentNode)
-  // This function is kept for API compatibility but does nothing for React shapes
+export function addCollapseIndicator(node: X6Node, hasNodeChildren: boolean): void {
+  if (!isMindmapNode(node) || !hasNodeChildren) {
+    removeCollapseIndicator(node);
+    return;
+  }
+
+  const attrs = getAttrs(node);
+  const collapseAttrs = buildCollapseAttrs(node, node.getData()?.collapsed === true);
+  setAttrs(node, { ...attrs, ...collapseAttrs });
+
+  const markup = getMarkup(node);
+  const nextMarkup = [...markup];
+
+  if (!hasCollapseMarkup(nextMarkup, 'collapseIndicator')) {
+    nextMarkup.push({ tagName: 'circle', selector: 'collapseIndicator' });
+  }
+  if (!hasCollapseMarkup(nextMarkup, 'collapseIcon')) {
+    nextMarkup.push({ tagName: 'text', selector: 'collapseIcon' });
+  }
+
+  setMarkup(node, nextMarkup);
 }
 
 /**
  * Remove the collapse indicator from a node
- * NOTE: For React shapes, this is now a NO-OP.
  */
-export function removeCollapseIndicator(_node: X6Node): void {
-  // NO-OP: Collapse indicators are now rendered inside the React component
+export function removeCollapseIndicator(node: X6Node): void {
+  const attrs = getAttrs(node);
+  delete attrs.collapseIndicator;
+  delete attrs.collapseIcon;
+  setAttrs(node, attrs);
+
+  const markup = getMarkup(node).filter(item => {
+    return item.selector !== 'collapseIndicator' && item.selector !== 'collapseIcon';
+  });
+  setMarkup(node, markup);
 }
 
 /**
  * Update the collapse indicator icon based on collapsed state
- * NOTE: For React shapes, this is now a NO-OP.
  */
-function updateCollapseIndicator(_node: X6Node, _isCollapsed: boolean): void {
-  // NO-OP: Collapse indicators are now rendered inside the React component
+function updateCollapseIndicator(node: X6Node, isCollapsed: boolean): void {
+  const attrs = getAttrs(node);
+  if (!attrs.collapseIndicator || !attrs.collapseIcon) {
+    return;
+  }
+
+  const collapseAttrs = buildCollapseAttrs(node, isCollapsed);
+  setAttrs(node, { ...attrs, ...collapseAttrs });
 }
 
 /**
@@ -150,10 +249,17 @@ export function getAllDescendants(graph: Graph, node: X6Node): X6Node[] {
 }
 
 /**
- * Initialize collapse indicators for all nodes in the graph
- * NOTE: For React shapes, this is now a NO-OP.
- * The RichContentNode component handles its own collapse indicator rendering.
+ * Initialize collapse indicators for all nodes in the graph.
  */
-export function initializeCollapseIndicators(_graph: Graph): void {
-  // NO-OP: Collapse indicators are now rendered inside the React component (RichContentNode)
+export function initializeCollapseIndicators(graph: Graph): void {
+  const nodes = graph.getNodes?.() || [];
+
+  nodes.forEach(node => {
+    if (isMindmapNode(node as X6Node) && hasChildren(graph, node as X6Node)) {
+      addCollapseIndicator(node as X6Node, true);
+      return;
+    }
+
+    removeCollapseIndicator(node as X6Node);
+  });
 }

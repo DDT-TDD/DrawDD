@@ -12,11 +12,21 @@ import {
   ORGCHART_SHAPES,
   LOGIC_SHAPES,
   TEXT_SHAPES,
+  VENN_SHAPES,
   FULL_PORTS_CONFIG
 } from '../config/shapes';
 import { COLOR_SCHEMES, getColorScheme } from '../config/colorSchemes';
 import type { Node, Edge } from '@antv/x6';
+import { applyColorSchemeToGraph } from '../utils/colorSchemeApplication';
 import { setNodeLabelWithAutoSize, redistributeNodeText } from '../utils/text';
+import {
+  getVennThemeStyle,
+  getVennVariantIndex,
+  isTransparentBody,
+  isVennSetNodeData,
+  resolveBodyStyleForShapeToggle,
+  snapshotVisibleBodyStyle,
+} from '../utils/venn';
 import {
   AlignStartVertical,
   AlignCenterVertical,
@@ -48,7 +58,7 @@ const FONT_FAMILIES = [
 ];
 
 export function PropertiesPanel() {
-  const { selectedCell, graph, showGrid, setShowGrid, canvasBackground, setCanvasBackground, gridSize, setGridSize, exportGrid, setExportGrid, colorScheme, setColorScheme, spellcheckLanguage } = useGraph();
+  const { selectedCell, setSelectedCell, graph, mode, showGrid, setShowGrid, canvasBackground, setCanvasBackground, gridSize, setGridSize, exportGrid, setExportGrid, colorScheme, setColorScheme, spellcheckLanguage } = useGraph();
   const [selectedNodes, setSelectedNodes] = useState<Node[]>([]);
   const [selectedEdges, setSelectedEdges] = useState<Edge[]>([]);
 
@@ -73,6 +83,7 @@ export function PropertiesPanel() {
   const [shadowOffsetY, setShadowOffsetY] = useState(3);
   const [shadowColor, setShadowColor] = useState('#00000040');
   const [nodeShape, setNodeShape] = useState<'rect' | 'ellipse' | 'none'>('rect');
+  const [fillOpacity, setFillOpacity] = useState(1);
   const [borderStyle, setBorderStyle] = useState<'solid' | 'dashed' | 'dotted'>('solid');
 
   // Image and decoration properties
@@ -110,6 +121,11 @@ export function PropertiesPanel() {
   const activeEdge = selectedCell?.isEdge?.() ? (selectedCell as Edge) : selectedEdges[0] ?? null;
   const isEdge = !!activeEdge;
   const getEdgeTargets = () => (selectedEdges.length ? selectedEdges : activeEdge ? [activeEdge] : []);
+  const primaryNode = selectedNodes[0] ?? (selectedCell && isNode ? (selectedCell as Node) : null);
+  const primaryNodeData = (primaryNode?.getData?.() || {}) as Record<string, unknown>;
+  const primaryNodeBody = primaryNode?.getAttrs?.().body || {};
+  const isVennSetNode = !!primaryNode
+    && isVennSetNodeData(primaryNodeData as any, primaryNodeBody as any);
 
   // Track multiple selected nodes
   useEffect(() => {
@@ -358,17 +374,22 @@ export function PropertiesPanel() {
     if (selectedCell && selectedCell.isNode()) {
       const node = selectedCell as Node;
       const attrs = node.getAttrs();
+      const data = (node.getData() || {}) as Record<string, unknown>;
+      const activeBody = !isTransparentBody(attrs.body as any)
+        ? attrs.body
+        : ((data.lastVisibleBodyStyle as Record<string, unknown> | undefined) || attrs.body);
 
       setLabel((attrs.label?.text as string) || '');
-      setFillColor((attrs.body?.fill as string) || '#ffffff');
-      setStrokeColor((attrs.body?.stroke as string) || '#333333');
-      setStrokeWidth((attrs.body?.strokeWidth as number) || 2);
+      setFillColor((activeBody?.fill as string) || '#ffffff');
+      setFillOpacity(typeof activeBody?.fillOpacity === 'number' ? (activeBody.fillOpacity as number) : 1);
+      setStrokeColor((activeBody?.stroke as string) || '#333333');
+      setStrokeWidth((activeBody?.strokeWidth as number) || 2);
       setFontSize((attrs.label?.fontSize as number) || 14);
       setTextColor((attrs.label?.fill as string) || '#333333');
       setOpacity(node.getAttrByPath('body/opacity') as number ?? 1);
-      setCornerRadius((attrs.body?.rx as number) || 0);
+      setCornerRadius((activeBody?.rx as number) || 0);
       // Read border style from strokeDasharray
-      const bodyDashArray = attrs.body?.strokeDasharray as string;
+      const bodyDashArray = activeBody?.strokeDasharray as string;
       if (bodyDashArray?.includes('8 4') || bodyDashArray?.includes('8,4')) setBorderStyle('dashed');
       else if (bodyDashArray?.includes('2 2') || bodyDashArray?.includes('2,2') || bodyDashArray?.includes('3 3') || bodyDashArray?.includes('3,3')) setBorderStyle('dotted');
       else setBorderStyle('solid');
@@ -379,17 +400,16 @@ export function PropertiesPanel() {
       setRotation(node.getAngle() || 0);
       const body = attrs.body || {};
       const shape = (node as Node).shape;
-      if (shape === 'ellipse') {
-        setNodeShape('ellipse');
-      } else if (body.fill === 'transparent' && (body.strokeWidth === 0 || body.stroke === 'transparent')) {
+      if (isTransparentBody(body as any)) {
         setNodeShape('none');
+      } else if (shape === 'ellipse') {
+        setNodeShape('ellipse');
       } else {
         setNodeShape('rect');
       }
 
       // Load image and decoration data
       setImageUrl((attrs.image?.xlinkHref as string) || '');
-      const data = node.getData() || {};
       setPrefixDecoration((data.prefixDecoration as string) || '');
       setSuffixDecoration((data.suffixDecoration as string) || '');
 
@@ -483,12 +503,36 @@ export function PropertiesPanel() {
         ...CONTAINER_SHAPES,
         ...ORGCHART_SHAPES,
         ...LOGIC_SHAPES,
-        ...TEXT_SHAPES
+        ...TEXT_SHAPES,
+        ...VENN_SHAPES
       ];
 
       // Find by label to ensure unique identification (many shapes share the same type like 'polygon')
       const shapeConfig = allShapes.find(s => s.label === shapeLabel);
       if (!shapeConfig) return;
+      const targetIsTransparent = isTransparentBody(shapeConfig.attrs.body as any);
+      const nextVennVariantIndex = !targetIsTransparent
+        ? getVennVariantIndex(
+            {
+              ...((oldData as Record<string, unknown>) || {}),
+              ...((shapeConfig.data as Record<string, unknown>) || {}),
+            } as any,
+            oldAttrs.label?.text || shapeConfig.attrs.label.text,
+          )
+        : undefined;
+      const nextData = ((oldData as Record<string, unknown>)?.isVenn === true || (shapeConfig.data as Record<string, unknown> | undefined)?.isVenn === true)
+        ? {
+            ...(oldData as Record<string, unknown> || {}),
+            ...(shapeConfig.data || {}),
+            isVenn: true,
+            isVennSet: !targetIsTransparent,
+            isVennLabel: targetIsTransparent,
+            vennVariantIndex: nextVennVariantIndex,
+          }
+        : {
+            ...(oldData as Record<string, unknown> || {}),
+            ...(shapeConfig.data || {}),
+          };
 
       // Get connected edges with their original port info
       const incomingEdges = graph.getIncomingEdges(oldNode);
@@ -508,7 +552,7 @@ export function PropertiesPanel() {
             text: oldAttrs.label?.text || shapeConfig.attrs.label.text,
           },
         } as any,
-        data: oldData,
+        data: nextData,
         ports: FULL_PORTS_CONFIG as any,
       });
 
@@ -530,11 +574,10 @@ export function PropertiesPanel() {
       });
 
       // Remove old node and select new one
-      // Use setTimeout to avoid React unmount race condition
-      setTimeout(() => {
-        graph.removeNode(oldNode);
-        graph.select(newNode);
-      }, 0);
+      graph.removeNode(oldNode);
+      graph.cleanSelection();
+      graph.select(newNode);
+      setSelectedCell(newNode as never);
     } finally {
       graph.stopBatch('replace-shape');
     }
@@ -555,6 +598,14 @@ export function PropertiesPanel() {
     const targets = selectedNodes.length > 0 ? selectedNodes : (selectedCell && isNode ? [selectedCell as Node] : []);
     targets.forEach(node => {
       node.setAttrs({ body: { fill: color } });
+    });
+  };
+
+  const handleFillOpacityChange = (value: number) => {
+    setFillOpacity(value);
+    const targets = selectedNodes.length > 0 ? selectedNodes : (selectedCell && isNode ? [selectedCell as Node] : []);
+    targets.forEach(node => {
+      node.setAttrs({ body: { fillOpacity: value } });
     });
   };
 
@@ -768,23 +819,168 @@ export function PropertiesPanel() {
     }
   };
 
+  const replaceNodeGeometry = (node: Node, nextShape: 'rect' | 'ellipse', nextBodyAttrs: Record<string, unknown>) => {
+    if (!graph) return null;
+
+    const position = node.getPosition();
+    const size = node.getSize();
+    const attrs = node.getAttrs();
+    const data = node.getData() || {};
+    const ports = node.getPorts();
+    const zIndex = node.getZIndex();
+    const angle = node.getAngle();
+    const parent = node.getParent();
+    const children = node.getChildren() || [];
+    const incomingEdges = graph.getIncomingEdges(node) || [];
+    const outgoingEdges = graph.getOutgoingEdges(node) || [];
+
+    const edgeConnections: Array<{
+      edge: Edge;
+      isSource: boolean;
+      fullSource?: unknown;
+      fullTarget?: unknown;
+    }> = [
+      ...incomingEdges.map((edge) => ({
+        edge,
+        isSource: false,
+        fullTarget: edge.getTarget(),
+      })),
+      ...outgoingEdges.map((edge) => ({
+        edge,
+        isSource: true,
+        fullSource: edge.getSource(),
+      })),
+    ];
+
+    const body = (attrs.body || {}) as Record<string, unknown>;
+    const preservedBodyAttrs: Record<string, unknown> = {
+      fill: body.fill,
+      stroke: body.stroke,
+      strokeWidth: body.strokeWidth,
+      fillOpacity: body.fillOpacity,
+      opacity: body.opacity,
+      strokeDasharray: body.strokeDasharray,
+      filter: body.filter,
+    };
+
+    const newNode = graph.addNode({
+      shape: nextShape,
+      x: position.x,
+      y: position.y,
+      width: size.width,
+      height: size.height,
+      angle,
+      attrs: {
+        ...attrs,
+        body: {
+          ...preservedBodyAttrs,
+          ...nextBodyAttrs,
+        },
+      } as any,
+      data,
+      zIndex: zIndex || 1,
+      ports: ports.length > 0 ? { items: ports, groups: FULL_PORTS_CONFIG.groups } as any : FULL_PORTS_CONFIG as any,
+    });
+
+    if (parent && parent.isNode()) {
+      (parent as Node).addChild(newNode);
+    }
+
+    children.forEach((child) => {
+      node.removeChild(child);
+      newNode.addChild(child);
+    });
+
+    edgeConnections.forEach((connection) => {
+      if (connection.isSource) {
+        const sourceConfig = connection.fullSource as any;
+        connection.edge.setSource({
+          cell: newNode.id,
+          port: sourceConfig?.port,
+          anchor: sourceConfig?.anchor,
+          connectionPoint: sourceConfig?.connectionPoint,
+          magnet: sourceConfig?.magnet,
+        });
+      } else {
+        const targetConfig = connection.fullTarget as any;
+        connection.edge.setTarget({
+          cell: newNode.id,
+          port: targetConfig?.port,
+          anchor: targetConfig?.anchor,
+          connectionPoint: targetConfig?.connectionPoint,
+          magnet: targetConfig?.magnet,
+        });
+      }
+    });
+
+    // The caller removes the obsolete node in the same history batch so undo
+    // treats the geometry swap as one operation.
+    return newNode;
+  };
+
   const applyNodeShape = (shape: 'rect' | 'ellipse' | 'none') => {
     if (!graph) return;
     const targets = selectedNodes.length > 0 ? selectedNodes : (selectedCell && isNode ? [selectedCell as Node] : []);
-    targets.forEach(node => {
-      if (shape === 'none') {
-        node.setProp('shape', 'rect');
-        node.setAttrs({ body: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0, rx: 0, ry: 0 } });
-      } else if (shape === 'ellipse') {
-        const size = node.getSize();
-        const r = Math.max(size.width, size.height) / 2;
-        node.setProp('shape', 'ellipse');
-        node.setAttrs({ body: { rx: r, ry: r, fill: fillColor, stroke: strokeColor, strokeWidth } });
-      } else {
-        node.setProp('shape', 'rect');
-        node.setAttrs({ body: { rx: cornerRadius, ry: cornerRadius, fill: fillColor, stroke: strokeColor, strokeWidth } });
+    const createdNodes: Node[] = [];
+    const obsoleteNodes: Node[] = [];
+
+    graph.startBatch('apply-node-shape');
+    try {
+      targets.forEach((node) => {
+        const body = node.getAttrs().body || {};
+        const data = (node.getData() || {}) as Record<string, unknown>;
+        const lastVisibleBodyStyle = snapshotVisibleBodyStyle(body as any)
+          ?? (data.lastVisibleBodyStyle as Record<string, unknown> | undefined);
+
+        if (shape === 'none') {
+          node.setData({
+            ...data,
+            lastVisibleBodyStyle,
+          });
+          node.setAttrs({ body: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0, rx: 0, ry: 0 } });
+          return;
+        }
+
+        const nextBodyAttrs = resolveBodyStyleForShapeToggle({
+          body: body as any,
+          lastVisibleBodyStyle: lastVisibleBodyStyle as any,
+          fallbackFill: fillColor,
+          fallbackStroke: strokeColor,
+          fallbackStrokeWidth: strokeWidth,
+          fallbackFillOpacity: fillOpacity,
+          cornerRadius,
+          nextShape: shape,
+        });
+
+        const nextNode = replaceNodeGeometry(
+          node,
+          shape,
+          nextBodyAttrs as Record<string, unknown>
+        );
+
+        if (nextNode) {
+          nextNode.setData({
+            ...data,
+            lastVisibleBodyStyle: snapshotVisibleBodyStyle(nextBodyAttrs as any),
+          });
+          createdNodes.push(nextNode);
+          obsoleteNodes.push(node);
+        }
+      });
+
+      if (createdNodes.length > 0) {
+        obsoleteNodes.forEach((node) => graph.removeNode(node));
       }
-    });
+    } finally {
+      graph.stopBatch('apply-node-shape');
+    }
+
+    if (createdNodes.length > 0) {
+      graph.cleanSelection();
+      graph.select(createdNodes);
+      setSelectedCell(createdNodes.length === 1 ? createdNodes[0] as never : null);
+    }
+
     setNodeShape(shape);
   };
 
@@ -1150,31 +1346,7 @@ export function PropertiesPanel() {
       setCanvasBackground({ type: 'color', color: scheme.backgroundColor });
       if (graph) {
         graph.drawBackground({ color: scheme.backgroundColor });
-
-        // Apply to existing nodes
-        const nodes = graph.getNodes();
-        nodes.forEach((node, index) => {
-          // Skip text boxes (transparent body)
-          const attrs = node.getAttrs();
-          if (attrs.body?.fill === 'transparent' && attrs.body?.stroke === 'transparent') {
-            return;
-          }
-
-          const colorType = index % 3 === 0 ? 'primary' : index % 3 === 1 ? 'secondary' : 'accent';
-          const colors = scheme.nodeColors[colorType];
-          node.setAttrs({
-            body: { fill: colors.fill, stroke: colors.stroke },
-            label: { fill: colors.text }
-          });
-        });
-
-        // Apply to edges
-        const edges = graph.getEdges();
-        edges.forEach((edge) => {
-          edge.setAttrs({
-            line: { stroke: scheme.lineColor }
-          });
-        });
+        applyColorSchemeToGraph(graph, scheme);
       }
     };
 
@@ -1436,6 +1608,41 @@ export function PropertiesPanel() {
           <Section title="Fill">
             <ColorRow color={fillColor} onChange={handleFillColorChange} />
             <ColorPalette selectedColor={fillColor} onColorSelect={handleFillColorChange} />
+            {isVennSetNode && (
+              <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+                Use fill opacity for the set area. Border and label opacity stay independent.
+              </p>
+            )}
+            <div className="mt-2">
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                {isVennSetNode ? 'Set Fill Opacity' : 'Fill Opacity'}: {Math.round(fillOpacity * 100)}%
+              </label>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={fillOpacity}
+                onChange={(e) => handleFillOpacityChange(Number(e.target.value))}
+                className="w-full accent-blue-500"
+              />
+            </div>
+            {isVennSetNode && (
+              <div className="mt-2 grid grid-cols-4 gap-2">
+                {[0.15, 0.25, 0.35, 0.5].map((value) => (
+                  <button
+                    key={value}
+                    onClick={() => handleFillOpacityChange(value)}
+                    className={`py-1 px-2 text-xs rounded border ${Math.abs(fillOpacity - value) < 0.001
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
+                      : 'border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300'
+                    }`}
+                  >
+                    {Math.round(value * 100)}%
+                  </button>
+                ))}
+              </div>
+            )}
           </Section>
 
           {/* Border */}
@@ -2286,6 +2493,41 @@ export function PropertiesPanel() {
             <Section title="Fill">
               <ColorRow color={fillColor} onChange={handleFillColorChange} />
               <ColorPalette selectedColor={fillColor} onColorSelect={handleFillColorChange} />
+              {isVennSetNode && (
+                <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+                  Use fill opacity for the set area. Border and label opacity stay independent.
+                </p>
+              )}
+              <div className="mt-2">
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  {isVennSetNode ? 'Set Fill Opacity' : 'Fill Opacity'}: {Math.round(fillOpacity * 100)}%
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={fillOpacity}
+                  onChange={(e) => handleFillOpacityChange(Number(e.target.value))}
+                  className="w-full accent-blue-500"
+                />
+              </div>
+              {isVennSetNode && (
+                <div className="mt-2 grid grid-cols-4 gap-2">
+                  {[0.15, 0.25, 0.35, 0.5].map((value) => (
+                    <button
+                      key={value}
+                      onClick={() => handleFillOpacityChange(value)}
+                      className={`py-1 px-2 text-xs rounded border ${Math.abs(fillOpacity - value) < 0.001
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
+                        : 'border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300'
+                      }`}
+                    >
+                      {Math.round(value * 100)}%
+                    </button>
+                  ))}
+                </div>
+              )}
             </Section>
 
             {/* Border */}
@@ -2346,7 +2588,7 @@ export function PropertiesPanel() {
             {/* Opacity */}
             <Section title="Appearance">
               <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                Opacity: {Math.round(opacity * 100)}%
+                {isVennSetNode ? 'Whole Node Opacity' : 'Opacity'}: {Math.round(opacity * 100)}%
               </label>
               <input
                 type="range"
@@ -2694,9 +2936,10 @@ export function PropertiesPanel() {
                 Select a new shape to replace "{String(shapeChangeTarget.getAttrs().label?.text) || 'this shape'}". Text and connections will be preserved.
               </p>
               {(() => {
-                // Only show basic shapes for simplicity
                 const categories = [
+                  { name: 'Flowchart', shapes: FLOWCHART_SHAPES },
                   { name: 'Basic Shapes', shapes: BASIC_SHAPES },
+                  { name: 'Venn Circles', shapes: VENN_SHAPES },
                 ];
 
                 return categories.map(category => (

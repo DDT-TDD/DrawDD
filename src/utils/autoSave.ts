@@ -1,12 +1,18 @@
 import { useEffect, useCallback, useRef } from 'react';
 import type { Graph } from '@antv/x6';
 import { exportToJSON, importFromJSON } from './importExport';
-import type { DrawddDocument } from '../types';
+import type { DiagramCanvasMode, DrawddDocument } from '../types';
 
 const STORAGE_KEY = 'drawdd-autosave';
 const AUTOSAVE_DELAY = 2000; // 2 seconds debounce
 
-export function useAutoSave(graph: Graph | null) {
+export function useAutoSave(
+  graph: Graph | null,
+  options?: {
+    mode?: DiagramCanvasMode;
+    setMode?: (mode: DiagramCanvasMode) => void;
+  }
+) {
   const timeoutRef = useRef<number | null>(null);
   const lastSavedRef = useRef<string>('');
 
@@ -15,7 +21,7 @@ export function useAutoSave(graph: Graph | null) {
     if (!graph) return;
     
     try {
-      const doc = exportToJSON(graph);
+      const doc = exportToJSON(graph, { mode: options?.mode });
       const json = JSON.stringify(doc);
       
       // Only save if content has changed
@@ -48,7 +54,7 @@ export function useAutoSave(graph: Graph | null) {
         
         // Only load if there's actual content
         if (doc.nodes && doc.nodes.length > 0) {
-          importFromJSON(graph, doc);
+          importFromJSON(graph, doc, { setMode: options?.setMode });
           lastSavedRef.current = saved;
           console.log('[AutoSave] Diagram restored from localStorage');
           return true;
@@ -58,7 +64,7 @@ export function useAutoSave(graph: Graph | null) {
       console.error('[AutoSave] Failed to load:', error);
     }
     return false;
-  }, [graph]);
+  }, [graph, options?.mode, options?.setMode]);
 
   // Clear saved data
   const clearStorage = useCallback(() => {

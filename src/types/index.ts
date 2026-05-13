@@ -13,6 +13,18 @@ export interface ShapeBodyAttrs {
   refPoints?: string;
   strokeDasharray?: string;
   opacity?: number;
+  fillOpacity?: number;
+}
+
+export interface BodyStyleSnapshot {
+  fill?: string;
+  stroke?: string;
+  strokeWidth?: number;
+  rx?: number;
+  ry?: number;
+  strokeDasharray?: string;
+  opacity?: number;
+  fillOpacity?: number;
 }
 
 export interface ShapeLabelAttrs {
@@ -94,6 +106,13 @@ export interface NodeData {
   priority?: 'low' | 'medium' | 'high';
   status?: 'planned' | 'in-progress' | 'completed' | 'cancelled';
 
+  // Venn diagram properties
+  isVenn?: boolean;
+  isVennSet?: boolean;
+  isVennLabel?: boolean;
+  vennVariantIndex?: number;
+  lastVisibleBodyStyle?: BodyStyleSnapshot;
+
   // Visual properties
   imageUrl?: string;
   naturalWidth?: number;
@@ -158,6 +177,8 @@ export interface XMindTopic {
   };
 }
 
+export type DiagramCanvasMode = 'flowchart' | 'mindmap' | 'timeline' | 'venn';
+
 export interface MindManagerNode {
   '@_OId': string;
   Text?: {
@@ -170,7 +191,7 @@ export interface MindManagerNode {
 
 export interface DrawddDocument {
   version: string;
-  type: 'flowchart' | 'mindmap' | 'diagram';
+  type: DiagramCanvasMode | 'diagram';
   nodes: Node.Properties[];
   edges: Edge.Properties[];
   metadata?: {
@@ -193,8 +214,8 @@ export interface GraphContextType {
   setGraph: (graph: Graph | null) => void;
   selectedCell: Node | Edge | null;
   setSelectedCell: (cell: Node | Edge | null) => void;
-  mode: 'flowchart' | 'mindmap' | 'timeline';
-  setMode: (mode: 'flowchart' | 'mindmap' | 'timeline') => void;
+  mode: DiagramCanvasMode;
+  setMode: (mode: DiagramCanvasMode) => void;
   zoom: number;
   setZoom: (zoom: number) => void;
   showGrid: boolean;
@@ -270,6 +291,7 @@ export interface DiagramPage {
   color: string; // Tab color
   data: string; // JSON serialized graph data
   order: number; // Display order
+  mode?: DiagramCanvasMode;
 }
 
 export interface DiagramFile {

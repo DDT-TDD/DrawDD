@@ -7,7 +7,8 @@ export type DiagramType =
   | 'timeline'
   | 'tree'
   | 'tree-left'
-  | 'tree-right';
+  | 'tree-right'
+  | 'venn';
 
 export interface DiagramTypeConfig {
   id: DiagramType;
@@ -171,6 +172,20 @@ export const DIAGRAM_TYPES: DiagramTypeConfig[] = [
     defaultConnector: {
       router: 'orth',
       connector: 'rounded',
+      sourceArrow: 'none',
+      targetArrow: 'none',
+    },
+  },
+  {
+    id: 'venn',
+    name: 'Venn Diagram',
+    icon: '⊙',
+    description: 'Overlapping sets with shared regions',
+    defaultLayout: 'free',
+    allowedShapes: ['ellipse', 'rect'],
+    defaultConnector: {
+      router: 'normal',
+      connector: 'normal',
       sourceArrow: 'none',
       targetArrow: 'none',
     },

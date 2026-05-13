@@ -3,7 +3,7 @@ import { useGraph } from '../context/GraphContext';
 import { useTheme } from '../context/ThemeContext';
 import { saveAs } from 'file-saver';
 import { jsPDF } from 'jspdf';
-import { exportToJSON, exportToDrawioXML, exportToHTML, exportToMarkdown, exportToTextOutline, exportToKityMinder, importFromJSON, importFromDrawio, importXMind, importMindManager, importKityMinder, importFreeMind, importFreePlan, importVisio, mindmapToGraph, visioToGraph } from '../utils/importExport';
+import { exportToJSON, exportToDrawioXML, exportToHTML, exportToMarkdown, exportToTextOutline, exportToKityMinder, importFromJSON, importFromDrawio, importXMind, importMindManager, importKityMinder, importFreeMind, importFreePlan, importVisio, inferDiagramModeFromPageData, mindmapToGraph, visioToGraph } from '../utils/importExport';
 import { applyTreeLayout, applyFishboneLayout, applyTimelineLayout, type LayoutDirection } from '../utils/layout';
 import { getRecentFiles, addRecentFile, clearRecentFiles, cacheRecentFileContent, getCachedFileContent, type RecentFile } from '../utils/recentFiles';
 import { KeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
@@ -155,11 +155,13 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
           if (parsed.pages && Array.isArray(parsed.pages)) {
             const firstPage = parsed.pages[0];
             if (firstPage?.data) {
+              setMode(inferDiagramModeFromPageData(firstPage.data, firstPage.mode));
               graph.fromJSON(JSON.parse(firstPage.data));
             }
           } else {
             const doc: DrawddDocument = parsed;
             importFromJSON(graph, doc, {
+              setMode,
               setCanvasBackground,
               setShowGrid,
               setMindmapDirection,
@@ -415,6 +417,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
       } else {
         // Fallback: save just current graph (old format)
         const doc = exportToJSON(graph, {
+          mode,
           canvasBackground,
           showGrid,
           mindmapDirection,
@@ -446,7 +449,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
         } : null;
         const content = fileToSave
           ? JSON.stringify(fileToSave, null, 2)
-          : JSON.stringify(exportToJSON(graph, { canvasBackground, showGrid, mindmapDirection, timelineDirection }), null, 2);
+          : JSON.stringify(exportToJSON(graph, { mode, canvasBackground, showGrid, mindmapDirection, timelineDirection }), null, 2);
         const result = await electronAPI.saveFileAs(`${currentName}.drwdd`, content);
         if (result.success && result.filePath) {
           const displayName = result.displayName || currentName;
@@ -485,6 +488,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
           setRecentFiles(getRecentFiles());
         } else {
           const doc = exportToJSON(graph, {
+            mode,
             canvasBackground,
             showGrid,
             mindmapDirection,
@@ -579,6 +583,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
       } else {
         // Fallback: export just current graph
         const doc = exportToJSON(graph, {
+          mode,
           canvasBackground,
           showGrid,
           mindmapDirection,
@@ -1307,7 +1312,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
         </div>
         <div className="text-sm text-gray-600 dark:text-gray-300 font-medium">
           Mode: <span className="text-blue-600 dark:text-blue-400 capitalize">
-            {mode === 'flowchart' ? 'Flowchart' : mode === 'mindmap' ? 'Mind Map' : 'Timeline'}
+            {mode === 'flowchart' ? 'Flowchart' : mode === 'mindmap' ? 'Mind Map' : mode === 'venn' ? 'Venn Diagram' : 'Timeline'}
           </span>
         </div>
       </div>

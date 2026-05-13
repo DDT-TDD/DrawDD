@@ -11,10 +11,10 @@ import { AboutDialog } from './components/AboutDialog';
 import { NewDiagramDialog } from './components/NewDiagramDialog';
 import { HelpDialog } from './components/HelpDialog';
 import { APP_VERSION } from './types';
-import type { DiagramFile, DiagramPage } from './types';
+import type { DiagramCanvasMode, DiagramFile, DiagramPage } from './types';
 import { PanelLeftClose, PanelRightClose, PanelLeft, PanelRight } from 'lucide-react';
 import { applyTreeLayout, applyFishboneLayout, applyTimelineLayout } from './utils/layout';
-import { importFromJSON, importKityMinder, importXMind, importMindManager, importFreeMind, importFreePlan, mindmapToGraph } from './utils/importExport';
+import { importFromJSON, importKityMinder, importXMind, importMindManager, importFreeMind, importFreePlan, inferDiagramModeFromPageData, mindmapToGraph } from './utils/importExport';
 import { addRecentFile } from './utils/recentFiles';
 import { injectKatexCSS } from './utils/markdown';
 import { registerHtmlNode } from './config/htmlNode';
@@ -40,12 +40,13 @@ const PAGE_COLORS = [
 ];
 
 // Helper to create a new page
-const createNewPage = (order: number, name?: string): DiagramPage => ({
+const createNewPage = (order: number, name?: string, mode: DiagramCanvasMode = 'flowchart'): DiagramPage => ({
   id: `page-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
   name: name || `Page ${order + 1}`,
   data: '',
   color: PAGE_COLORS[order % PAGE_COLORS.length],
-  order
+  order,
+  mode
 });
 
 // Helper to create a new file
@@ -76,6 +77,7 @@ function AppContent() {
     showRightSidebar, setShowRightSidebar,
     graph, zoom, setZoom, showGrid, setShowGrid,
     setMindmapDirection, setTimelineDirection, setCanvasBackground,
+    mode,
     setMode
   } = useGraph();
   const [showFindReplace, setShowFindReplace] = useState(false);
@@ -103,17 +105,19 @@ function AppContent() {
           ...f,
           pages: f.pages.map(p =>
             p.id === f.activePageId
-              ? { ...p, data: currentData }
+              ? { ...p, data: currentData, mode }
               : p
           )
         }
         : f
     ));
-  }, [graph, activeFileId, currentFile, currentPage]);
+  }, [graph, activeFileId, currentFile, currentPage, mode]);
 
   // Load page data into graph
-  const loadPageData = useCallback((pageData: string) => {
+  const loadPageData = useCallback((page?: Pick<DiagramPage, 'data' | 'mode'> | null) => {
     if (!graph) return;
+    const pageData = page?.data || '';
+    setMode(inferDiagramModeFromPageData(pageData, page?.mode));
     if (pageData) {
       try {
         graph.fromJSON(JSON.parse(pageData));
@@ -137,7 +141,7 @@ function AppContent() {
     } else {
       graph.clearCells();
     }
-  }, [graph]);
+  }, [graph, setMode]);
 
   // --- FILE OPERATIONS ---
   const handleNewFile = useCallback(() => {
@@ -145,8 +149,9 @@ function AppContent() {
     const newFile = createNewFile();
     setFiles(prev => [...prev, newFile]);
     setActiveFileId(newFile.id);
+    setMode('flowchart');
     if (graph) graph.clearCells();
-  }, [graph, saveCurrentPageData]);
+  }, [graph, saveCurrentPageData, setMode]);
 
   const handleFileSelect = useCallback((fileId: string) => {
     if (fileId === activeFileId) return;
@@ -155,7 +160,7 @@ function AppContent() {
     const targetFile = files.find(f => f.id === fileId);
     if (targetFile) {
       const activePage = targetFile.pages.find(p => p.id === targetFile.activePageId);
-      loadPageData(activePage?.data || '');
+      loadPageData(activePage || null);
     }
   }, [activeFileId, files, saveCurrentPageData, loadPageData]);
 
@@ -182,10 +187,11 @@ function AppContent() {
         handleFileSelect(remainingFiles[remainingFiles.length - 1].id);
       } else {
         setActiveFileId('');
+        setMode('flowchart');
         if (graph) graph.clearCells();
       }
     }
-  }, [files, activeFileId, graph, handleFileSelect]);
+  }, [files, activeFileId, graph, handleFileSelect, setMode]);
 
   const handleFileRename = useCallback((fileId: string, newName: string) => {
     setFiles(prev => prev.map(f =>
@@ -197,14 +203,14 @@ function AppContent() {
   const handleNewPage = useCallback(() => {
     if (!currentFile) return;
     saveCurrentPageData();
-    const newPage = createNewPage(currentFile.pages.length);
+    const newPage = createNewPage(currentFile.pages.length, undefined, mode);
     setFiles(prev => prev.map(f =>
       f.id === activeFileId
         ? { ...f, pages: [...f.pages, newPage], activePageId: newPage.id, isModified: true }
         : f
     ));
     if (graph) graph.clearCells();
-  }, [activeFileId, currentFile, graph, saveCurrentPageData]);
+  }, [activeFileId, currentFile, graph, mode, saveCurrentPageData]);
 
   const handlePageSelect = useCallback((pageId: string) => {
     if (!currentFile || pageId === currentFile.activePageId) return;
@@ -213,7 +219,7 @@ function AppContent() {
       f.id === activeFileId ? { ...f, activePageId: pageId } : f
     ));
     const targetPage = currentFile.pages.find(p => p.id === pageId);
-    loadPageData(targetPage?.data || '');
+    loadPageData(targetPage || null);
   }, [activeFileId, currentFile, saveCurrentPageData, loadPageData]);
 
   const handlePageClose = useCallback((pageId: string) => {
@@ -238,7 +244,7 @@ function AppContent() {
     // Load the new active page if we switched
     if (pageId === currentFile.activePageId) {
       const newActivePage = newPages.find(p => p.id === newActivePageId);
-      loadPageData(newActivePage?.data || '');
+      loadPageData(newActivePage || null);
     }
   }, [activeFileId, currentFile, loadPageData]);
 
@@ -259,7 +265,8 @@ function AppContent() {
     const newPage: DiagramPage = {
       ...createNewPage(currentFile.pages.length),
       name: `${sourcePage.name} (Copy)`,
-      data: sourcePage.data
+      data: sourcePage.data,
+      mode: sourcePage.mode ?? mode
     };
 
     setFiles(prev => prev.map(f =>
@@ -267,8 +274,8 @@ function AppContent() {
         ? { ...f, pages: [...f.pages, newPage], activePageId: newPage.id, isModified: true }
         : f
     ));
-    loadPageData(newPage.data);
-  }, [activeFileId, currentFile, saveCurrentPageData, loadPageData]);
+    loadPageData(newPage);
+  }, [activeFileId, currentFile, mode, saveCurrentPageData, loadPageData]);
 
   const handlePageColorChange = useCallback((pageId: string, color: string) => {
     setFiles(prev => prev.map(f =>
@@ -288,13 +295,13 @@ function AppContent() {
         ...currentFile,
         pages: currentFile.pages.map(p =>
           p.id === currentFile.activePageId
-            ? { ...p, data: currentData }
+            ? { ...p, data: currentData, mode }
             : p
         )
       };
       (window as any).__currentDiagramFile = updatedFile;
     }
-  }, [currentFile, graph, activeFileId]);
+  }, [currentFile, graph, activeFileId, mode]);
 
   // Mark file as modified when graph changes
   useEffect(() => {
@@ -437,8 +444,13 @@ function AppContent() {
 
       if (fileData.pages && Array.isArray(fileData.pages)) {
         // Multi-page format - open in a new tab
+        const normalizedPages = fileData.pages.map((page: DiagramPage) => ({
+          ...page,
+          mode: inferDiagramModeFromPageData(page.data, page.mode),
+        }));
         const newFile: DiagramFile = {
           ...fileData,
+          pages: normalizedPages,
           id: `file-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
           isModified: false
         };
@@ -449,24 +461,7 @@ function AppContent() {
         // Load first page into graph
         if (graph && newFile.pages.length > 0) {
           const firstPage = newFile.pages.find(p => p.id === newFile.activePageId) || newFile.pages[0];
-          if (firstPage.data) {
-            try {
-              graph.fromJSON(JSON.parse(firstPage.data));
-
-              // CRITICAL FIX: Ensure all nodes are visible after loading
-              const nodes = graph.getNodes();
-              nodes.forEach(node => {
-                if (!node.isVisible()) {
-                  node.setVisible(true);
-                }
-              });
-            } catch (e) {
-              console.error('Failed to load page data:', e);
-              graph.clearCells();
-            }
-          } else {
-            graph.clearCells();
-          }
+          loadPageData(firstPage);
         }
       } else if (fileData.nodes || fileData.edges) {
         // Old DrawddDocument format - import with full normalization into a new tab
@@ -476,6 +471,7 @@ function AppContent() {
         setActiveFileId(newFile.id);
         if (graph) {
           importFromJSON(graph, fileData, {
+            setMode,
             setMindmapDirection,
             setTimelineDirection,
             setCanvasBackground,
@@ -510,7 +506,7 @@ function AppContent() {
       delete (window as any).__drawdd_loadFile;
       delete (window as any).__drawdd_importToNewTab;
     };
-  }, [handleNewFile, handleNewPage, activeFileId, graph, files]);
+  }, [handleNewFile, handleNewPage, activeFileId, graph, files, loadPageData, saveCurrentPageData, setCanvasBackground, setMindmapDirection, setMode, setTimelineDirection]);
 
   // Handle Electron menu commands
   useEffect(() => {

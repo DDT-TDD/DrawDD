@@ -1,4 +1,4 @@
-# GitHub Release Checklist for DRAWDD v1.0.0
+# GitHub Release Checklist for DRAWDD v2.2.0
 
 ## Pre-Release Verification
 
@@ -18,13 +18,14 @@
 ### Documentation
 - ✅ README.md with complete feature list and setup instructions
 - ✅ CHANGELOG.md documenting recent changes
+- ✅ RELEASE_NOTES_v2.2.0.md prepared for GitHub Release
 - ✅ CONTRIBUTING.md for contributors
 - ✅ Inline code comments for complex logic
 
 ### Build & Release
 - ✅ npm build script tested and working
 - ✅ dist/ directory properly built
-- ✅ Electron build scripts configured (electron:build, package-win)
+- ✅ Electron build scripts configured (`electron:build`, `electron:build:portable`, `release:portable`, `package-win`)
 - ✅ No console errors or warnings in production build
 
 ### Code Quality
@@ -40,12 +41,14 @@
 
 ## Files Prepared for Release
 
-### Created
-- LICENSE - MIT license text
-- CONTRIBUTING.md - Contribution guidelines for future contributors
-
 ### Modified
 - .gitignore - Enhanced to exclude build artifacts, release-builds, and development files
+- README.md - Added Venn diagram feature and mode documentation
+- CHANGELOG.md - Added 2.2.0 release entry
+- package.json / src/version.ts - Updated version metadata to 2.2.0
+
+### Created
+- RELEASE_NOTES_v2.2.0.md - GitHub release notes for the Venn Diagram release
 
 ### Repository Root Structure
 ```
@@ -66,26 +69,28 @@ DRAWDD/
 
 ## Release Readiness
 
-✅ **Ready for GitHub Release v1.0.0**
+✅ **Ready for GitHub Release v2.2.0**
 
 ### Recommended Release Steps
 
-1. Create a git tag: `git tag -a v1.0.0 -m "First official release"`
-2. Push tag: `git push origin v1.0.0`
-3. Create GitHub Release from tag
-4. Upload release artifacts (if applicable)
-5. Publish release notes
+1. Create a git tag: `git tag -a v2.2.0 -m "Release 2.2.0"`
+2. Push tag: `git push origin v2.2.0`
+3. Build the portable artifact: `npm run release:portable`
+4. Create the GitHub Release from tag and attach `release/DRAWDD-2.2.0-Portable.exe`
+5. Publish `RELEASE_NOTES_v2.2.0.md`
 
 ### Release Notes Template
 ```markdown
-# DRAWDD v1.0.0 - Initial Release
+# DRAWDD v2.2.0
 
-First official public release of DRAWDD, an open-source diagramming application.
+Adds first-class Venn Diagram support and improves diagram-mode save/load fidelity.
 
 ## Key Features
-- Flowcharts, Mindmaps, Timelines, and custom diagrams
+- Flowcharts, Mindmaps, Timelines, Venn diagrams, and custom diagrams
+- Built-in 2-set, 3-set, and 4-set Venn templates
+- Mode-aware save/load across tabs and legacy JSON imports
 - Import: JSON, XMind, MindManager, FreeMind, Visio
-- Export: PNG, JPEG, SVG, PDF, HTML, JSON
+- Export: PNG, JPEG, SVG, PDF, HTML, JSON, `.drwdd`
 - Modern UI with drag-and-drop shapes
 - Dark mode support
 - Desktop app via Electron
@@ -119,9 +124,8 @@ MIT License - See [LICENSE](LICENSE) for details.
 ## Summary
 
 ✅ **All tasks completed:**
-1. Created LICENSE file (MIT)
-2. Created CONTRIBUTING.md for contributors
-3. Enhanced .gitignore for comprehensive exclusions
-4. Verified all required documentation exists
-5. No code changes - only release preparation
-6. Project is ready for first GitHub release
+1. Audited and fixed Venn Diagram save/load behavior
+2. Updated release metadata to 2.2.0
+3. Documented Venn Diagram usage in README and release notes
+4. Refreshed changelog and release checklist
+5. Prepared the portable build workflow for GitHub Release

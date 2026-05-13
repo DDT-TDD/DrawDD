@@ -1622,6 +1622,224 @@ export const TEXT_SHAPES: ShapeConfig[] = [
   },
 ];
 
+// ─── Venn Diagram Shapes ────────────────────────────────────────────────────
+// Semi-transparent ellipses for Venn diagrams.
+// fillOpacity keeps only the fill transparent so the stroke stays crisp and
+// the label (rendered in a separate SVG <text> element) remains fully opaque.
+
+const RAW_VENN_SHAPES: ShapeConfig[] = [
+  {
+    type: 'ellipse',
+    label: 'Circle A (Blue)',
+    icon: 'circle',
+    width: 280,
+    height: 220,
+    attrs: {
+      body: {
+        fill: '#3B82F6',
+        stroke: '#1D4ED8',
+        strokeWidth: 2.5,
+        fillOpacity: 0.30,
+      },
+      label: {
+        text: 'Set A',
+        fill: '#1e3a5f',
+        fontSize: 16,
+        fontWeight: 'bold',
+        refX: '50%',
+        refY: '20%',
+        textAnchor: 'middle',
+        textVerticalAnchor: 'middle',
+      },
+    },
+  },
+  {
+    type: 'ellipse',
+    label: 'Circle B (Red)',
+    icon: 'circle',
+    width: 280,
+    height: 220,
+    attrs: {
+      body: {
+        fill: '#EF4444',
+        stroke: '#B91C1C',
+        strokeWidth: 2.5,
+        fillOpacity: 0.30,
+      },
+      label: {
+        text: 'Set B',
+        fill: '#7f1d1d',
+        fontSize: 16,
+        fontWeight: 'bold',
+        refX: '50%',
+        refY: '20%',
+        textAnchor: 'middle',
+        textVerticalAnchor: 'middle',
+      },
+    },
+  },
+  {
+    type: 'ellipse',
+    label: 'Circle C (Green)',
+    icon: 'circle',
+    width: 280,
+    height: 220,
+    attrs: {
+      body: {
+        fill: '#22C55E',
+        stroke: '#15803D',
+        strokeWidth: 2.5,
+        fillOpacity: 0.30,
+      },
+      label: {
+        text: 'Set C',
+        fill: '#14532d',
+        fontSize: 16,
+        fontWeight: 'bold',
+        refX: '50%',
+        refY: '20%',
+        textAnchor: 'middle',
+        textVerticalAnchor: 'middle',
+      },
+    },
+  },
+  {
+    type: 'ellipse',
+    label: 'Circle D (Purple)',
+    icon: 'circle',
+    width: 280,
+    height: 220,
+    attrs: {
+      body: {
+        fill: '#A855F7',
+        stroke: '#7E22CE',
+        strokeWidth: 2.5,
+        fillOpacity: 0.30,
+      },
+      label: {
+        text: 'Set D',
+        fill: '#3b0764',
+        fontSize: 16,
+        fontWeight: 'bold',
+        refX: '50%',
+        refY: '20%',
+        textAnchor: 'middle',
+        textVerticalAnchor: 'middle',
+      },
+    },
+  },
+  {
+    type: 'ellipse',
+    label: 'Circle E (Orange)',
+    icon: 'circle',
+    width: 280,
+    height: 220,
+    attrs: {
+      body: {
+        fill: '#F97316',
+        stroke: '#C2410C',
+        strokeWidth: 2.5,
+        fillOpacity: 0.30,
+      },
+      label: {
+        text: 'Set E',
+        fill: '#7c2d12',
+        fontSize: 16,
+        fontWeight: 'bold',
+        refX: '50%',
+        refY: '20%',
+        textAnchor: 'middle',
+        textVerticalAnchor: 'middle',
+      },
+    },
+  },
+  {
+    // Intersection text label – transparent background, place in overlap zones
+    type: 'rect',
+    label: 'Intersection Label',
+    icon: 'edit',
+    width: 120,
+    height: 40,
+    attrs: {
+      body: {
+        fill: 'transparent',
+        stroke: 'transparent',
+        strokeWidth: 0,
+      },
+      label: {
+        text: 'A ∩ B',
+        fill: '#374151',
+        fontSize: 13,
+        fontWeight: 'bold',
+        textAnchor: 'middle',
+        textVerticalAnchor: 'middle',
+      },
+    },
+  },
+  {
+    // Free text annotation for labeling items in each set region
+    type: 'rect',
+    label: 'Set Item',
+    icon: 'edit',
+    width: 100,
+    height: 28,
+    attrs: {
+      body: {
+        fill: 'transparent',
+        stroke: 'transparent',
+        strokeWidth: 0,
+      },
+      label: {
+        text: '• Item',
+        fill: '#374151',
+        fontSize: 12,
+        textAnchor: 'middle',
+        textVerticalAnchor: 'middle',
+      },
+    },
+  },
+  {
+    // Title block for the whole Venn diagram
+    type: 'rect',
+    label: 'Diagram Title',
+    icon: 'edit',
+    width: 200,
+    height: 40,
+    attrs: {
+      body: {
+        fill: 'transparent',
+        stroke: 'transparent',
+        strokeWidth: 0,
+      },
+      label: {
+        text: 'Venn Diagram',
+        fill: '#111827',
+        fontSize: 20,
+        fontWeight: 'bold',
+        textAnchor: 'middle',
+        textVerticalAnchor: 'middle',
+      },
+    },
+  },
+];
+
+let vennSetIndex = 0;
+export const VENN_SHAPES: ShapeConfig[] = RAW_VENN_SHAPES.map((shape) => {
+  const isVennSet = shape.attrs.body.fill !== 'transparent' && shape.attrs.body.stroke !== 'transparent';
+  const currentVariantIndex = isVennSet ? vennSetIndex++ : undefined;
+
+  return {
+    ...shape,
+    data: {
+      ...(shape.data || {}),
+      isVenn: true,
+      isVennSet,
+      isVennLabel: !isVennSet,
+      vennVariantIndex: currentVariantIndex,
+    },
+  };
+});
+
 export const CONNECTOR_STYLES = {
   normal: {
     line: {

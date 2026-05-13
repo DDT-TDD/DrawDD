@@ -1,8 +1,8 @@
 {
   "name": "drawdd",
   "private": false,
-  "version": "2.1.7",
-  "description": "DRAWDD - Open Source Diagramming Tool for flowcharts, mindmaps, and more",
+  "version": "2.2.0",
+  "description": "DRAWDD - Open source diagramming tool for flowcharts, mindmaps, timelines, Venn diagrams, and more",
   "author": "DRAWDD Team",
   "license": "MIT",
   "main": "electron/main.cjs",
@@ -18,6 +18,7 @@
     "electron:dev": "set ELECTRON_DEV=true && electron .",
     "electron:build": "npm run build && electron-builder --win",
     "electron:build:portable": "npm run build && electron-builder --win portable",
+    "release:portable": "npm run electron:build:portable",
     "package-win": "npm run build && electron-packager . DRAWDD --overwrite --platform=win32 --arch=x64 --out=release-builds --prune=true --icon=public/icons/icon-256.ico && node scripts/package-clean.cjs",
     "dist": "npm run build && electron-builder --win --publish never"
   },

@@ -1,3 +1,4 @@
+import React from 'react';
 import { useState } from 'react';
 import { 
   FileText, 
@@ -9,11 +10,15 @@ import {
   GitBranch, 
   ChevronDown, 
   X,
-  Plus
+  Plus,
+  Circle,
 } from 'lucide-react';
+import { getColorScheme } from '../config/colorSchemes';
 import { DIAGRAM_TYPES, type DiagramType } from '../config/diagramTypes';
 import { TEMPLATES, getTemplatesByType, type Template } from '../config/templates';
 import { useGraph } from '../context/GraphContext';
+import { applyColorSchemeToGraph } from '../utils/colorSchemeApplication';
+import { getVennVariantIndex, isTransparentBody } from '../utils/venn';
 
 const ICON_MAP: Record<string, React.ReactNode> = {
   FileText: <FileText size={20} />,
@@ -23,6 +28,7 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   Fish: <Fish size={20} />,
   Calendar: <Calendar size={20} />,
   GitBranch: <GitBranch size={20} />,
+  Circle: <Circle size={20} />,
 };
 
 interface DiagramTypeSelectorProps {
@@ -31,7 +37,7 @@ interface DiagramTypeSelectorProps {
 
 export function DiagramTypeSelector({ onLoadTemplate }: DiagramTypeSelectorProps) {
   const { 
-    graph, setMode,
+    graph, colorScheme, setMode,
     mindmapShowArrows, mindmapStrokeWidth, mindmapConnectorStyle
   } = useGraph();
   const [isOpen, setIsOpen] = useState(false);
@@ -44,6 +50,10 @@ export function DiagramTypeSelector({ onLoadTemplate }: DiagramTypeSelectorProps
     // Update mode based on diagram type
     if (type === 'mindmap' || type === 'concept-map') {
       setMode('mindmap');
+    } else if (type === 'timeline') {
+      setMode('timeline');
+    } else if (type === 'venn') {
+      setMode('venn');
     } else {
       setMode('flowchart');
     }
@@ -62,6 +72,7 @@ export function DiagramTypeSelector({ onLoadTemplate }: DiagramTypeSelectorProps
     
     // Clear existing content
     graph.clearCells();
+    let vennSetIndex = 0;
     
     // Add nodes from template
     template.data.nodes.forEach(node => {
@@ -71,7 +82,43 @@ export function DiagramTypeSelector({ onLoadTemplate }: DiagramTypeSelectorProps
         circle: 'circle',
         diamond: 'polygon',
       };
-      
+
+      // Build body attrs – support optional fillOpacity for Venn circles
+      const bodyAttrs: Record<string, unknown> = {
+        fill: node.fill,
+        stroke: node.stroke,
+        strokeWidth: node.strokeWidth ?? 2,
+        rx: node.shape === 'rect' ? 8 : 0,
+        ry: node.shape === 'rect' ? 8 : 0,
+      };
+      if (node.fillOpacity !== undefined) {
+        bodyAttrs.fillOpacity = node.fillOpacity;
+      }
+
+      // Build label attrs – support optional labelColor, labelRefY, fontWeight
+      const labelAttrs: Record<string, unknown> = {
+        text: node.label,
+        fill: node.labelColor ?? '#333',
+        fontSize: node.fontSize || 14,
+        fontWeight: node.fontWeight ?? 'normal',
+        textWrap: {
+          width: node.width - 20,
+          height: node.height - 10,
+          ellipsis: true,
+        },
+      };
+      if (node.labelRefY !== undefined) {
+        labelAttrs.refX = '50%';
+        labelAttrs.refY = node.labelRefY;
+        labelAttrs.textAnchor = 'middle';
+        labelAttrs.textVerticalAnchor = 'middle';
+      }
+
+      const isVennSet = template.diagramType === 'venn' && !isTransparentBody(bodyAttrs);
+      const vennVariantIndex = isVennSet
+        ? getVennVariantIndex(node.data as any, node.label, vennSetIndex++)
+        : undefined;
+
       const cellConfig: Record<string, unknown> = {
         id: node.id,
         x: node.x,
@@ -79,25 +126,16 @@ export function DiagramTypeSelector({ onLoadTemplate }: DiagramTypeSelectorProps
         width: node.width,
         height: node.height,
         shape: shapeMap[node.shape] || 'rect',
-        attrs: {
-          body: {
-            fill: node.fill,
-            stroke: node.stroke,
-            strokeWidth: 2,
-            rx: node.shape === 'rect' ? 8 : 0,
-            ry: node.shape === 'rect' ? 8 : 0,
-          },
-          label: {
-            text: node.label,
-            fill: '#333',
-            fontSize: node.fontSize || 14,
-            textWrap: {
-              width: node.width - 20,
-              height: node.height - 10,
-              ellipsis: true,
-            },
-          },
-        },
+        attrs: { body: bodyAttrs, label: labelAttrs },
+        data: template.diagramType === 'venn'
+          ? {
+              ...(node.data || {}),
+              isVenn: true,
+              isVennSet,
+              isVennLabel: !isVennSet,
+              vennVariantIndex,
+            }
+          : node.data,
         ports: {
           groups: {
             top: { position: 'top', attrs: { circle: { r: 5, magnet: true, stroke: '#2196f3', fill: '#fff', strokeWidth: 2 } } },
@@ -121,18 +159,23 @@ export function DiagramTypeSelector({ onLoadTemplate }: DiagramTypeSelectorProps
           body: {
             fill: node.fill,
             stroke: node.stroke,
-            strokeWidth: 2,
+            strokeWidth: node.strokeWidth ?? 2,
             refPoints: '0.5,0 1,0.5 0.5,1 0,0.5',
           },
           label: {
             text: node.label,
-            fill: '#333',
+            fill: node.labelColor ?? '#333',
             fontSize: node.fontSize || 14,
+            fontWeight: node.fontWeight ?? 'normal',
           },
         };
       }
-      
-      graph.addNode(cellConfig);
+
+      const addedNode = graph.addNode(cellConfig);
+      // Apply z-index after creation (needed for proper Venn layer ordering)
+      if (node.zIndex !== undefined) {
+        addedNode.setZIndex(node.zIndex);
+      }
     });
     
     // Add edges from template - respect mindmap settings for mindmap templates
@@ -191,6 +234,10 @@ export function DiagramTypeSelector({ onLoadTemplate }: DiagramTypeSelectorProps
         }] : [],
       });
     });
+
+    if (template.diagramType === 'venn') {
+      applyColorSchemeToGraph(graph, getColorScheme(colorScheme));
+    }
     
     // Center the view
     graph.centerContent();

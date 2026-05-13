@@ -1,14 +1,14 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, type ReactNode } from 'react';
 import type { Graph, Node, Edge } from '@antv/x6';
-import type { GraphContextType, CanvasBackground, MindmapLayoutDirection } from '../types';
+import type { GraphContextType, CanvasBackground, MindmapLayoutDirection, DiagramCanvasMode } from '../types';
 
 const GraphContext = createContext<GraphContextType | null>(null);
 
 export function GraphProvider({ children }: { children: ReactNode }) {
   const [graph, setGraph] = useState<Graph | null>(null);
   const [selectedCell, setSelectedCell] = useState<Node | Edge | null>(null);
-  const [mode, setMode] = useState<'flowchart' | 'mindmap' | 'timeline'>('flowchart');
+  const [mode, setMode] = useState<DiagramCanvasMode>('flowchart');
   const [zoom, setZoom] = useState(1);
   const [showGrid, setShowGrid] = useState(true);
 

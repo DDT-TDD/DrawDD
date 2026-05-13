@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.0] - 2026-05-11
+
+### Added
+
+#### Venn Diagram Mode
+- **Dedicated Mode**: Added a first-class Venn Diagram mode across the toolbar, diagram picker, sidebar, and status display
+- **Venn Shape Library**: Added reusable overlapping circles, intersection labels, item labels, and title blocks tuned for Venn-style composition
+- **Presentation Templates**: Added built-in 2-set, 3-set, and 4-set Venn templates for fast diagram creation
+
+### Fixed
+
+#### Save/Load Fidelity
+- **Mode Persistence**: DRAWDD documents now preserve the active diagram mode across export, import, page duplication, and multi-page tab switching
+- **Legacy Compatibility**: Older single-page `.drwdd` / `.json` documents still open correctly, while non-flowchart diagrams are inferred and restored more reliably when explicit mode metadata is missing
+- **Menu/Toolbar Import Fallbacks**: Direct import fallbacks now restore the correct mode for multi-page files and legacy documents instead of defaulting silently to flowchart behavior
+
+#### Venn Interaction
+- **Flowchart-Like Editing**: Venn mode now participates in Quick Connect behavior like freeform diagram modes while remaining isolated from mindmap-only keyboard actions
+- **Theme Recoloring**: Switching color schemes now recolors existing Venn sets from both the canvas properties panel and the Settings dialog instead of leaving circles on their original palette
+- **Template Theme Styling**: Newly created Venn templates now adopt the active theme-specific Venn palette immediately instead of keeping the raw template colors while only the background changes
+- **Shape Toggle Undo**: Undo after switching a Venn set between rectangle and ellipse now restores a single shape instead of leaving duplicate geometry on the canvas
+
+### Changed
+
+#### Release Metadata
+- **Version Bump**: Updated package and application versioning to 2.2.0
+- **Documentation Refresh**: README, release checklist, and release notes now document Venn diagram creation and 2.2.0 release packaging
+
 ## [2.1.7] - 2026-05-06
 
 ### Fixed

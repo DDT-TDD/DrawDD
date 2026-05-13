@@ -83,11 +83,60 @@ const createMindmapPorts = () => ({
   ],
 });
 
+const getStoredLayoutMode = (): 'standard' | 'compact' => {
+  if (typeof localStorage === 'undefined') {
+    return 'standard';
+  }
+
+  return localStorage.getItem('drawdd-mindmap-layout-mode') === 'compact'
+    ? 'compact'
+    : 'standard';
+};
+
+const setNodeVisible = (node: Node, visible: boolean): void => {
+  if (typeof (node as any).setVisible === 'function') {
+    (node as any).setVisible(visible);
+  }
+};
+
+const bringNodeToFront = (node: Node): void => {
+  if (typeof (node as any).toFront === 'function') {
+    (node as any).toFront();
+  }
+};
+
+const setEdgeVisible = (edge: any, visible: boolean): void => {
+  if (typeof edge?.setVisible === 'function') {
+    edge.setVisible(visible);
+  }
+};
+
+const graphHasCell = (graph: Graph, cellId: string): boolean => {
+  if (typeof (graph as any).hasCell === 'function') {
+    return (graph as any).hasCell(cellId);
+  }
+
+  return !!graph.getCellById(cellId);
+};
+
 /**
  * Generate a unique ID for a node based on its path
  */
-const generateNodeId = (path: string): string => {
-  return `folder-node-${path.replace(/[^a-zA-Z0-9]/g, '-')}`;
+const generateNodeId = (graph: Graph, path: string): string => {
+  const baseId = `folder-node-${path.replace(/[^a-zA-Z0-9]/g, '-')}`;
+
+  if (!graph.getCellById(baseId)) {
+    return baseId;
+  }
+
+  let suffix = 1;
+  let nextId = `${baseId}-${suffix}`;
+  while (graph.getCellById(nextId)) {
+    suffix += 1;
+    nextId = `${baseId}-${suffix}`;
+  }
+
+  return nextId;
 };
 
 /**
@@ -117,9 +166,10 @@ const createNodesRecursive = (
   explorerType: 'linked' | 'static',
   autoCollapseDepth: number,
   currentDepth: number = 1,
-  orderRef: { value: number }
+  orderRef: { value: number },
+  hiddenByCollapsedAncestor: boolean = false
 ): Node => {
-  const nodeId = generateNodeId(fileNode.path);
+  const nodeId = generateNodeId(graph, fileNode.path);
 
   // Determine node size based on depth
   const width = Math.max(120, 160 - currentDepth * 10);
@@ -128,10 +178,7 @@ const createNodesRecursive = (
   // Create folder explorer metadata
   const folderMetadata = createFolderMetadata(fileNode, explorerType);
 
-  // Determine if node should be collapsed (beyond autoCollapseDepth)
-  // DISABLED: Auto-collapse was causing visibility issues
-  // Users can manually collapse nodes if needed
-  const shouldCollapse = false;
+  const shouldCollapse = currentDepth > autoCollapseDepth;
 
   // Create node data
   const nodeData: any = {
@@ -172,10 +219,11 @@ const createNodesRecursive = (
 
   // Apply folder explorer styling (adds icons and colors)
   applyFolderExplorerStyling(node, folderMetadata);
+  setNodeVisible(node, !hiddenByCollapsedAncestor);
 
   // Create edge from parent if not root
   if (parentId) {
-    graph.addEdge({
+    const edge = graph.addEdge({
       source: parentId,
       target: nodeId,
       attrs: {
@@ -188,6 +236,7 @@ const createNodesRecursive = (
       connector: { name: 'smooth' },
       router: { name: 'normal' },
     });
+    setEdgeVisible(edge, !hiddenByCollapsedAncestor);
   }
 
   // Recursively create child nodes
@@ -200,7 +249,8 @@ const createNodesRecursive = (
         explorerType,
         autoCollapseDepth,
         currentDepth + 1,
-        orderRef
+        orderRef,
+        hiddenByCollapsedAncestor || shouldCollapse
       );
     });
   }
@@ -247,11 +297,11 @@ export const generateFolderMindmap = (
   rootNode.setPosition({ x: rootX, y: rootY });
 
   // CRITICAL: Ensure root node is visible
-  rootNode.setVisible(true);
-  rootNode.toFront(); // Bring to front to ensure visibility
+  setNodeVisible(rootNode, true);
+  bringNodeToFront(rootNode);
 
   // Apply mindmap layout
-  const layoutMode = (localStorage.getItem('drawdd-mindmap-layout-mode') as 'standard' | 'compact') || 'standard';
+  const layoutMode = getStoredLayoutMode();
   setTimeout(() => {
     applyMindmapLayout(graph, direction, rootNode, layoutMode);
   }, 0);
@@ -296,21 +346,17 @@ export const getAllDescendants = (graph: Graph, node: Node): Node[] => {
  * @param node - Parent node
  */
 export const removeDescendants = (graph: Graph, node: Node): void => {
-  const descendants = getAllDescendants(graph, node);
-  // Use setTimeout to avoid React unmount race condition with rich-content-node
-  setTimeout(() => {
-    descendants.forEach(descendant => {
-      try {
-        // Check if node still exists before removing
-        if (graph.hasCell(descendant.id)) {
-          graph.removeNode(descendant);
-        }
-      } catch (error) {
-        console.error('Error removing descendant node:', error);
-        // Continue with other nodes even if one fails
+  const descendants = getAllDescendants(graph, node).reverse();
+
+  descendants.forEach(descendant => {
+    try {
+      if (graphHasCell(graph, descendant.id)) {
+        graph.removeNode(descendant);
       }
-    });
-  }, 0);
+    } catch (error) {
+      console.error('Error removing descendant node:', error);
+    }
+  });
 };
 
 /**

@@ -34,7 +34,7 @@ interface ContextMenuItem {
 }
 
 interface ContextMenuOptions {
-  mode: 'flowchart' | 'mindmap' | 'timeline';
+  mode: 'flowchart' | 'mindmap' | 'timeline' | 'venn';
   mindmapSettings?: {
     showArrows: boolean;
     strokeWidth: number;
@@ -991,6 +991,74 @@ export function showCellContextMenu(
 
           graph.cleanSelection();
           graph.select(newEvent);
+        }
+      },
+      { label: '---' }
+    );
+  }
+
+  // Venn-specific options
+  if (isNode && options.mode === 'venn') {
+    const nodePos = (cell as X6Node).getPosition();
+    const nodeSize = (cell as X6Node).getSize();
+    items.push(
+      { label: '## Venn Diagram', icon: '' },
+      {
+        label: 'Add Intersection Label',
+        icon: '⊙',
+        shortcut: 'Insert',
+        action: () => {
+          const labelNode = graph.addNode({
+            shape: 'rect',
+            x: nodePos.x + nodeSize.width / 2 - 60,
+            y: nodePos.y + nodeSize.height / 2 - 20,
+            width: 120,
+            height: 40,
+            attrs: {
+              body: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 },
+              label: { text: 'A ∩ B', fill: '#374151', fontSize: 13, fontWeight: 'bold', textAnchor: 'middle', textVerticalAnchor: 'middle' },
+            },
+            data: { isVenn: true, isVennLabel: true },
+          });
+          graph.cleanSelection();
+          graph.select(labelNode);
+          setTimeout(() => window.dispatchEvent(new CustomEvent('drawdd:edit-cell-text', { detail: { cell: labelNode } })), 50);
+        }
+      },
+      {
+        label: 'Add Set Item',
+        icon: '•',
+        shortcut: 'Enter',
+        action: () => {
+          const itemNode = graph.addNode({
+            shape: 'rect',
+            x: nodePos.x + 10,
+            y: nodePos.y + nodeSize.height * 0.35,
+            width: 100,
+            height: 28,
+            attrs: {
+              body: { fill: 'transparent', stroke: 'transparent', strokeWidth: 0 },
+              label: { text: '• Item', fill: '#374151', fontSize: 12, textAnchor: 'middle', textVerticalAnchor: 'middle' },
+            },
+            data: { isVenn: true, isVennLabel: true },
+          });
+          graph.cleanSelection();
+          graph.select(itemNode);
+          setTimeout(() => window.dispatchEvent(new CustomEvent('drawdd:edit-cell-text', { detail: { cell: itemNode } })), 50);
+        }
+      },
+      {
+        label: 'Set Fill Opacity 30%',
+        icon: '🎨',
+        action: () => {
+          (cell as X6Node).setAttrs({ body: { fillOpacity: 0.30 } });
+        }
+      },
+      {
+        label: 'Set Fill Opacity 50%',
+        icon: '🎨',
+        action: () => {
+          (cell as X6Node).setAttrs({ body: { fillOpacity: 0.50 } });
         }
       },
       { label: '---' }

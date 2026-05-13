@@ -25,10 +25,11 @@ import {
   Layers,
   ArrowRightLeft,
   Workflow,
+  Circle,
 } from 'lucide-react';
 import { saveAs } from 'file-saver';
 import { useGraph } from '../context/GraphContext';
-import { exportToJSON, exportToDrawioXML, importFromJSON, importFromDrawio, importXMind, importMindManager, importKityMinder, importFreeMind, importFreePlan, importVisio, mindmapToGraph, visioToGraph } from '../utils/importExport';
+import { exportToJSON, exportToDrawioXML, importFromJSON, importFromDrawio, importXMind, importMindManager, importKityMinder, importFreeMind, importFreePlan, importVisio, inferDiagramModeFromPageData, mindmapToGraph, visioToGraph } from '../utils/importExport';
 import { DiagramTypeSelector } from './DiagramTypeSelector';
 import { MindmapDirectionSelector } from './MindmapDirectionSelector';
 import { TimelineDirectionSelector } from './TimelineDirectionSelector';
@@ -195,6 +196,7 @@ export function Toolbar() {
       } else {
         // Fallback: export just current graph
         const doc = exportToJSON(graph, {
+          mode,
           canvasBackground,
           showGrid,
           mindmapDirection,
@@ -244,11 +246,13 @@ export function Toolbar() {
           if (parsed.pages && Array.isArray(parsed.pages)) {
             const firstPage = parsed.pages[0];
             if (firstPage?.data) {
+              setMode(inferDiagramModeFromPageData(firstPage.data, firstPage.mode));
               graph.fromJSON(JSON.parse(firstPage.data));
             }
           } else {
             const doc: DrawddDocument = parsed;
             importFromJSON(graph, doc, {
+              setMode,
               setCanvasBackground,
               setShowGrid,
               setMindmapDirection,
@@ -572,6 +576,16 @@ export function Toolbar() {
         >
           📅
           Timeline
+        </button>
+        <button
+          onClick={() => setMode('venn')}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === 'venn'
+            ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm'
+            : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+            }`}
+        >
+          <Circle size={15} />
+          Venn
         </button>
       </div>
 

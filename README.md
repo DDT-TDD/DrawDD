@@ -1,6 +1,6 @@
 # DRAWDD
 
-A powerful, open-source diagramming application for creating stunning drawings, mindmaps, and flowcharts.
+A powerful, open-source diagramming application for creating flowcharts, mindmaps, timelines, Venn diagrams, and freeform visual documents.
 
 ## Features
 
@@ -8,6 +8,7 @@ A powerful, open-source diagramming application for creating stunning drawings, 
 - **Flowcharts**: Create professional flowcharts with process, decision, data, and document shapes
 - **Mindmaps**: Build hierarchical mindmaps with automatic layout (right, left, both sides, radial)
 - **Timelines**: Create chronological diagrams with events, milestones, periods, and phases
+- **Venn Diagrams**: Build 2-set, 3-set, and 4-set comparisons with overlapping semi-transparent circles, editable regions, and presentation-ready templates
 - **Custom Diagrams**: Design any type of diagram with flexible shapes and connectors
 - **Image Nodes**: Insert and resize images as diagram elements with full connection support
 - **Text Decorations**: Add emojis, icons, numbers, and flags before/after text in nodes
@@ -30,8 +31,10 @@ A powerful, open-source diagramming application for creating stunning drawings, 
 
 ### ✨ User Interface
 - Beautiful, modern interface with Tailwind CSS inspired by draw.io
-- Three distinct modes: Flowchart, Mindmap, and Timeline
+- Four distinct modes: Flowchart, Mindmap, Timeline, and Venn Diagram
 - Drag-and-drop shape library organized by category
+- Template-driven diagram creation, including dedicated Venn diagram starters
+- Mode-aware save/load behavior across tabs, imports, and legacy single-page documents
 - **Real-time property editing**:
   - Colors, labels, borders, fonts
   - Text decorations (prefix/suffix emojis and icons)
@@ -121,6 +124,15 @@ Add visual markers to your node text:
 4. Click any emoji/icon to add as prefix or suffix
 5. Decorations are preserved when changing shapes
 
+### ⊙ Venn Diagram Mode
+Create overlap-based comparison diagrams without custom plugins or format breakage:
+
+1. Choose **Venn** from the toolbar or the New Diagram dialog.
+2. Start from the built-in **2-Set Comparison**, **3-Set Analysis**, or **4-Circle Grid** templates.
+3. Drag additional circles, labels, set items, and title blocks from the **Venn Circles** sidebar section.
+4. Resize and overlap circles freely while keeping crisp borders and readable labels via fill-only transparency.
+5. Save, reopen, and duplicate Venn pages with the correct mode preserved.
+
 ### 🔄 Shape Replacement
 Replace any node's shape while keeping text and connections:
 - Right-click on a node → "🔄 Change Shape"
@@ -137,7 +149,7 @@ Replace any node's shape while keeping text and connections:
 | Ctrl+A | Select All |
 | Delete | Delete Selected |
 | F2 | Edit Selected Node Text |
-| Insert | Add Child Node (Mindmap) |
+| Insert | Add Child Node (Mindmap) / Add Event (Timeline) |
 | Enter | Add Sibling Node (Mindmap) |
 | Shift+Drag | Pan Canvas |
 | Ctrl+Scroll | Zoom |

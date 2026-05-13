@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useGraph } from '../context/GraphContext';
 import { COLOR_SCHEMES, getColorScheme } from '../config/colorSchemes';
+import { applyColorSchemeToGraph } from '../utils/colorSchemeApplication';
 import { resetThemeCycle } from '../utils/theme';
 import { AISettings } from './AISettings';
 import type { MindmapLayoutDirection } from '../types';
@@ -93,34 +94,8 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
 
     // Apply to existing nodes if graph exists
     if (graph) {
-      const nodes = graph.getNodes();
-      nodes.forEach((node, index) => {
-        const currentBodyAttrs = node.getAttrs().body || {};
-        const currentFill = (currentBodyAttrs as any).fill;
-        const currentStroke = (currentBodyAttrs as any).stroke;
-
-        // Skip nodes with transparent backgrounds (text shapes, labels)
-        // These should not have theme colors applied
-        if (currentFill === 'transparent' || currentFill === 'none' ||
-          (currentStroke === 'transparent' && currentFill === 'transparent')) {
-          return;
-        }
-
-        const colorType = index % 3 === 0 ? 'primary' : index % 3 === 1 ? 'secondary' : 'accent';
-        const colors = scheme.nodeColors[colorType];
-        node.setAttrs({
-          body: { fill: colors.fill, stroke: colors.stroke },
-          label: { fill: colors.text }
-        });
-      });
-
-      // Apply to edges
-      const edges = graph.getEdges();
-      edges.forEach((edge) => {
-        edge.setAttrs({
-          line: { stroke: scheme.lineColor }
-        });
-      });
+      graph.drawBackground({ color: scheme.backgroundColor });
+      applyColorSchemeToGraph(graph, scheme);
     }
   };
 

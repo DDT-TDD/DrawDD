@@ -41,8 +41,10 @@ import {
   Image as ImageIcon,
 } from 'lucide-react';
 import { useGraph } from '../context/GraphContext';
+import { getColorScheme } from '../config/colorSchemes';
 import { getNextThemeColors } from '../utils/theme';
 import { setNodeLabelWithAutoSize } from '../utils/text';
+import { getVennThemeStyle, getVennVariantIndex, isVennSetNodeData, snapshotVisibleBodyStyle } from '../utils/venn';
 import { 
   FLOWCHART_SHAPES, 
   MINDMAP_SHAPES, 
@@ -54,6 +56,7 @@ import {
   BASIC_SHAPES,
   LOGIC_SHAPES,
   TEXT_SHAPES,
+  VENN_SHAPES,
 } from '../config/shapes';
 import type { ShapeConfig } from '../types';
 
@@ -107,7 +110,7 @@ interface ShapeCategory {
 export function Sidebar() {
   const { graph, mode, colorScheme } = useGraph();
   const dndRef = useRef<Dnd | null>(null);
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['flowchart', 'mindmap', 'timeline', 'basic']));
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['flowchart', 'mindmap', 'timeline', 'basic', 'venn']));
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
@@ -135,6 +138,12 @@ export function Sidebar() {
         { id: 'timeline', name: 'Timeline', shapes: TIMELINE_SHAPES, icon: <Clock size={16} /> },
         { id: 'basic', name: 'Basic Shapes', shapes: BASIC_SHAPES, icon: <Square size={16} /> },
         { id: 'callouts', name: 'Callouts', shapes: CALLOUT_SHAPES, icon: <MessageCircle size={16} /> },
+        { id: 'text', name: 'Text & Notes', shapes: TEXT_SHAPES, icon: <FileText size={16} /> },
+      ]
+    : mode === 'venn'
+    ? [
+        { id: 'venn', name: 'Venn Circles', shapes: VENN_SHAPES, icon: <Circle size={16} /> },
+        { id: 'basic', name: 'Basic Shapes', shapes: BASIC_SHAPES, icon: <Square size={16} /> },
         { id: 'text', name: 'Text & Notes', shapes: TEXT_SHAPES, icon: <FileText size={16} /> },
       ]
     : [
@@ -311,12 +320,20 @@ function createNode(graph: Graph, shape: ShapeConfig, colorScheme: string) {
   // Check if it's a custom logic gate shape
   const isCustomShape = shape.type.startsWith('logic-');
   const theme = getNextThemeColors(colorScheme);
+  const scheme = getColorScheme(colorScheme);
   
   // Check if this is a transparent shape (text boxes, labels, etc.)
   // These should not have theme colors applied
   const isTransparentShape = shape.attrs.body.fill === 'transparent' || 
                              shape.attrs.body.stroke === 'transparent';
-  
+  const isVennSetShape = isVennSetNodeData(shape.data as any, shape.attrs.body as any);
+  const currentVennSetCount = graph.getNodes().filter((node) => isVennSetNodeData((node.getData() || {}) as any, node.getAttrs().body as any)).length;
+  const vennVariantIndex = isVennSetShape
+    ? getVennVariantIndex(shape.data as any, shape.attrs.label.text, currentVennSetCount)
+    : undefined;
+  // Shapes with explicit fillOpacity that are not Venn sets keep their own styling.
+  const isColorPreservedShape = isTransparentShape ||
+                                (!isVennSetShape && (shape.attrs.body as any).fillOpacity !== undefined);
   const resolvedShape = isCustomShape
     ? shape.type
     : shape.type === 'ellipse'
@@ -329,13 +346,36 @@ function createNode(graph: Graph, shape: ShapeConfig, colorScheme: string) {
             ? 'image'
             : 'rect';
 
-  // For transparent shapes, use original colors; for others, apply theme
-  const bodyAttrs = isTransparentShape 
-    ? { ...shape.attrs.body } 
-    : { ...shape.attrs.body, fill: theme.fill, stroke: theme.stroke };
-  const labelAttrs = isTransparentShape
-    ? { ...shape.attrs.label }
-    : { ...shape.attrs.label, fill: theme.text };
+  const vennTheme = isVennSetShape
+    ? getVennThemeStyle(
+        scheme,
+        vennVariantIndex ?? currentVennSetCount,
+        typeof (shape.attrs.body as any).fillOpacity === 'number' ? (shape.attrs.body as any).fillOpacity : 0.30,
+      )
+    : null;
+
+  // Venn sets receive a Venn-specific themed palette. Transparent labels keep their original styling.
+  const bodyAttrs = isVennSetShape
+    ? {
+        ...shape.attrs.body,
+        fill: vennTheme?.fill ?? shape.attrs.body.fill,
+        stroke: vennTheme?.stroke ?? shape.attrs.body.stroke,
+        fillOpacity: vennTheme?.fillOpacity ?? (shape.attrs.body as any).fillOpacity,
+      }
+    : isColorPreservedShape
+      ? { ...shape.attrs.body }
+      : { ...shape.attrs.body, fill: theme.fill, stroke: theme.stroke };
+  const labelAttrs = isVennSetShape
+    ? { ...shape.attrs.label, fill: vennTheme?.labelFill ?? shape.attrs.label.fill }
+    : isColorPreservedShape
+      ? { ...shape.attrs.label }
+      : { ...shape.attrs.label, fill: theme.text };
+
+  const nodeData = {
+    ...(shape.data || {}),
+    ...(isVennSetShape ? { vennVariantIndex } : {}),
+    lastVisibleBodyStyle: snapshotVisibleBodyStyle(bodyAttrs as any),
+  };
 
   const node = graph.createNode({
     width: shape.width,
@@ -345,7 +385,7 @@ function createNode(graph: Graph, shape: ShapeConfig, colorScheme: string) {
       body: bodyAttrs as any,
       label: labelAttrs as any,
     },
-    data: shape.data || {},
+    data: nodeData,
     ports: shape.ports || (isCustomShape ? undefined : {
       groups: {
         top: { position: 'top', attrs: { circle: { r: 4, magnet: true, stroke: '#5F95FF', strokeWidth: 1.5, fill: '#fff' } } },

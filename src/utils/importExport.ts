@@ -1,9 +1,78 @@
 import JSZip from 'jszip';
-import type { DrawddDocument, XMindSheet, XMindTopic, MindmapNode } from '../types';
+import type { DrawddDocument, DiagramCanvasMode, XMindSheet, XMindTopic, MindmapNode } from '../types';
 import type { Graph, Node } from '@antv/x6';
 import { applyMindmapLayout } from './layout';
 import { initializeCollapseIndicators } from './collapse';
 import { FULL_PORTS_CONFIG } from '../config/shapes';
+
+type SerializedCell = {
+  shape?: string;
+  data?: {
+    isMindmap?: boolean;
+    isTimeline?: boolean;
+    isVenn?: boolean;
+  };
+  attrs?: {
+    body?: {
+      fillOpacity?: number;
+    };
+  };
+};
+
+function inferDiagramModeFromCells(cells: SerializedCell[]): DiagramCanvasMode {
+  const nodes = cells.filter((cell) => cell.shape !== 'edge');
+  const edges = cells.filter((cell) => cell.shape === 'edge');
+
+  if (nodes.some((node) => node.data?.isMindmap === true)) {
+    return 'mindmap';
+  }
+
+  if (nodes.some((node) => node.data?.isTimeline === true)) {
+    return 'timeline';
+  }
+
+  if (nodes.some((node) => node.data?.isVenn === true)) {
+    return 'venn';
+  }
+
+  const vennCircleCount = nodes.filter((node) => (
+    node.shape === 'ellipse'
+    && typeof node.attrs?.body?.fillOpacity === 'number'
+    && node.attrs.body.fillOpacity > 0
+    && node.attrs.body.fillOpacity < 1
+  )).length;
+
+  if (vennCircleCount >= 2 && edges.length === 0) {
+    return 'venn';
+  }
+
+  return 'flowchart';
+}
+
+export function getDocumentMode(doc: Pick<DrawddDocument, 'type' | 'nodes' | 'edges'>): DiagramCanvasMode {
+  if (doc.type === 'mindmap' || doc.type === 'timeline' || doc.type === 'venn') {
+    return doc.type;
+  }
+
+  return inferDiagramModeFromCells([...(doc.nodes as SerializedCell[]), ...(doc.edges as SerializedCell[])]);
+}
+
+export function inferDiagramModeFromPageData(pageData?: string, fallbackMode?: DiagramCanvasMode): DiagramCanvasMode {
+  if (fallbackMode) {
+    return fallbackMode;
+  }
+
+  if (!pageData) {
+    return 'flowchart';
+  }
+
+  try {
+    const parsed = JSON.parse(pageData) as { cells?: SerializedCell[] };
+    return inferDiagramModeFromCells(Array.isArray(parsed.cells) ? parsed.cells : []);
+  } catch {
+    return 'flowchart';
+  }
+}
 
 // ============ XMind Import ============
 
@@ -384,6 +453,7 @@ function convertMindManagerNode(element: Element): MindmapNode {
 export function exportToJSON(
   graph: Graph,
   settings?: {
+    mode?: DiagramCanvasMode;
     canvasBackground?: { type: 'color' | 'image'; color: string; imageUrl?: string };
     showGrid?: boolean;
     mindmapDirection?: 'right' | 'left' | 'both' | 'top' | 'bottom' | 'radial';
@@ -391,12 +461,13 @@ export function exportToJSON(
   }
 ): DrawddDocument {
   const cells = graph.toJSON();
+  const serializedCells = (cells.cells || []) as SerializedCell[];
   const nodes = cells.cells?.filter((c: { shape?: string }) => c.shape !== 'edge') || [];
   const edges = cells.cells?.filter((c: { shape?: string }) => c.shape === 'edge') || [];
 
   return {
     version: '1.0.0',
-    type: 'flowchart',
+    type: settings?.mode ?? inferDiagramModeFromCells(serializedCells),
     nodes,
     edges,
     metadata: {
@@ -416,12 +487,14 @@ export function importFromJSON(
   graph: Graph,
   doc: DrawddDocument,
   callbacks?: {
+    setMode?: (mode: DiagramCanvasMode) => void;
     setCanvasBackground?: (bg: { type: 'color' | 'image'; color: string; imageUrl?: string }) => void;
     setShowGrid?: (show: boolean) => void;
     setMindmapDirection?: (direction: 'right' | 'left' | 'both' | 'top' | 'bottom' | 'radial') => void;
     setTimelineDirection?: (direction: 'horizontal' | 'vertical') => void;
   }
 ): void {
+  callbacks?.setMode?.(getDocumentMode(doc));
   graph.clearCells();
 
   const cells = [...doc.nodes, ...doc.edges];
@@ -1972,7 +2045,7 @@ export function exportToHTML(graph: Graph, settings?: {
 }): string {
   // Get SVG content
   let svgContent = '';
-  graph.toSVG((svg: string) => {
+  (graph as Graph & { toSVG: (callback: (svg: string) => void) => void }).toSVG((svg: string) => {
     svgContent = svg;
   });
 

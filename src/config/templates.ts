@@ -25,6 +25,14 @@ export interface TemplateNode {
   fill: string;
   stroke: string;
   fontSize?: number;
+  // Extended fields for Venn diagrams and advanced templates
+  fillOpacity?: number;   // semi-transparent fills (Venn circles)
+  strokeWidth?: number;   // default 2
+  labelColor?: string;    // text colour override
+  labelRefY?: string;     // e.g. '20%' to position label near the top
+  fontWeight?: string;    // 'bold' | 'normal'
+  zIndex?: number;        // stacking order
+  data?: Record<string, unknown>;
 }
 
 export interface TemplateEdge {
@@ -279,6 +287,194 @@ export const TEMPLATES: Template[] = [
         { source: 'opt2', target: 'out3' },
         { source: 'opt2', target: 'out4' },
       ],
+    },
+  },
+  // ─── Venn Diagram Templates ──────────────────────────────────────────────
+
+  // 2-Set Comparison
+  {
+    id: 'venn-2set',
+    name: '2-Set Comparison',
+    description: 'Two overlapping circles for comparing sets',
+    diagramType: 'venn',
+    thumbnail: '⊙',
+    data: {
+      nodes: [
+        // Title
+        { id: 'venn2-title', x: 150, y: 15, width: 310, height: 38,
+          shape: 'rect', label: 'Venn Diagram – Two Sets',
+          fill: 'transparent', stroke: 'transparent', strokeWidth: 0,
+          fontSize: 20, fontWeight: 'bold', labelColor: '#111827' },
+        // Circle A – Blue
+        { id: 'venn2-a', x: 45, y: 65, width: 310, height: 260,
+          shape: 'ellipse', label: 'Set A',
+          fill: '#3B82F6', stroke: '#1D4ED8', strokeWidth: 2.5,
+          fillOpacity: 0.28, fontSize: 16, fontWeight: 'bold',
+          labelColor: '#1e3a5f', labelRefY: '18%' },
+        // Circle B – Orange
+        { id: 'venn2-b', x: 240, y: 65, width: 310, height: 260,
+          shape: 'ellipse', label: 'Set B',
+          fill: '#F97316', stroke: '#C2410C', strokeWidth: 2.5,
+          fillOpacity: 0.28, fontSize: 16, fontWeight: 'bold',
+          labelColor: '#7c2d12', labelRefY: '18%' },
+        // Zone labels
+        { id: 'venn2-la', x: 68, y: 178, width: 130, height: 30,
+          shape: 'rect', label: 'Only A',
+          fill: 'transparent', stroke: 'transparent', strokeWidth: 0,
+          fontSize: 13, fontWeight: 'bold', labelColor: '#1e3a5f' },
+        { id: 'venn2-lab', x: 268, y: 178, width: 70, height: 30,
+          shape: 'rect', label: 'A ∩ B',
+          fill: 'transparent', stroke: 'transparent', strokeWidth: 0,
+          fontSize: 13, fontWeight: 'bold', labelColor: '#374151' },
+        { id: 'venn2-lb', x: 402, y: 178, width: 130, height: 30,
+          shape: 'rect', label: 'Only B',
+          fill: 'transparent', stroke: 'transparent', strokeWidth: 0,
+          fontSize: 13, fontWeight: 'bold', labelColor: '#7c2d12' },
+        // Sample item bullets (editable)
+        { id: 'venn2-ia1', x: 63, y: 218, width: 140, height: 26,
+          shape: 'rect', label: '• Exclusive to A',
+          fill: 'transparent', stroke: 'transparent', strokeWidth: 0,
+          fontSize: 12, labelColor: '#374151' },
+        { id: 'venn2-iab1', x: 253, y: 218, width: 100, height: 26,
+          shape: 'rect', label: '• Shared',
+          fill: 'transparent', stroke: 'transparent', strokeWidth: 0,
+          fontSize: 12, labelColor: '#374151' },
+        { id: 'venn2-ib1', x: 392, y: 218, width: 145, height: 26,
+          shape: 'rect', label: '• Exclusive to B',
+          fill: 'transparent', stroke: 'transparent', strokeWidth: 0,
+          fontSize: 12, labelColor: '#374151' },
+      ],
+      edges: [],
+    },
+  },
+
+  // 3-Set Analysis
+  {
+    id: 'venn-3set',
+    name: '3-Set Analysis',
+    description: 'Three overlapping circles – classic Venn',
+    diagramType: 'venn',
+    thumbnail: '⊙',
+    data: {
+      nodes: [
+        // Title
+        { id: 'venn3-title', x: 150, y: 12, width: 310, height: 38,
+          shape: 'rect', label: 'Venn Diagram – Three Sets',
+          fill: 'transparent', stroke: 'transparent', strokeWidth: 0,
+          fontSize: 20, fontWeight: 'bold', labelColor: '#111827' },
+        // Circle A – Blue (top)
+        { id: 'venn3-a', x: 215, y: 65, width: 290, height: 240,
+          shape: 'ellipse', label: 'Set A',
+          fill: '#3B82F6', stroke: '#1D4ED8', strokeWidth: 2.5,
+          fillOpacity: 0.25, fontSize: 15, fontWeight: 'bold',
+          labelColor: '#1e3a5f', labelRefY: '16%', zIndex: 1 },
+        // Circle B – Red (bottom-left)
+        { id: 'venn3-b', x: 115, y: 235, width: 290, height: 240,
+          shape: 'ellipse', label: 'Set B',
+          fill: '#EF4444', stroke: '#B91C1C', strokeWidth: 2.5,
+          fillOpacity: 0.25, fontSize: 15, fontWeight: 'bold',
+          labelColor: '#7f1d1d', labelRefY: '82%', zIndex: 1 },
+        // Circle C – Green (bottom-right)
+        { id: 'venn3-c', x: 315, y: 235, width: 290, height: 240,
+          shape: 'ellipse', label: 'Set C',
+          fill: '#22C55E', stroke: '#15803D', strokeWidth: 2.5,
+          fillOpacity: 0.25, fontSize: 15, fontWeight: 'bold',
+          labelColor: '#14532d', labelRefY: '82%', zIndex: 1 },
+        // Zone labels
+        { id: 'venn3-la',  x: 306, y: 80,  width: 100, height: 28,
+          shape: 'rect', label: 'A only',
+          fill: 'transparent', stroke: 'transparent', strokeWidth: 0,
+          fontSize: 11, fontWeight: 'bold', labelColor: '#1e3a5f' },
+        { id: 'venn3-lb',  x: 118, y: 416, width: 100, height: 28,
+          shape: 'rect', label: 'B only',
+          fill: 'transparent', stroke: 'transparent', strokeWidth: 0,
+          fontSize: 11, fontWeight: 'bold', labelColor: '#7f1d1d' },
+        { id: 'venn3-lc',  x: 502, y: 416, width: 100, height: 28,
+          shape: 'rect', label: 'C only',
+          fill: 'transparent', stroke: 'transparent', strokeWidth: 0,
+          fontSize: 11, fontWeight: 'bold', labelColor: '#14532d' },
+        { id: 'venn3-lab', x: 207, y: 278, width: 80, height: 28,
+          shape: 'rect', label: 'A ∩ B',
+          fill: 'transparent', stroke: 'transparent', strokeWidth: 0,
+          fontSize: 11, fontWeight: 'bold', labelColor: '#374151' },
+        { id: 'venn3-lac', x: 428, y: 278, width: 80, height: 28,
+          shape: 'rect', label: 'A ∩ C',
+          fill: 'transparent', stroke: 'transparent', strokeWidth: 0,
+          fontSize: 11, fontWeight: 'bold', labelColor: '#374151' },
+        { id: 'venn3-lbc', x: 308, y: 395, width: 80, height: 28,
+          shape: 'rect', label: 'B ∩ C',
+          fill: 'transparent', stroke: 'transparent', strokeWidth: 0,
+          fontSize: 11, fontWeight: 'bold', labelColor: '#374151' },
+        { id: 'venn3-labc', x: 308, y: 322, width: 100, height: 28,
+          shape: 'rect', label: 'A ∩ B ∩ C',
+          fill: 'transparent', stroke: 'transparent', strokeWidth: 0,
+          fontSize: 11, fontWeight: 'bold', labelColor: '#374151' },
+      ],
+      edges: [],
+    },
+  },
+
+  // 4-Circle Grid
+  {
+    id: 'venn-4set',
+    name: '4-Circle Grid',
+    description: 'Four overlapping circles for comprehensive comparisons',
+    diagramType: 'venn',
+    thumbnail: '⊙',
+    data: {
+      nodes: [
+        // Title
+        { id: 'venn4-title', x: 160, y: 12, width: 320, height: 38,
+          shape: 'rect', label: 'Venn Diagram – Four Sets',
+          fill: 'transparent', stroke: 'transparent', strokeWidth: 0,
+          fontSize: 20, fontWeight: 'bold', labelColor: '#111827' },
+        // Circle A – Blue (top-left)
+        { id: 'venn4-a', x: 55, y: 62, width: 305, height: 255,
+          shape: 'ellipse', label: 'Set A',
+          fill: '#3B82F6', stroke: '#1D4ED8', strokeWidth: 2.5,
+          fillOpacity: 0.22, fontSize: 15, fontWeight: 'bold',
+          labelColor: '#1e3a5f', labelRefY: '18%', zIndex: 1 },
+        // Circle B – Red (top-right)
+        { id: 'venn4-b', x: 255, y: 62, width: 305, height: 255,
+          shape: 'ellipse', label: 'Set B',
+          fill: '#EF4444', stroke: '#B91C1C', strokeWidth: 2.5,
+          fillOpacity: 0.22, fontSize: 15, fontWeight: 'bold',
+          labelColor: '#7f1d1d', labelRefY: '18%', zIndex: 1 },
+        // Circle C – Green (bottom-left)
+        { id: 'venn4-c', x: 55, y: 242, width: 305, height: 255,
+          shape: 'ellipse', label: 'Set C',
+          fill: '#22C55E', stroke: '#15803D', strokeWidth: 2.5,
+          fillOpacity: 0.22, fontSize: 15, fontWeight: 'bold',
+          labelColor: '#14532d', labelRefY: '82%', zIndex: 1 },
+        // Circle D – Purple (bottom-right)
+        { id: 'venn4-d', x: 255, y: 242, width: 305, height: 255,
+          shape: 'ellipse', label: 'Set D',
+          fill: '#A855F7', stroke: '#7E22CE', strokeWidth: 2.5,
+          fillOpacity: 0.22, fontSize: 15, fontWeight: 'bold',
+          labelColor: '#3b0764', labelRefY: '82%', zIndex: 1 },
+        // Zone labels
+        { id: 'venn4-lab',  x: 280, y: 100, width: 80, height: 26,
+          shape: 'rect', label: 'A ∩ B',
+          fill: 'transparent', stroke: 'transparent', strokeWidth: 0,
+          fontSize: 11, fontWeight: 'bold', labelColor: '#374151' },
+        { id: 'venn4-lac',  x: 105, y: 298, width: 80, height: 26,
+          shape: 'rect', label: 'A ∩ C',
+          fill: 'transparent', stroke: 'transparent', strokeWidth: 0,
+          fontSize: 11, fontWeight: 'bold', labelColor: '#374151' },
+        { id: 'venn4-lbd',  x: 462, y: 298, width: 80, height: 26,
+          shape: 'rect', label: 'B ∩ D',
+          fill: 'transparent', stroke: 'transparent', strokeWidth: 0,
+          fontSize: 11, fontWeight: 'bold', labelColor: '#374151' },
+        { id: 'venn4-lcd',  x: 280, y: 436, width: 80, height: 26,
+          shape: 'rect', label: 'C ∩ D',
+          fill: 'transparent', stroke: 'transparent', strokeWidth: 0,
+          fontSize: 11, fontWeight: 'bold', labelColor: '#374151' },
+        { id: 'venn4-center', x: 275, y: 285, width: 110, height: 26,
+          shape: 'rect', label: 'A∩B∩C∩D',
+          fill: 'transparent', stroke: 'transparent', strokeWidth: 0,
+          fontSize: 11, fontWeight: 'bold', labelColor: '#374151' },
+      ],
+      edges: [],
     },
   },
 ];
