@@ -534,15 +534,20 @@ ipcMain.handle('open-file-by-path', async (_event, filePath) => {
     if (!fs.existsSync(filePath)) {
       return { success: false, error: 'File not found' };
     }
-    const content = fs.readFileSync(filePath, 'utf8');
     const fileName = path.basename(filePath);
+    const ext = path.extname(filePath).toLowerCase();
+    const isBinary = ext === '.xmind' || ext === '.mmap' || ext === '.vsdx';
+
+    const payload = isBinary
+      ? { contentBase64: fs.readFileSync(filePath).toString('base64') }
+      : { content: fs.readFileSync(filePath, 'utf8') };
 
     // Add to recent documents
     app.addRecentDocument(filePath);
 
     return {
       success: true,
-      content,
+      ...payload,
       fileName,
       filePath
     };

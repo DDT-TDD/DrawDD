@@ -1,35 +1,36 @@
-# GitHub Release Checklist for DRAWDD v2.2.1
+# GitHub Release Checklist for DRAWDD v2.2.2
 
-**Release Date:** 2026-05-13  
-**Release Scope:** Venn theme engine fix, Help menu Venn examples, release metadata audit, regenerated portable executable
+**Release Date:** 2026-05-18  
+**Release Scope:** Import workflow hardening, markdown link rendering audit fix, metadata/documentation refresh, regenerated portable executable
 
 ## Audit Summary
 
 ### Metadata Alignment
-- ✅ `package.json` version is `2.2.1`
-- ✅ `src/version.ts` exports `2.2.1`
-- ✅ `package-lock.json` root package metadata updated from `2.1.5` to `2.2.1`
+- ✅ `package.json` version is `2.2.2`
+- ✅ `src/version.ts` exports `2.2.2`
+- ✅ `package-lock.json` root package metadata is `2.2.2`
 
 ### User-Facing Documentation
-- ✅ `README.md` updated to mention Help -> Examples Gallery Venn starters
-- ✅ `CHANGELOG.md` refreshed for the finalized 2.2.1 release date and Help/Examples additions
-- ✅ `RELEASE_NOTES_v2.2.1.md` updated to cover Help menu Venn examples, metadata audit, and the regenerated portable artifact
-- ✅ In-app Help and Examples surfaces updated in `src/components/HelpDialog.tsx` and `src/components/ExamplesDialog.tsx`
+- ✅ `README.md` now documents content-based KityMinder JSON detection, FreeMind/FreePlane XML detection, draw.io XML support, unified import behavior, and import-label reliability
+- ✅ `CHANGELOG.md` includes the finalized 2.2.2 import and markdown-rendering fixes
+- ✅ `RELEASE_NOTES_v2.2.2.md` now reflects the actual audit results and regenerated portable artifact metadata
 
 ### Repository Hygiene
-- ✅ `.gitignore` continues to exclude build outputs, dependencies, caches, IDE files, and transient Markdown working notes
-- ✅ `.gitignore` now explicitly allows `RELEASE_CHECKLIST.md` alongside release notes and primary project docs
-- ✅ `release/` remains ignored so rebuilt executables do not dirty the working tree
+- ✅ `.gitignore` now excludes exported `.km` artifacts alongside other local export files
+- ✅ `.gitignore` still keeps `release/` ignored so rebuilt executables do not dirty the working tree
+- ✅ Existing release and primary documentation allow-list rules remain intact
 
 ## Validation Results
 
 ### Lint
-- ⚠️ `npm run lint` still fails because of a large pre-existing repository backlog (`@typescript-eslint/no-explicit-any`, `no-unused-vars`, `prefer-const`) in older utility and property-test files such as `src/utils/contextMenu.ts`, `src/utils/collapse*.property.test.ts`, and `src/utils/errorHandling.test.ts`
-- ✅ No lint or type issues were introduced in the 2.2.1 files touched for this audit
+- ⚠️ `npm run lint` still fails with the existing repository-wide backlog: 884 problems (878 errors, 6 warnings)
+- ⚠️ The backlog includes older utility/property-test files such as `src/utils/layout.ts`, `src/utils/text.ts`, `src/utils/linkedNodeReadOnly.property.test.ts`, `src/utils/metadataPersistence.property.test.ts`, and `src/utils/nodeConversion.ts`
+- ⚠️ The same backlog also intersects long-lived integration surfaces touched for 2.2.2, including `src/App.tsx`, `src/components/Canvas.tsx`, `src/components/MenuBar.tsx`, `src/components/Toolbar.tsx`, and `src/utils/importExport.ts`
+- ✅ Focused `eslint` passes for the newly added helper files and markdown-audit files: `electron/main.cjs`, `src/utils/fileImportWorkflow.ts`, `src/utils/fileImportWorkflow.test.ts`, `src/utils/markdown.ts`, `src/components/MarkdownRenderer.test.tsx`, and `src/version.ts`
 
 ### Tests
 - ✅ `npm test -- --runInBand --silent`
-- ✅ Result: 33 test suites passed, 314 tests passed
+- ✅ Result: 34 test suites passed, 320 tests passed
 - ℹ️ Test output still includes existing console warnings from collapse cycle-detection tests and the empty-image-src test case, but the suite passes cleanly
 
 ### Production Build
@@ -39,42 +40,48 @@
 
 ### Portable Packaging
 - ✅ `npm run release:portable`
-- ✅ Electron Builder completed successfully for Windows portable target
-- ✅ Artifact generated: `release/DRAWDD-2.2.1-Portable.exe`
+- ✅ Electron Builder completed successfully for the Windows portable target
+- ✅ Artifact generated: `release/DRAWDD-2.2.2-Portable.exe`
 
-## Files Updated for 2.2.1
+## Files Updated for 2.2.2
 
 - `.gitignore`
 - `README.md`
 - `CHANGELOG.md`
-- `RELEASE_NOTES_v2.2.1.md`
+- `RELEASE_NOTES_v2.2.2.md`
 - `RELEASE_CHECKLIST.md`
 - `package.json`
 - `package-lock.json`
 - `src/version.ts`
-- `src/utils/venn.ts`
-- `src/utils/venn.test.ts`
-- `src/components/ExamplesDialog.tsx`
-- `src/components/HelpDialog.tsx`
+- `electron/main.cjs`
+- `src/App.tsx`
+- `src/components/Canvas.tsx`
+- `src/components/MenuBar.tsx`
+- `src/components/Toolbar.tsx`
+- `src/components/MarkdownRenderer.test.tsx`
+- `src/utils/fileImportWorkflow.ts`
+- `src/utils/fileImportWorkflow.test.ts`
+- `src/utils/importExport.ts`
+- `src/utils/markdown.ts`
 
 ## Release Artifact
 
-- **File:** `release/DRAWDD-2.2.1-Portable.exe`
-- **Size:** 100,308,722 bytes
-- **Built:** 2026-05-13 14:27:53
+- **File:** `release/DRAWDD-2.2.2-Portable.exe`
+- **Size:** 100,308,473 bytes
+- **Built:** 2026-05-18 13:40:06
 - **Target:** Windows portable (`x64`)
 
 ## Release Readiness
 
-✅ **Ready for GitHub Release v2.2.1**
+✅ **Ready for GitHub Release v2.2.2**
 
 Release caveat:
-- The repo is not currently lint-clean because of pre-existing unrelated issues outside the 2.2.1 scope. Tests, production build, and portable packaging all passed.
+- The repository is still not lint-clean because of pre-existing lint debt in older utility, property-test, and integration files. Tests, production build, and portable packaging all passed for the audited 2.2.2 tree.
 
 ## Recommended Release Steps
 
-1. Create a git tag: `git tag -a v2.2.1 -m "Release 2.2.1"`
-2. Push tag: `git push origin v2.2.1`
+1. Create a git tag: `git tag -a v2.2.2 -m "Release 2.2.2"`
+2. Push tag: `git push origin v2.2.2`
 3. Create the GitHub Release from the tag
-4. Attach `release/DRAWDD-2.2.1-Portable.exe`
-5. Publish `RELEASE_NOTES_v2.2.1.md`
+4. Attach `release/DRAWDD-2.2.2-Portable.exe`
+5. Publish `RELEASE_NOTES_v2.2.2.md`

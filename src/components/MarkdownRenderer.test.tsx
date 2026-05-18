@@ -225,6 +225,15 @@ describe('Feature: markdown-and-folder-explorer, Property 1: Markdown syntax ren
     );
   });
 
+  it('should preserve markdown-like characters inside link URLs', () => {
+    const markdown = '[docs](http://a.aa/$/_/*)';
+    const html = renderInlineMarkdown(markdown);
+
+    expect(html).toContain('<a');
+    expect(html).toContain('href="http://a.aa/$/_/*"');
+    expect(html).toContain('>docs</a>');
+  });
+
   /**
    * Property 5: Combined markdown syntax
    * **Validates: Requirements 1.1, 1.2, 1.6**
@@ -610,7 +619,7 @@ describe('Feature: markdown-and-folder-explorer, Property 3 & 4: Link clickabili
 
 import React from 'react';
 import { render } from '@testing-library/react';
-import { MarkdownRenderer, extractImages } from './MarkdownRenderer';
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 describe('MarkdownRenderer Component Integration Tests', () => {
   

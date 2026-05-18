@@ -14,11 +14,12 @@ A powerful, open-source diagramming application for creating flowcharts, mindmap
 - **Text Decorations**: Add emojis, icons, numbers, and flags before/after text in nodes
 
 ### 📥 Import Formats
-- **JSON**: Native DRAWDD format for full fidelity
+- **JSON**: Native DRAWDD format for full fidelity, with content-based detection for compatible KityMinder JSON exports
 - **XMind** (.xmind): Import mindmaps from XMind 8+
 - **MindManager** (.mmap): Import mindmaps from MindManager
-- **KityMinder** (.km): Import from KityMinder format
-- **FreeMind** (.mm): Import FreeMind mindmaps
+- **KityMinder** (.km, compatible `.json`): Import from KityMinder format even when the file was saved with a generic JSON extension
+- **FreeMind / FreePlane** (.mm, compatible `.xml`): Import classic mindmap XML formats with content-based detection between FreeMind and FreePlane
+- **draw.io** (.drawio, `.xml`): Import compressed or uncompressed draw.io / mxGraph XML documents
 - **Visio** (.vsdx): Import Microsoft Visio diagrams
 
 ### 📤 Export Formats
@@ -35,6 +36,7 @@ A powerful, open-source diagramming application for creating flowcharts, mindmap
 - Drag-and-drop shape library organized by category
 - Template-driven diagram creation, including dedicated Venn diagram starters
 - Help -> Examples Gallery includes ready-made Venn example canvases for quick starts
+- Unified import behavior across toolbar import, menu import, recent-file reopen, and Electron open actions
 - Mode-aware save/load behavior across tabs, imports, and legacy single-page documents
 - **Real-time property editing**:
   - Colors, labels, borders, fonts
@@ -141,6 +143,9 @@ Replace any node's shape while keeping text and connections:
 - OR use Properties Panel → Shape section → "🔄 Change to Different Shape..."
 - Select new shape from dialog
 - All text, connections, and properties are preserved
+
+### 📥 Import Reliability
+Imported documents now follow the same detection path no matter where they are opened from. KityMinder JSON is recognized by content instead of only by `.km` extension, Electron recent-file opening preserves binary imports correctly, and imported node labels are wrapped and remain editable instead of overflowing or blanking on edit.
 
 ## Keyboard Shortcuts
 

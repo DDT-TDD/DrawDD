@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.2] - 2026-05-18
+
+### Added
+
+#### Import Workflow
+- **Centralized Import Routing**: Added a shared import workflow so toolbar import, menu import, recent-file reopen, and Electron file-open actions all use the same format detection and graph-loading logic.
+- **Import Detection Tests**: Added focused tests for content-based import detection and Electron file reconstruction helpers.
+- **Markdown Link Regression Coverage**: Added regression coverage to keep markdown link URLs stable when they contain markdown-like characters such as `$`, `_`, or `*`.
+
+### Fixed
+
+#### KityMinder and Cross-Format Imports
+- **KityMinder JSON Detection**: KityMinder files are now detected by JSON structure instead of only by the `.km` extension, so compatible `.json` exports import correctly.
+- **FreeMind / FreePlane XML Detection**: `.mm` and compatible XML files now route through FreeMind or FreePlane import based on content instead of extension-only assumptions.
+- **draw.io / XML Routing**: draw.io `.drawio` and `.xml` imports now share the same detection path across browser and Electron flows.
+- **Electron Binary File Opening**: Electron file-open and recent-file reopen paths now preserve binary payloads for `.xmind`, `.mmap`, and `.vsdx` files instead of forcing UTF-8 text reads.
+
+#### Imported Text Editing
+- **Mindmap Label Auto-Sizing**: Imported mindmap nodes now run through the same auto-size and wrapping logic as native nodes, preventing long imported labels from spilling outside node boundaries.
+- **Inline Edit Stability**: F2 inline editing now uses the same label update path as the multiline editor, preventing imported node text from going blank after edits.
+- **Imported Diagram Wrapping**: draw.io and Visio imported labels now receive explicit text wrapping so imported text stays inside shapes and remains editable.
+
+#### Markdown Rendering
+- **Protected Link URLs During Markdown Parsing**: Markdown links now preserve `$`, `_`, `*`, and similar characters inside the `href` instead of letting later KaTeX or emphasis passes corrupt the generated anchor.
+
+### Changed
+
+#### Release Audit
+- **Documentation Refresh**: README, release notes, release checklist, and version metadata now document the import audit and 2.2.2 packaging state.
+- **Repository Hygiene**: `.gitignore` now excludes exported `.km` artifacts alongside other local export files.
+
 ## [2.2.1] - 2026-05-13
 
 ### Added

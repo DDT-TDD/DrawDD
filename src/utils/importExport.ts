@@ -4,6 +4,156 @@ import type { Graph, Node } from '@antv/x6';
 import { applyMindmapLayout } from './layout';
 import { initializeCollapseIndicators } from './collapse';
 import { FULL_PORTS_CONFIG } from '../config/shapes';
+import { setNodeLabelWithAutoSize } from './text';
+
+export type SupportedImportFormat =
+  | 'drawdd'
+  | 'xmind'
+  | 'mindmanager'
+  | 'kityminder'
+  | 'freemind'
+  | 'freeplane'
+  | 'visio'
+  | 'drawio';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function safeParseJson(text: string): unknown | null {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function getImportExtension(fileName: string): string {
+  const lowerName = fileName.toLowerCase();
+  if (lowerName.endsWith('.drawdd.json')) {
+    return 'drwdd';
+  }
+
+  const lastDot = lowerName.lastIndexOf('.');
+  return lastDot >= 0 ? lowerName.slice(lastDot + 1) : '';
+}
+
+function looksLikeDrawioDocument(text: string): boolean {
+  const trimmed = text.trimStart();
+  return trimmed.startsWith('<mxfile')
+    || trimmed.startsWith('<mxGraphModel')
+    || trimmed.includes('<mxfile')
+    || trimmed.includes('<mxGraphModel');
+}
+
+export function isFreePlanDocument(text: string): boolean {
+  return /richcontent|cloud|arrowlink|FREEPLANE/i.test(text);
+}
+
+function looksLikeFreeMindDocument(text: string): boolean {
+  return /<map[\s>]/i.test(text) && /<node[\s>]/i.test(text);
+}
+
+export function isDrawddImportDocument(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return Array.isArray(value.pages)
+    || Array.isArray(value.nodes)
+    || Array.isArray(value.edges);
+}
+
+export function isKityMinderDocument(value: unknown): value is KityMinderData {
+  if (!isRecord(value) || !isRecord(value.root)) {
+    return false;
+  }
+
+  return isRecord(value.root.data);
+}
+
+export function detectImportFormat(fileName: string, content?: string): SupportedImportFormat | null {
+  const extension = getImportExtension(fileName);
+  const parsedJson = content ? safeParseJson(content) : null;
+
+  switch (extension) {
+    case 'drwdd':
+      return 'drawdd';
+    case 'json':
+      if (isDrawddImportDocument(parsedJson)) {
+        return 'drawdd';
+      }
+      if (isKityMinderDocument(parsedJson)) {
+        return 'kityminder';
+      }
+      return null;
+    case 'xmind':
+      return 'xmind';
+    case 'mmap':
+      return 'mindmanager';
+    case 'km':
+      return 'kityminder';
+    case 'mm':
+      return content && isFreePlanDocument(content) ? 'freeplane' : 'freemind';
+    case 'vsdx':
+      return 'visio';
+    case 'drawio':
+      return 'drawio';
+    case 'xml':
+      if (content && looksLikeDrawioDocument(content)) {
+        return 'drawio';
+      }
+      if (content && isFreePlanDocument(content)) {
+        return 'freeplane';
+      }
+      if (content && looksLikeFreeMindDocument(content)) {
+        return 'freemind';
+      }
+      return 'drawio';
+    default:
+      if (isDrawddImportDocument(parsedJson)) {
+        return 'drawdd';
+      }
+      if (isKityMinderDocument(parsedJson)) {
+        return 'kityminder';
+      }
+      if (content && looksLikeDrawioDocument(content)) {
+        return 'drawio';
+      }
+      if (content && isFreePlanDocument(content)) {
+        return 'freeplane';
+      }
+      if (content && looksLikeFreeMindDocument(content)) {
+        return 'freemind';
+      }
+      return null;
+  }
+}
+
+function applyImportedNodeTextWrap(node: Node): void {
+  const attrs = node.getAttrs();
+  const labelAttrs = (attrs.label || {}) as Record<string, unknown>;
+  const labelText = typeof labelAttrs.text === 'string' ? labelAttrs.text : '';
+
+  if (!labelText) {
+    return;
+  }
+
+  const { textWrap: _oldTextWrap, ...preservedLabelAttrs } = labelAttrs;
+  node.setAttrs({
+    label: {
+      ...preservedLabelAttrs,
+      text: labelText,
+      textWrap: {
+        text: labelText,
+        width: -20,
+        height: -20,
+        ellipsis: false,
+        breakWord: true,
+      },
+    },
+  });
+}
 
 type SerializedCell = {
   shape?: string;
@@ -654,6 +804,7 @@ export function mindmapToGraph(graph: Graph, root: MindmapNode): void {
   const orderRef = { value: 1 };
 
   // Create root node at origin with imported styling
+  const rootLabel = root.icon ? `${root.icon} ${root.topic}` : root.topic;
   const rootAttrs: any = {
     body: {
       fill: root.style?.backgroundColor || '#1976d2',
@@ -663,7 +814,7 @@ export function mindmapToGraph(graph: Graph, root: MindmapNode): void {
       ry: 10,
     },
     label: {
-      text: root.icon ? `${root.icon} ${root.topic}` : root.topic,
+      text: rootLabel,
       fill: root.style?.textColor || '#ffffff',
       fontSize: root.style?.fontSize || 16,
       fontWeight: root.style?.bold ? 'bold' : 'normal',
@@ -694,6 +845,7 @@ export function mindmapToGraph(graph: Graph, root: MindmapNode): void {
     data: rootData,
     ports: createMindmapPorts(),
   });
+  setNodeLabelWithAutoSize(rootNode, rootLabel);
 
   // Create all children nodes and edges (recursively)
   if (root.children) {
@@ -749,6 +901,7 @@ function createMindmapNodes(
     const color = colors[index % colors.length];
     const width = Math.max(100, 140 - level * 20);
     const height = Math.max(35, 50 - level * 5);
+    const childLabel = child.icon ? `${child.icon} ${child.topic}` : child.topic;
 
     // Apply imported styling if available
     const nodeAttrs: any = {
@@ -760,7 +913,7 @@ function createMindmapNodes(
         ry: 8,
       },
       label: {
-        text: child.icon ? `${child.icon} ${child.topic}` : child.topic,
+        text: childLabel,
         fill: child.style?.textColor || (level > 1 ? '#333333' : '#ffffff'),
         fontSize: child.style?.fontSize || Math.max(11, 14 - level),
         fontWeight: child.style?.bold ? 'bold' : 'normal',
@@ -792,6 +945,7 @@ function createMindmapNodes(
       data: nodeData,
       ports: createMindmapPorts(),
     });
+    setNodeLabelWithAutoSize(node, childLabel);
 
     // Add edge from parent with straight connector to reduce overlap
     graph.addEdge({
@@ -1344,7 +1498,7 @@ export function visioToGraph(graph: Graph, data: VisioData): void {
     // Flip Y axis (Visio uses bottom-left origin)
     const flippedY = pageHeight - (shape.y - minY);
 
-    graph.addNode({
+    const node = graph.addNode({
       id: shape.id,
       x: shape.x - shape.width / 2,
       y: flippedY - shape.height / 2,
@@ -1367,6 +1521,7 @@ export function visioToGraph(graph: Graph, data: VisioData): void {
       },
       ports: FULL_PORTS_CONFIG as any,
     });
+    applyImportedNodeTextWrap(node);
   });
 
   // Create edges
@@ -1973,7 +2128,7 @@ export async function importFromDrawio(file: File, graph: Graph): Promise<void> 
       nodeAttrs.image = { xlinkHref: v.style['image'] };
     }
 
-    graph.addNode({
+    const node = graph.addNode({
       id: v.id,
       shape,
       x: v.x,
@@ -1983,6 +2138,7 @@ export async function importFromDrawio(file: File, graph: Graph): Promise<void> 
       attrs: nodeAttrs,
       ports: FULL_PORTS_CONFIG as any,
     });
+    applyImportedNodeTextWrap(node);
   }
 
   // Add edges (only if both endpoints exist as vertices in this diagram)

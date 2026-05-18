@@ -1019,7 +1019,7 @@ export function Canvas() {
         const handleBlur = () => {
           try {
             if (graph.hasCell(cell.id)) {
-              cell.setAttrs({ label: { text: input.value } });
+              updateNodeLabel(cell as X6Node, input.value);
             }
           } finally {
             input.remove();

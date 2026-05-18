@@ -14,7 +14,8 @@ import { APP_VERSION } from './types';
 import type { DiagramCanvasMode, DiagramFile, DiagramPage } from './types';
 import { PanelLeftClose, PanelRightClose, PanelLeft, PanelRight } from 'lucide-react';
 import { applyTreeLayout, applyFishboneLayout, applyTimelineLayout } from './utils/layout';
-import { importFromJSON, importKityMinder, importXMind, importMindManager, importFreeMind, importFreePlan, inferDiagramModeFromPageData, mindmapToGraph } from './utils/importExport';
+import { importFromJSON, inferDiagramModeFromPageData } from './utils/importExport';
+import { fileFromElectronOpenResult, importFileWithWorkflow } from './utils/fileImportWorkflow';
 import { addRecentFile } from './utils/recentFiles';
 import { injectKatexCSS } from './utils/markdown';
 import { registerHtmlNode } from './config/htmlNode';
@@ -69,6 +70,7 @@ interface ElectronAPI {
   isElectron: boolean;
   onMenuCommand: (callback: (command: string, arg?: string) => void) => void;
   removeMenuCommandListener: () => void;
+  openFile?: (filePath: string) => Promise<{ success: boolean; fileName?: string; filePath?: string; content?: string; contentBase64?: string; error?: string }>;
 }
 
 function AppContent() {
@@ -608,65 +610,21 @@ function AppContent() {
                 const electronAPI = (window as any).electronAPI;
                 if (electronAPI?.openFile) {
                   const result = await electronAPI.openFile(arg);
-                  if (result.success && result.content) {
-                    const ext = result.fileName?.split('.').pop()?.toLowerCase() || '';
-                    // Strip file extension for display name
-                    let fileName = result.fileName || '';
-                    if (fileName.endsWith('.drwdd')) fileName = fileName.replace('.drwdd', '');
-                    else if (fileName.endsWith('.drawdd.json')) fileName = fileName.replace('.drawdd.json', '');
-                    else fileName = fileName.replace(/\.[^/.]+$/, '');
-
-                    // Route by extension - all formats open in a new tab
-                    if (ext === 'km') {
-                      const blob = new Blob([result.content], { type: 'application/json' });
-                      const file = new File([blob], result.fileName);
-                      const mindmap = await importKityMinder(file);
-                      if ((window as any).__drawdd_importToNewTab) {
-                        (window as any).__drawdd_importToNewTab(fileName, () => { mindmapToGraph(graph, mindmap); }, result.filePath);
-                        setMode('mindmap');
-                      }
-                    } else if (ext === 'xmind') {
-                      const blob = new Blob([result.content]);
-                      const file = new File([blob], result.fileName);
-                      const mindmap = await importXMind(file);
-                      if ((window as any).__drawdd_importToNewTab) {
-                        (window as any).__drawdd_importToNewTab(fileName, () => { mindmapToGraph(graph, mindmap); }, result.filePath);
-                        setMode('mindmap');
-                      }
-                    } else if (ext === 'mmap') {
-                      const blob = new Blob([result.content]);
-                      const file = new File([blob], result.fileName);
-                      const mindmap = await importMindManager(file);
-                      if ((window as any).__drawdd_importToNewTab) {
-                        (window as any).__drawdd_importToNewTab(fileName, () => { mindmapToGraph(graph, mindmap); }, result.filePath);
-                        setMode('mindmap');
-                      }
-                    } else if (ext === 'mm') {
-                      const blob = new Blob([result.content], { type: 'text/xml' });
-                      const file = new File([blob], result.fileName);
-                      let mindmap;
-                      try {
-                        mindmap = await importFreeMind(file);
-                      } catch {
-                        mindmap = await importFreePlan(file);
-                      }
-                      if ((window as any).__drawdd_importToNewTab) {
-                        (window as any).__drawdd_importToNewTab(fileName, () => { mindmapToGraph(graph, mindmap); }, result.filePath);
-                        setMode('mindmap');
-                      }
-                    } else {
-                      // DrawDD JSON format (.drwdd, .json) - route through __drawdd_loadFile
-                      // which handles both multi-page and old DrawddDocument format
-                      const doc = JSON.parse(result.content);
-                      doc.name = fileName;
-                      doc.filePath = result.filePath;
-                      if ((window as any).__drawdd_loadFile) {
-                        (window as any).__drawdd_loadFile(doc);
-                      }
-                    }
+                  if (result.success && result.fileName) {
+                    const file = fileFromElectronOpenResult(result);
+                    const importResult = await importFileWithWorkflow(file, {
+                      graph,
+                      setMode,
+                      setCanvasBackground,
+                      setMindmapDirection,
+                      setTimelineDirection,
+                      loadDrawddFile: (window as any).__drawdd_loadFile,
+                      importToNewTab: (window as any).__drawdd_importToNewTab,
+                      filePath: result.filePath,
+                    });
 
                     // Add to recent files
-                    addRecentFile({ name: result.fileName, type: ext as any, path: result.filePath });
+                    addRecentFile({ name: result.fileName, type: importResult.recentFileType, path: result.filePath });
                   } else {
                     console.error('Failed to open file:', result.error);
                   }

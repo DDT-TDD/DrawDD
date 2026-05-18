@@ -221,24 +221,33 @@ function addNodeToHierarchy(
  */
 export function renderInlineMarkdown(text: string): string {
     let html = escapeHtml(text);
+    const protectedFragments: string[] = [];
+    const getProtectedToken = (index: number) => `@@DRAWDDMARKDOWN${index}@@`;
+    const protectFragment = (fragment: string) => {
+        const token = getProtectedToken(protectedFragments.length);
+        protectedFragments.push(fragment);
+        return token;
+    };
 
     // Process in order of specificity
+
+    // Protect generated HTML so later markdown passes do not mutate hrefs or KaTeX output.
+
+    // Links: [text](url)
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) =>
+        protectFragment(`<a href="${url}" target="_blank" style="color:#2196f3;text-decoration:underline;">${label}</a>`));
 
     // KaTeX equations - $...$ and $$...$$
     html = html.replace(/\$\$([^$]+)\$\$/g, (_, eq) => {
         try {
-            return katex.renderToString(unescapeHtml(eq), { throwOnError: false, displayMode: true });
+            return protectFragment(katex.renderToString(unescapeHtml(eq), { throwOnError: false, displayMode: true }));
         } catch { return `$$${eq}$$`; }
     });
     html = html.replace(/\$([^$]+)\$/g, (_, eq) => {
         try {
-            return katex.renderToString(unescapeHtml(eq), { throwOnError: false, displayMode: false });
+            return protectFragment(katex.renderToString(unescapeHtml(eq), { throwOnError: false, displayMode: false }));
         } catch { return `$${eq}$`; }
     });
-
-    // Links: [text](url)
-    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g,
-        '<a href="$2" target="_blank" style="color:#2196f3;text-decoration:underline;">$1</a>');
 
     // Bold + Italic: ***text*** or ___text___
     html = html.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
@@ -259,11 +268,15 @@ export function renderInlineMarkdown(text: string): string {
     html = html.replace(/==([^=]+)==/g, '<mark style="background:#fff59d;padding:0 2px;">$1</mark>');
 
     // Inline code: `code`
-    html = html.replace(/`([^`]+)`/g,
-        '<code style="background:#f5f5f5;padding:2px 4px;border-radius:3px;font-family:monospace;font-size:0.9em;">$1</code>');
+    html = html.replace(/`([^`]+)`/g, (_, code) =>
+        protectFragment(`<code style="background:#f5f5f5;padding:2px 4px;border-radius:3px;font-family:monospace;font-size:0.9em;">${code}</code>`));
 
     // Convert newlines to <br> for multi-line support
     html = html.replace(/\n/g, '<br>');
+
+    protectedFragments.forEach((fragment, index) => {
+        html = html.split(getProtectedToken(index)).join(fragment);
+    });
 
     return html;
 }

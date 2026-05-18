@@ -29,7 +29,8 @@ import {
 } from 'lucide-react';
 import { saveAs } from 'file-saver';
 import { useGraph } from '../context/GraphContext';
-import { exportToJSON, exportToDrawioXML, importFromJSON, importFromDrawio, importXMind, importMindManager, importKityMinder, importFreeMind, importFreePlan, importVisio, inferDiagramModeFromPageData, mindmapToGraph, visioToGraph } from '../utils/importExport';
+import { exportToJSON, exportToDrawioXML } from '../utils/importExport';
+import { importFileWithWorkflow } from '../utils/fileImportWorkflow';
 import { DiagramTypeSelector } from './DiagramTypeSelector';
 import { MindmapDirectionSelector } from './MindmapDirectionSelector';
 import { TimelineDirectionSelector } from './TimelineDirectionSelector';
@@ -37,7 +38,6 @@ import { applyTreeLayout, applyFishboneLayout, applyTimelineLayout, type LayoutD
 import { applyFlowchartLayout } from '../utils/flowchartLayout';
 import { createSwimlanes, SWIMLANE_TEMPLATES } from '../utils/swimlane';
 import { labelAllDecisionBranches } from '../utils/decisionLabels';
-import type { DrawddDocument } from '../types';
 
 interface DrawddWindow extends Window {
   __drawdd_loadFile?: (fileData: unknown) => void;
@@ -229,113 +229,17 @@ export function Toolbar() {
     const file = e.target.files?.[0];
     if (!file || !graph) return;
 
-    const ext = file.name.split('.').pop()?.toLowerCase();
-
     try {
-      // Handle .drwdd and .json the same way (both are JSON format)
-      if (ext === 'json' || ext === 'drwdd') {
-        const text = await file.text();
-        const parsed = JSON.parse(text);
-        const fileName = file.name.replace(/\.drwdd$|\.drawdd\.json$|\.[^/.]+$/i, '');
-        parsed.name = fileName;
-
-        if (drawddWindow.__drawdd_loadFile) {
-          drawddWindow.__drawdd_loadFile(parsed);
-        } else {
-          // Fallback for environments that do not expose tab helpers.
-          if (parsed.pages && Array.isArray(parsed.pages)) {
-            const firstPage = parsed.pages[0];
-            if (firstPage?.data) {
-              setMode(inferDiagramModeFromPageData(firstPage.data, firstPage.mode));
-              graph.fromJSON(JSON.parse(firstPage.data));
-            }
-          } else {
-            const doc: DrawddDocument = parsed;
-            importFromJSON(graph, doc, {
-              setMode,
-              setCanvasBackground,
-              setShowGrid,
-              setMindmapDirection,
-              setTimelineDirection
-            });
-          }
-        }
-      } else if (ext === 'xmind') {
-        const mindmap = await importXMind(file);
-        if (drawddWindow.__drawdd_importToNewTab) {
-          drawddWindow.__drawdd_importToNewTab(file.name.replace(/\.[^/.]+$/i, ''), () => {
-            mindmapToGraph(graph, mindmap);
-          });
-        } else {
-          mindmapToGraph(graph, mindmap);
-        }
-        setMode('mindmap');
-      } else if (ext === 'mmap') {
-        const mindmap = await importMindManager(file);
-        if (drawddWindow.__drawdd_importToNewTab) {
-          drawddWindow.__drawdd_importToNewTab(file.name.replace(/\.[^/.]+$/i, ''), () => {
-            mindmapToGraph(graph, mindmap);
-          });
-        } else {
-          mindmapToGraph(graph, mindmap);
-        }
-        setMode('mindmap');
-      } else if (ext === 'km') {
-        const mindmap = await importKityMinder(file);
-        if (drawddWindow.__drawdd_importToNewTab) {
-          drawddWindow.__drawdd_importToNewTab(file.name.replace(/\.[^/.]+$/i, ''), () => {
-            mindmapToGraph(graph, mindmap);
-          });
-        } else {
-          mindmapToGraph(graph, mindmap);
-        }
-        setMode('mindmap');
-      } else if (ext === 'mm') {
-        // .mm files can be FreeMind or FreePlan format
-        const text = await file.text();
-        const isFreePlan = text.includes('richcontent') ||
-          text.includes('cloud') ||
-          text.includes('arrowlink') ||
-          text.includes('FREEPLANE');
-        let mindmap;
-        if (isFreePlan) {
-          const freePlanFile = new File([text], file.name, { type: file.type });
-          mindmap = await importFreePlan(freePlanFile);
-        } else {
-          const freeMindFile = new File([text], file.name, { type: file.type });
-          mindmap = await importFreeMind(freeMindFile);
-        }
-        if (drawddWindow.__drawdd_importToNewTab) {
-          drawddWindow.__drawdd_importToNewTab(file.name.replace(/\.[^/.]+$/i, ''), () => {
-            mindmapToGraph(graph, mindmap);
-          });
-        } else {
-          mindmapToGraph(graph, mindmap);
-        }
-        setMode('mindmap');
-      } else if (ext === 'vsdx') {
-        const visioData = await importVisio(file);
-        if (drawddWindow.__drawdd_importToNewTab) {
-          drawddWindow.__drawdd_importToNewTab(file.name.replace(/\.[^/.]+$/i, ''), () => {
-            visioToGraph(graph, visioData);
-          });
-        } else {
-          visioToGraph(graph, visioData);
-        }
-        setMode('flowchart');
-      } else if (ext === 'drawio' || ext === 'xml') {
-        // draw.io / mxGraph XML import (both compressed and uncompressed)
-        if (drawddWindow.__drawdd_importToNewTab) {
-          drawddWindow.__drawdd_importToNewTab(file.name.replace(/\.[^/.]+$/i, ''), async () => {
-            await importFromDrawio(file, graph);
-          });
-        } else {
-          await importFromDrawio(file, graph);
-        }
-        setMode('flowchart');
-      } else {
-        alert('Unsupported file format. Supported: .drwdd, .json, .xmind, .mmap, .km, .mm, .vsdx, .drawio, .xml');
-      }
+      await importFileWithWorkflow(file, {
+        graph,
+        setMode,
+        setCanvasBackground,
+        setShowGrid,
+        setMindmapDirection,
+        setTimelineDirection,
+        loadDrawddFile: drawddWindow.__drawdd_loadFile,
+        importToNewTab: drawddWindow.__drawdd_importToNewTab,
+      });
     } catch (error) {
       console.error('Import error:', error);
       alert('Failed to import file: ' + (error instanceof Error ? error.message : 'Unknown error'));

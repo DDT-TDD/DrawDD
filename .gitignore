@@ -57,6 +57,7 @@ copilot-instructions.md
 # Exported diagram artifacts (local/manual exports)
 *.drawio
 *.drwdd
+*.km
 
 # Documentation
 # Track primary project/release docs while ignoring transient working notes.

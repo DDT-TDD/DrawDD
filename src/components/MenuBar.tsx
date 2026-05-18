@@ -3,13 +3,14 @@ import { useGraph } from '../context/GraphContext';
 import { useTheme } from '../context/ThemeContext';
 import { saveAs } from 'file-saver';
 import { jsPDF } from 'jspdf';
-import { exportToJSON, exportToDrawioXML, exportToHTML, exportToMarkdown, exportToTextOutline, exportToKityMinder, importFromJSON, importFromDrawio, importXMind, importMindManager, importKityMinder, importFreeMind, importFreePlan, importVisio, inferDiagramModeFromPageData, mindmapToGraph, visioToGraph } from '../utils/importExport';
+import { exportToJSON, exportToDrawioXML, exportToHTML, exportToMarkdown, exportToTextOutline, exportToKityMinder } from '../utils/importExport';
+import { fileFromElectronOpenResult, importFileWithWorkflow } from '../utils/fileImportWorkflow';
 import { applyTreeLayout, applyFishboneLayout, applyTimelineLayout, type LayoutDirection } from '../utils/layout';
 import { getRecentFiles, addRecentFile, clearRecentFiles, cacheRecentFileContent, getCachedFileContent, type RecentFile } from '../utils/recentFiles';
 import { KeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
 import { HelpDialog } from './HelpDialog';
 import { VERSION } from '../version';
-import type { DiagramFile, DrawddDocument } from '../types';
+import type { DiagramFile } from '../types';
 
 interface MenuItem {
   label: string;
@@ -79,6 +80,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     isElectron: boolean;
     saveFile: (filePath: string, content: string) => Promise<{ success: boolean; error?: string }>;
     saveFileAs: (defaultName: string, content: string) => Promise<{ success: boolean; filePath?: string; displayName?: string; canceled?: boolean; error?: string }>;
+    openFile?: (filePath: string) => Promise<{ success: boolean; fileName?: string; filePath?: string; content?: string; contentBase64?: string; error?: string }>;
   }
 
   const electronAPI = isElectron ? (window as any).electronAPI as ElectronAPI : null;
@@ -125,8 +127,6 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
   const handleFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !graph) return;
-
-    const ext = file.name.split('.').pop()?.toLowerCase();
     // Remove extensions - handle .drwdd, .json and legacy .drawdd.json
     let fileName = file.name;
     if (fileName.endsWith('.drwdd')) {
@@ -138,140 +138,26 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     }
 
     try {
-      // Handle .drwdd, .json and legacy .drawdd.json the same way
-      if (ext === 'json' || ext === 'drwdd') {
-        const text = await file.text();
-        const parsed = JSON.parse(text);
-        // Always use the actual filename from the opened file (user sees this in their file explorer)
-        // This overrides any embedded name like "Untitled Diagram"
-        parsed.name = fileName;
+      const result = await importFileWithWorkflow(file, {
+        graph,
+        setMode,
+        setCanvasBackground,
+        setShowGrid,
+        setMindmapDirection,
+        setTimelineDirection,
+        loadDrawddFile: (window as any).__drawdd_loadFile,
+        importToNewTab: (window as any).__drawdd_importToNewTab,
+        updateFileName: (window as any).__drawdd_updateFileName,
+      });
 
-        // Route through __drawdd_loadFile which opens in a new tab
-        // and handles both multi-page and old DrawddDocument format
-        if ((window as any).__drawdd_loadFile) {
-          (window as any).__drawdd_loadFile(parsed);
-        } else {
-          // Fallback: just load first page if multi-page, or import directly
-          if (parsed.pages && Array.isArray(parsed.pages)) {
-            const firstPage = parsed.pages[0];
-            if (firstPage?.data) {
-              setMode(inferDiagramModeFromPageData(firstPage.data, firstPage.mode));
-              graph.fromJSON(JSON.parse(firstPage.data));
-            }
-          } else {
-            const doc: DrawddDocument = parsed;
-            importFromJSON(graph, doc, {
-              setMode,
-              setCanvasBackground,
-              setShowGrid,
-              setMindmapDirection,
-              setTimelineDirection
-            });
-          }
-          if ((window as any).__drawdd_updateFileName) {
-            (window as any).__drawdd_updateFileName(fileName);
-          }
-        }
-        // Cache file content for web re-opening from recent files
-        cacheRecentFileContent(file.name, text);
-      } else if (ext === 'xmind') {
-        const mindmap = await importXMind(file);
-        if ((window as any).__drawdd_importToNewTab) {
-          (window as any).__drawdd_importToNewTab(fileName, () => { mindmapToGraph(graph, mindmap); });
-          setMode('mindmap');
-        } else {
-          mindmapToGraph(graph, mindmap);
-          setMode('mindmap');
-          if ((window as any).__drawdd_updateFileName) {
-            (window as any).__drawdd_updateFileName(fileName);
-          }
-        }
-      } else if (ext === 'mmap') {
-        const mindmap = await importMindManager(file);
-        if ((window as any).__drawdd_importToNewTab) {
-          (window as any).__drawdd_importToNewTab(fileName, () => { mindmapToGraph(graph, mindmap); });
-          setMode('mindmap');
-        } else {
-          mindmapToGraph(graph, mindmap);
-          setMode('mindmap');
-          if ((window as any).__drawdd_updateFileName) {
-            (window as any).__drawdd_updateFileName(fileName);
-          }
-        }
-      } else if (ext === 'km') {
-        const mindmap = await importKityMinder(file);
-        if ((window as any).__drawdd_importToNewTab) {
-          (window as any).__drawdd_importToNewTab(fileName, () => { mindmapToGraph(graph, mindmap); });
-          setMode('mindmap');
-        } else {
-          mindmapToGraph(graph, mindmap);
-          setMode('mindmap');
-          if ((window as any).__drawdd_updateFileName) {
-            (window as any).__drawdd_updateFileName(fileName);
-          }
-        }
-      } else if (ext === 'mm') {
-        // .mm files can be FreeMind or FreePlan format
-        const text = await file.text();
-        const isFreePlan = text.includes('richcontent') ||
-          text.includes('cloud') ||
-          text.includes('arrowlink') ||
-          text.includes('FREEPLANE');
-
-        let mindmap;
-        if (isFreePlan) {
-          const freePlanFile = new File([text], file.name, { type: file.type });
-          mindmap = await importFreePlan(freePlanFile);
-        } else {
-          const freeMindFile = new File([text], file.name, { type: file.type });
-          mindmap = await importFreeMind(freeMindFile);
-        }
-
-        if ((window as any).__drawdd_importToNewTab) {
-          (window as any).__drawdd_importToNewTab(fileName, () => { mindmapToGraph(graph, mindmap); });
-          setMode('mindmap');
-        } else {
-          mindmapToGraph(graph, mindmap);
-          setMode('mindmap');
-          if ((window as any).__drawdd_updateFileName) {
-            (window as any).__drawdd_updateFileName(fileName);
-          }
-        }
-      } else if (ext === 'vsdx') {
-        const visioData = await importVisio(file);
-        if ((window as any).__drawdd_importToNewTab) {
-          (window as any).__drawdd_importToNewTab(fileName, () => { visioToGraph(graph, visioData); });
-          setMode('flowchart');
-        } else {
-          visioToGraph(graph, visioData);
-          setMode('flowchart');
-          if ((window as any).__drawdd_updateFileName) {
-            (window as any).__drawdd_updateFileName(fileName);
-          }
-        }
-      } else if (ext === 'drawio' || ext === 'xml') {
-        // draw.io / mxGraph XML import (both compressed and uncompressed)
-        if ((window as any).__drawdd_importToNewTab) {
-          (window as any).__drawdd_importToNewTab(fileName, async () => {
-            await importFromDrawio(file, graph);
-          });
-          setMode('flowchart');
-        } else {
-          await importFromDrawio(file, graph);
-          setMode('flowchart');
-          if ((window as any).__drawdd_updateFileName) {
-            (window as any).__drawdd_updateFileName(fileName);
-          }
-        }
-      } else {
-        alert('Unsupported file format. Supported: .drwdd, .json, .xmind, .mmap, .km, .mm, .vsdx, .drawio, .xml');
+      if (result.recentFileType === 'json' && result.textContent) {
+        cacheRecentFileContent(file.name, result.textContent);
       }
 
       // Add to recent files after successful import
-      const fileType = (ext || 'json') as 'json' | 'xmind' | 'mmap' | 'km' | 'mm' | 'vsdx' | 'drawio' | 'xml';
       // In Electron, File objects have a .path property with the real filesystem path
       const filePath = (file as any).path as string | undefined;
-      addRecentFile({ name: file.name, type: fileType, ...(filePath ? { path: filePath } : {}) });
+      addRecentFile({ name: file.name, type: result.recentFileType, ...(filePath ? { path: filePath } : {}) });
       setRecentFiles(getRecentFiles());
 
     } catch (error) {
@@ -287,22 +173,20 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
       try {
         // In Electron, we can open by file path
         const result = await (window as any).electronAPI.openFile(recentFile.path);
-        if (result.success && result.content && graph) {
-          const doc = JSON.parse(result.content);
-          // Strip file extension for display name
-          let fileName = (result.fileName || recentFile.name || '');
-          if (fileName.endsWith('.drwdd')) fileName = fileName.replace('.drwdd', '');
-          else if (fileName.endsWith('.drawdd.json')) fileName = fileName.replace('.drawdd.json', '');
-          else fileName = fileName.replace(/\.[^/.]+$/, '');
-
-          doc.name = fileName;
-          doc.filePath = result.filePath;
-
-          // Route through __drawdd_loadFile which handles both multi-page and old format
-          // and opens in a new tab instead of overwriting the current one
-          if ((window as any).__drawdd_loadFile) {
-            (window as any).__drawdd_loadFile(doc);
-          }
+        if (result.success && graph) {
+          const file = fileFromElectronOpenResult(result);
+          await importFileWithWorkflow(file, {
+            graph,
+            setMode,
+            setCanvasBackground,
+            setShowGrid,
+            setMindmapDirection,
+            setTimelineDirection,
+            loadDrawddFile: (window as any).__drawdd_loadFile,
+            importToNewTab: (window as any).__drawdd_importToNewTab,
+            updateFileName: (window as any).__drawdd_updateFileName,
+            filePath: result.filePath,
+          });
         } else if (!result.success) {
           alert(`Failed to open file: ${result.error || 'Unknown error'}`);
         }
