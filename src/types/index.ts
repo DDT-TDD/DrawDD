@@ -157,6 +157,7 @@ export interface MindmapNode {
   style?: {
     backgroundColor?: string;
     textColor?: string;
+    fontFamily?: string;
     fontSize?: number;
     bold?: boolean;
     italic?: boolean;

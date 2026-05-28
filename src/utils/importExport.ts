@@ -54,6 +54,103 @@ function looksLikeFreeMindDocument(text: string): boolean {
   return /<map[\s>]/i.test(text) && /<node[\s>]/i.test(text);
 }
 
+function getStringValue(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function getNumberValue(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function pickFirstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    const normalized = getStringValue(value);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return undefined;
+}
+
+function parseColor(color: string | undefined): { red: number; green: number; blue: number } | null {
+  if (!color) {
+    return null;
+  }
+
+  const trimmed = color.trim();
+  const hex = trimmed.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (hex) {
+    const value = hex[1];
+    if (value.length === 3) {
+      return {
+        red: parseInt(value[0] + value[0], 16),
+        green: parseInt(value[1] + value[1], 16),
+        blue: parseInt(value[2] + value[2], 16),
+      };
+    }
+
+    return {
+      red: parseInt(value.slice(0, 2), 16),
+      green: parseInt(value.slice(2, 4), 16),
+      blue: parseInt(value.slice(4, 6), 16),
+    };
+  }
+
+  const rgb = trimmed.match(/^rgba?\((\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/i);
+  if (rgb) {
+    return {
+      red: Number(rgb[1]),
+      green: Number(rgb[2]),
+      blue: Number(rgb[3]),
+    };
+  }
+
+  return null;
+}
+
+function getReadableTextColor(backgroundColor: string | undefined, fallback = '#1f2937'): string {
+  const parsed = parseColor(backgroundColor);
+  if (!parsed) {
+    return fallback;
+  }
+
+  const luminance = (parsed.red * 299 + parsed.green * 587 + parsed.blue * 114) / 1000;
+  return luminance >= 160 ? '#1f2937' : '#ffffff';
+}
+
+export function resolveMindmapNodeStyle(
+  node: MindmapNode,
+  fallbackBackground: string,
+  fallbackText: string,
+): { backgroundColor: string; textColor: string; fontFamily?: string; fontSize: number; bold: boolean; italic: boolean } {
+  const style = node.style || {};
+  const backgroundColor = getStringValue(style.backgroundColor) || fallbackBackground;
+  const textColor = getStringValue(style.textColor) || getReadableTextColor(backgroundColor, fallbackText);
+  const fontFamily = getStringValue(style.fontFamily);
+
+  return {
+    backgroundColor,
+    textColor,
+    fontFamily,
+    fontSize: getNumberValue(style.fontSize) || 14,
+    bold: style.bold === true,
+    italic: style.italic === true,
+  };
+}
+
+async function readFileText(file: File): Promise<string> {
+  if (typeof file.text === 'function') {
+    return file.text();
+  }
+
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Failed to read file text'));
+    reader.readAsText(file);
+  });
+}
+
 export function isDrawddImportDocument(value: unknown): boolean {
   if (!isRecord(value)) {
     return false;
@@ -802,12 +899,13 @@ export function mindmapToGraph(graph: Graph, root: MindmapNode): void {
   });
 
   const orderRef = { value: 1 };
+  const rootStyle = resolveMindmapNodeStyle(root, '#1976d2', '#ffffff');
 
   // Create root node at origin with imported styling
   const rootLabel = root.icon ? `${root.icon} ${root.topic}` : root.topic;
   const rootAttrs: any = {
     body: {
-      fill: root.style?.backgroundColor || '#1976d2',
+      fill: rootStyle.backgroundColor,
       stroke: '#0d47a1',
       strokeWidth: 2,
       rx: 10,
@@ -815,10 +913,11 @@ export function mindmapToGraph(graph: Graph, root: MindmapNode): void {
     },
     label: {
       text: rootLabel,
-      fill: root.style?.textColor || '#ffffff',
-      fontSize: root.style?.fontSize || 16,
-      fontWeight: root.style?.bold ? 'bold' : 'normal',
-      fontStyle: root.style?.italic ? 'italic' : 'normal',
+      fill: rootStyle.textColor,
+      fontFamily: rootStyle.fontFamily || 'system-ui, sans-serif',
+      fontSize: rootStyle.fontSize || 16,
+      fontWeight: rootStyle.bold ? 'bold' : 'normal',
+      fontStyle: rootStyle.italic ? 'italic' : 'normal',
     },
   };
 
@@ -902,22 +1001,24 @@ function createMindmapNodes(
     const width = Math.max(100, 140 - level * 20);
     const height = Math.max(35, 50 - level * 5);
     const childLabel = child.icon ? `${child.icon} ${child.topic}` : child.topic;
+    const childStyle = resolveMindmapNodeStyle(child, color.fill, level > 1 ? '#1f2937' : '#ffffff');
 
     // Apply imported styling if available
     const nodeAttrs: any = {
       body: {
-        fill: child.style?.backgroundColor || color.fill,
-        stroke: child.style?.textColor || color.stroke,
+        fill: childStyle.backgroundColor,
+        stroke: color.stroke,
         strokeWidth: 2,
         rx: 8,
         ry: 8,
       },
       label: {
         text: childLabel,
-        fill: child.style?.textColor || (level > 1 ? '#333333' : '#ffffff'),
-        fontSize: child.style?.fontSize || Math.max(11, 14 - level),
-        fontWeight: child.style?.bold ? 'bold' : 'normal',
-        fontStyle: child.style?.italic ? 'italic' : 'normal',
+        fill: childStyle.textColor,
+        fontFamily: childStyle.fontFamily || 'system-ui, sans-serif',
+        fontSize: childStyle.fontSize || Math.max(11, 14 - level),
+        fontWeight: childStyle.bold ? 'bold' : 'normal',
+        fontStyle: childStyle.italic ? 'italic' : 'normal',
       },
     };
 
@@ -995,8 +1096,62 @@ interface KityMinderData {
   version?: string;
 }
 
+function extractKityMinderNodeStyle(data: KityMinderNode['data']): NonNullable<MindmapNode['style']> | undefined {
+  const rawStyle = isRecord(data.style) ? data.style : undefined;
+
+  const backgroundColor = pickFirstString(
+    data.backgroundColor,
+    data.bgColor,
+    data.background,
+    data.fill,
+    rawStyle?.backgroundColor,
+    rawStyle?.bgColor,
+    rawStyle?.background,
+    rawStyle?.fill,
+  );
+
+  const textColor = pickFirstString(
+    data.textColor,
+    data.color,
+    data.foreground,
+    rawStyle?.textColor,
+    rawStyle?.color,
+    rawStyle?.foreground,
+  );
+
+  const fontFamily = pickFirstString(
+    data.fontFamily,
+    data['font-family'],
+    rawStyle?.fontFamily,
+    rawStyle?.['font-family'],
+  );
+
+  const fontSize = getNumberValue(data.fontSize ?? data['font-size'] ?? rawStyle?.fontSize);
+  const bold = data.bold === true
+    || data['font-weight'] === 'bold'
+    || rawStyle?.bold === true
+    || rawStyle?.fontWeight === 'bold';
+  const italic = data.italic === true
+    || data['font-style'] === 'italic'
+    || rawStyle?.italic === true
+    || rawStyle?.fontStyle === 'italic';
+
+  if (!backgroundColor && !textColor && !fontFamily && fontSize === undefined && !bold && !italic) {
+    return undefined;
+  }
+
+  return {
+    backgroundColor,
+    textColor,
+    fontFamily,
+    fontSize,
+    bold,
+    italic,
+  };
+}
+
 export async function importKityMinder(file: File): Promise<MindmapNode> {
-  const text = await file.text();
+  const text = await readFileText(file);
 
   try {
     const data: KityMinderData = JSON.parse(text);
@@ -1012,36 +1167,60 @@ export async function importKityMinder(file: File): Promise<MindmapNode> {
   }
 }
 
+function getKityTopicText(value: unknown): string {
+  if (typeof value === 'string' && value.trim()) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    const lines = value
+      .filter((part): part is string => typeof part === 'string')
+      .map((part) => part.trim())
+      .filter(Boolean);
+    if (lines.length > 0) {
+      return lines.join('\n');
+    }
+  }
+
+  return 'Untitled';
+}
+
 function convertKityMinderNode(node: KityMinderNode): MindmapNode {
+  const data = node.data || {};
   const result: MindmapNode = {
-    id: node.data?.id || crypto.randomUUID(),
-    topic: node.data?.text || 'Untitled',
-    expanded: node.data?.expandState !== 'collapse',
+    id: data.id || crypto.randomUUID(),
+    topic: getKityTopicText(data.text),
+    expanded: data.expandState !== 'collapse',
   };
 
   // Preserve note
-  if (node.data?.note) {
-    result.note = node.data.note;
+  if (data.note) {
+    result.note = data.note;
   }
 
   // Map hyperlink → link
-  if (node.data?.hyperlink) {
-    result.link = node.data.hyperlink;
+  if (data.hyperlink) {
+    result.link = data.hyperlink;
   }
 
   // Preserve priority (KityMinder uses 1-9)
-  if (node.data?.priority) {
-    result.priority = node.data.priority;
+  if (data.priority) {
+    result.priority = data.priority;
   }
 
   // Preserve progress (KityMinder uses 0-9 scale, map to percentage)
-  if (node.data?.progress !== undefined && node.data.progress !== null) {
+  if (data.progress !== undefined && data.progress !== null) {
     // KityMinder progress: 0=none, 1=start, 2-8=in progress, 9=done
     // Map to percentage: 0→0, 1→10, 2→25, ..., 9→100
     const progressMap: Record<number, number> = {
       0: 0, 1: 10, 2: 25, 3: 35, 4: 50, 5: 60, 6: 70, 7: 80, 8: 90, 9: 100
     };
-    result.progress = progressMap[node.data.progress] ?? Math.round((node.data.progress / 9) * 100);
+    result.progress = progressMap[data.progress] ?? Math.round((data.progress / 9) * 100);
+  }
+
+  const style = extractKityMinderNodeStyle(data);
+  if (style) {
+    result.style = style;
   }
 
   if (node.children && node.children.length > 0) {

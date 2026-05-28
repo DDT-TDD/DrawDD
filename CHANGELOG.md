@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.3] - 2026-05-28
+
+### Fixed
+
+#### KityMinder Mindmap Import
+- **Visible Imported Labels**: KityMinder node colors and font styling are now normalized into the imported mindmap model, and label colors fall back to a readable contrast color when the source JSON omits an explicit text color.
+- **KityDD Font Compatibility**: KityMinder `font-family` metadata is now imported and applied to rendered labels so KityDD-exported typography is preserved.
+- **Defensive Topic Normalization**: Non-string node text payloads are normalized into visible labels during KityMinder conversion to prevent blank nodes when text arrives as arrays.
+- **File Text Compatibility**: KityMinder JSON imports now fall back to `FileReader` when `File.text()` is unavailable, which keeps the import path working in older jsdom-based test environments and similar runtimes.
+
 ## [2.2.2] - 2026-05-18
 
 ### Added
