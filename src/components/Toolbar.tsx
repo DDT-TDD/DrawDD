@@ -318,9 +318,7 @@ export function Toolbar() {
         edge.setRouter({
           name: 'manhattan',
           args: {
-            // Preserve connection points by using existing anchors
-            startDirections: ['top', 'right', 'bottom', 'left'],
-            endDirections: ['top', 'right', 'bottom', 'left'],
+            padding: 10,
           }
         });
       } else if (style === 'simple') {
@@ -329,8 +327,7 @@ export function Toolbar() {
         edge.setRouter({
           name: 'manhattan',
           args: {
-            startDirections: ['top', 'right', 'bottom', 'left'],
-            endDirections: ['top', 'right', 'bottom', 'left'],
+            padding: 10,
           }
         });
       } else if (style === 'metro') {

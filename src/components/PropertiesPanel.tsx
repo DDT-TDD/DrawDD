@@ -167,42 +167,111 @@ export function PropertiesPanel() {
   }, [graph]);
 
   // ========== Alignment Functions ==========
+  const getReferenceNode = (): Node | null => {
+    if (!graph || selectedNodes.length === 0) return null;
+    const selectionOrder = (graph as any)._selectionOrder || [];
+    let refNode = selectedNodes[0];
+    let minIndex = Infinity;
+    selectedNodes.forEach(n => {
+      const idx = selectionOrder.indexOf(n.id);
+      if (idx !== -1 && idx < minIndex) {
+        minIndex = idx;
+        refNode = n;
+      }
+    });
+    return refNode;
+  };
+
   const handleAlignLeft = () => {
     if (!graph || selectedNodes.length < 2) return;
-    const minX = Math.min(...selectedNodes.map(n => n.getBBox().x));
-    selectedNodes.forEach(n => n.setPosition(minX, n.getBBox().y));
+    const refNode = getReferenceNode();
+    if (!refNode) return;
+    const refBox = refNode.getBBox();
+    graph.startBatch('align');
+    selectedNodes.forEach(n => {
+      if (n.id !== refNode.id) {
+        n.setPosition(refBox.x, n.getBBox().y);
+      }
+    });
+    graph.stopBatch('align');
   };
 
   const handleAlignCenterH = () => {
     if (!graph || selectedNodes.length < 2) return;
-    const boxes = selectedNodes.map(n => n.getBBox());
-    const avgX = boxes.reduce((sum, b) => sum + b.x + b.width / 2, 0) / boxes.length;
-    selectedNodes.forEach((n, i) => n.setPosition(avgX - boxes[i].width / 2, boxes[i].y));
+    const refNode = getReferenceNode();
+    if (!refNode) return;
+    const refBox = refNode.getBBox();
+    const refCenterX = refBox.x + refBox.width / 2;
+    graph.startBatch('align');
+    selectedNodes.forEach(n => {
+      if (n.id !== refNode.id) {
+        const box = n.getBBox();
+        n.setPosition(refCenterX - box.width / 2, box.y);
+      }
+    });
+    graph.stopBatch('align');
   };
 
   const handleAlignRight = () => {
     if (!graph || selectedNodes.length < 2) return;
-    const maxX = Math.max(...selectedNodes.map(n => n.getBBox().x + n.getBBox().width));
-    selectedNodes.forEach(n => n.setPosition(maxX - n.getBBox().width, n.getBBox().y));
+    const refNode = getReferenceNode();
+    if (!refNode) return;
+    const refBox = refNode.getBBox();
+    const refRightX = refBox.x + refBox.width;
+    graph.startBatch('align');
+    selectedNodes.forEach(n => {
+      if (n.id !== refNode.id) {
+        const box = n.getBBox();
+        n.setPosition(refRightX - box.width, box.y);
+      }
+    });
+    graph.stopBatch('align');
   };
 
   const handleAlignTop = () => {
     if (!graph || selectedNodes.length < 2) return;
-    const minY = Math.min(...selectedNodes.map(n => n.getBBox().y));
-    selectedNodes.forEach(n => n.setPosition(n.getBBox().x, minY));
+    const refNode = getReferenceNode();
+    if (!refNode) return;
+    const refBox = refNode.getBBox();
+    graph.startBatch('align');
+    selectedNodes.forEach(n => {
+      if (n.id !== refNode.id) {
+        n.setPosition(n.getBBox().x, refBox.y);
+      }
+    });
+    graph.stopBatch('align');
   };
 
   const handleAlignCenterV = () => {
     if (!graph || selectedNodes.length < 2) return;
-    const boxes = selectedNodes.map(n => n.getBBox());
-    const avgY = boxes.reduce((sum, b) => sum + b.y + b.height / 2, 0) / boxes.length;
-    selectedNodes.forEach((n, i) => n.setPosition(boxes[i].x, avgY - boxes[i].height / 2));
+    const refNode = getReferenceNode();
+    if (!refNode) return;
+    const refBox = refNode.getBBox();
+    const refCenterY = refBox.y + refBox.height / 2;
+    graph.startBatch('align');
+    selectedNodes.forEach(n => {
+      if (n.id !== refNode.id) {
+        const box = n.getBBox();
+        n.setPosition(box.x, refCenterY - box.height / 2);
+      }
+    });
+    graph.stopBatch('align');
   };
 
   const handleAlignBottom = () => {
     if (!graph || selectedNodes.length < 2) return;
-    const maxY = Math.max(...selectedNodes.map(n => n.getBBox().y + n.getBBox().height));
-    selectedNodes.forEach(n => n.setPosition(n.getBBox().x, maxY - n.getBBox().height));
+    const refNode = getReferenceNode();
+    if (!refNode) return;
+    const refBox = refNode.getBBox();
+    const refBottomY = refBox.y + refBox.height;
+    graph.startBatch('align');
+    selectedNodes.forEach(n => {
+      if (n.id !== refNode.id) {
+        const box = n.getBBox();
+        n.setPosition(box.x, refBottomY - box.height);
+      }
+    });
+    graph.stopBatch('align');
   };
 
   const handleDistributeH = () => {

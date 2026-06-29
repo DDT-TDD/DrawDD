@@ -32,43 +32,48 @@ export function applyMindmapLayout(
   const nodes = graph.getNodes();
   if (nodes.length === 0) return;
 
-  let layoutRoots: Node[];
+  graph.startBatch('layout');
+  try {
+    let layoutRoots: Node[];
 
-  if (startNode) {
-    layoutRoots = [startNode];
-  } else {
-    const roots = nodes.filter(node => {
-      const incoming = graph.getIncomingEdges(node);
-      return !incoming || incoming.length === 0;
-    });
-    layoutRoots = roots.length > 0 ? roots : [nodes[0]];
-  }
-
-  layoutRoots.forEach(root => {
-    if (direction === 'radial') {
-      applyRadialLayout(graph, root, layoutMode);
-      // Radial still needs port fixing so edges connect to node points
-      fixMindmapAnchors(graph, root, 'radial');
-    } else if (direction === 'both') {
-      applyBalancedLayout(graph, root, layoutMode);
-      // Fix anchors for both sides: right side from right, left side from left
-      fixMindmapAnchors(graph, root, 'both');
+    if (startNode) {
+      layoutRoots = [startNode];
     } else {
-      // Map UI directions to layout directions (top should go upward)
-      const layoutDir: LayoutDirection =
-        direction === 'right' ? 'LR' :
-          direction === 'left' ? 'RL' :
-            direction === 'top' ? 'BT' : // top = place nodes above
-              direction === 'bottom' ? 'TB' : 'LR';
-
-      applyTreeLayout(graph, layoutDir, root, layoutMode);
-      // Fix anchors based on direction
-      fixMindmapAnchors(graph, root, direction);
+      const roots = nodes.filter(node => {
+        const incoming = graph.getIncomingEdges(node);
+        return !incoming || incoming.length === 0;
+      });
+      layoutRoots = roots.length > 0 ? roots : [nodes[0]];
     }
-  });
 
-  if (!startNode) {
-    graph.centerContent();
+    layoutRoots.forEach(root => {
+      if (direction === 'radial') {
+        applyRadialLayout(graph, root, layoutMode);
+        // Radial still needs port fixing so edges connect to node points
+        fixMindmapAnchors(graph, root, 'radial');
+      } else if (direction === 'both') {
+        applyBalancedLayout(graph, root, layoutMode);
+        // Fix anchors for both sides: right side from right, left side from left
+        fixMindmapAnchors(graph, root, 'both');
+      } else {
+        // Map UI directions to layout directions (top should go upward)
+        const layoutDir: LayoutDirection =
+          direction === 'right' ? 'LR' :
+            direction === 'left' ? 'RL' :
+              direction === 'top' ? 'BT' : // top = place nodes above
+                direction === 'bottom' ? 'TB' : 'LR';
+
+        applyTreeLayout(graph, layoutDir, root, layoutMode);
+        // Fix anchors based on direction
+        fixMindmapAnchors(graph, root, direction);
+      }
+    });
+
+    if (!startNode) {
+      graph.centerContent();
+    }
+  } finally {
+    graph.stopBatch('layout');
   }
 }
 
@@ -81,16 +86,21 @@ export function applyTreeLayout(
   const nodes = graph.getNodes();
   if (nodes.length === 0) return;
 
-  const root = startNode || nodes.find(n => graph.getIncomingEdges(n)?.length === 0) || nodes[0];
+  graph.startBatch('layout');
+  try {
+    const root = startNode || nodes.find(n => graph.getIncomingEdges(n)?.length === 0) || nodes[0];
 
-  // Adjust gaps based on layout mode
-  const LEVEL_GAP = layoutMode === 'compact' ? 80 : layoutMode === 'spacious' ? 200 : 140;
-  const SIBLING_GAP = layoutMode === 'compact' ? 20 : layoutMode === 'spacious' ? 70 : 50;
+    // Adjust gaps based on layout mode
+    const LEVEL_GAP = layoutMode === 'compact' ? 80 : layoutMode === 'spacious' ? 200 : 140;
+    const SIBLING_GAP = layoutMode === 'compact' ? 20 : layoutMode === 'spacious' ? 70 : 50;
 
-  const rootPos = root.getPosition();
-  const tree = buildTree(graph, root);
+    const rootPos = root.getPosition();
+    const tree = buildTree(graph, root);
 
-  applyPositionsImproved(tree, direction, LEVEL_GAP, SIBLING_GAP, rootPos);
+    applyPositionsImproved(tree, direction, LEVEL_GAP, SIBLING_GAP, rootPos);
+  } finally {
+    graph.stopBatch('layout');
+  }
 }
 
 function applyBalancedLayout(graph: Graph, root: Node, layoutMode: 'compact' | 'standard' | 'spacious' = 'standard') {
@@ -447,96 +457,101 @@ export function applyFishboneLayout(graph: Graph, startNode?: Node) {
   const nodes = graph.getNodes();
   if (nodes.length === 0) return;
 
-  // Find root (head of the fish) - rightmost node or the one with no outgoing edges
-  const root = startNode || nodes.find(n => {
-    const outgoing = graph.getOutgoingEdges(n);
-    return !outgoing || outgoing.length === 0;
-  }) || nodes[0];
+  graph.startBatch('layout');
+  try {
+    // Find root (head of the fish) - rightmost node or the one with no outgoing edges
+    const root = startNode || nodes.find(n => {
+      const outgoing = graph.getOutgoingEdges(n);
+      return !outgoing || outgoing.length === 0;
+    }) || nodes[0];
 
-  // Position root on the right
-  root.setPosition({ x: 800, y: 300 });
+    // Position root on the right
+    root.setPosition({ x: 800, y: 300 });
 
-  // Get all children (causes)
-  const incoming = graph.getIncomingEdges(root) || [];
-  const causes = incoming.map(edge => {
-    const sourceId = edge.getSourceCellId();
-    return sourceId ? graph.getCellById(sourceId) as Node : null;
-  }).filter((n): n is Node => n !== null);
-
-  if (causes.length === 0) return;
-
-  // Separate causes into categories (top and bottom branches)
-  const topCauses: Node[] = [];
-  const bottomCauses: Node[] = [];
-
-  causes.forEach((cause, index) => {
-    if (index % 2 === 0) {
-      topCauses.push(cause);
-    } else {
-      bottomCauses.push(cause);
-    }
-  });
-
-  // Draw spine (main horizontal line)
-  const spineLength = 600;
-  const spineY = 300;
-
-  // Position causes along the spine
-  const CATEGORY_GAP = 150;
-
-  // Position top causes
-  topCauses.forEach((cause, i) => {
-    const x = 800 - spineLength + i * CATEGORY_GAP;
-    const y = spineY - 80;
-    cause.setPosition({ x, y });
-
-    // Get sub-causes (detailed reasons)
-    const subCauseEdges = graph.getIncomingEdges(cause) || [];
-    const subCauses = subCauseEdges.map(edge => {
+    // Get all children (causes)
+    const incoming = graph.getIncomingEdges(root) || [];
+    const causes = incoming.map(edge => {
       const sourceId = edge.getSourceCellId();
       return sourceId ? graph.getCellById(sourceId) as Node : null;
     }).filter((n): n is Node => n !== null);
 
-    // Position sub-causes vertically above
-    subCauses.forEach((subCause, j) => {
-      subCause.setPosition({ x: x - 20, y: y - 60 - j * 50 });
+    if (causes.length === 0) return;
+
+    // Separate causes into categories (top and bottom branches)
+    const topCauses: Node[] = [];
+    const bottomCauses: Node[] = [];
+
+    causes.forEach((cause, index) => {
+      if (index % 2 === 0) {
+        topCauses.push(cause);
+      } else {
+        bottomCauses.push(cause);
+      }
     });
 
-    // Update edge to go at an angle
-    const causeEdge = incoming.find(e => e.getSourceCellId() === cause.id);
-    if (causeEdge) {
-      causeEdge.setSource({ cell: cause.id, port: 'right' });
-      causeEdge.setTarget({ cell: root.id, port: 'left' });
-    }
-  });
+    // Draw spine (main horizontal line)
+    const spineLength = 600;
+    const spineY = 300;
 
-  // Position bottom causes
-  bottomCauses.forEach((cause, i) => {
-    const x = 800 - spineLength + i * CATEGORY_GAP + 75; // Offset slightly
-    const y = spineY + 80;
-    cause.setPosition({ x, y });
+    // Position causes along the spine
+    const CATEGORY_GAP = 150;
 
-    // Get sub-causes
-    const subCauseEdges = graph.getIncomingEdges(cause) || [];
-    const subCauses = subCauseEdges.map(edge => {
-      const sourceId = edge.getSourceCellId();
-      return sourceId ? graph.getCellById(sourceId) as Node : null;
-    }).filter((n): n is Node => n !== null);
+    // Position top causes
+    topCauses.forEach((cause, i) => {
+      const x = 800 - spineLength + i * CATEGORY_GAP;
+      const y = spineY - 80;
+      cause.setPosition({ x, y });
 
-    // Position sub-causes vertically below
-    subCauses.forEach((subCause, j) => {
-      subCause.setPosition({ x: x - 20, y: y + 60 + j * 50 });
+      // Get sub-causes (detailed reasons)
+      const subCauseEdges = graph.getIncomingEdges(cause) || [];
+      const subCauses = subCauseEdges.map(edge => {
+        const sourceId = edge.getSourceCellId();
+        return sourceId ? graph.getCellById(sourceId) as Node : null;
+      }).filter((n): n is Node => n !== null);
+
+      // Position sub-causes vertically above
+      subCauses.forEach((subCause, j) => {
+        subCause.setPosition({ x: x - 20, y: y - 60 - j * 50 });
+      });
+
+      // Update edge to go at an angle
+      const causeEdge = incoming.find(e => e.getSourceCellId() === cause.id);
+      if (causeEdge) {
+        causeEdge.setSource({ cell: cause.id, port: 'right' });
+        causeEdge.setTarget({ cell: root.id, port: 'left' });
+      }
     });
 
-    // Update edge
-    const causeEdge = incoming.find(e => e.getSourceCellId() === cause.id);
-    if (causeEdge) {
-      causeEdge.setSource({ cell: cause.id, port: 'right' });
-      causeEdge.setTarget({ cell: root.id, port: 'left' });
-    }
-  });
+    // Position bottom causes
+    bottomCauses.forEach((cause, i) => {
+      const x = 800 - spineLength + i * CATEGORY_GAP + 75; // Offset slightly
+      const y = spineY + 80;
+      cause.setPosition({ x, y });
 
-  graph.centerContent();
+      // Get sub-causes
+      const subCauseEdges = graph.getIncomingEdges(cause) || [];
+      const subCauses = subCauseEdges.map(edge => {
+        const sourceId = edge.getSourceCellId();
+        return sourceId ? graph.getCellById(sourceId) as Node : null;
+      }).filter((n): n is Node => n !== null);
+
+      // Position sub-causes vertically below
+      subCauses.forEach((subCause, j) => {
+        subCause.setPosition({ x: x - 20, y: y + 60 + j * 50 });
+      });
+
+      // Update edge
+      const causeEdge = incoming.find(e => e.getSourceCellId() === cause.id);
+      if (causeEdge) {
+        causeEdge.setSource({ cell: cause.id, port: 'right' });
+        causeEdge.setTarget({ cell: root.id, port: 'left' });
+      }
+    });
+
+    graph.centerContent();
+  } finally {
+    graph.stopBatch('layout');
+  }
 }
 
 // ============ Timeline Layout ============
@@ -552,181 +567,186 @@ export function applyTimelineLayout(
   const nodes = graph.getNodes();
   if (nodes.length === 0) return;
 
-  const sortByDate = options?.sortByDate !== false; // Default true
-  const showDateLabels = options?.showDateLabels !== false; // Default true
-  const autoSpacing = options?.autoSpacing !== false; // Default true
+  graph.startBatch('layout');
+  try {
+    const sortByDate = options?.sortByDate !== false; // Default true
+    const showDateLabels = options?.showDateLabels !== false; // Default true
+    const autoSpacing = options?.autoSpacing !== false; // Default true
 
-  // Sort nodes by date if available, otherwise by position
-  const sortedNodes = [...nodes].sort((a, b) => {
-    const dataA = a.getData() as any;
-    const dataB = b.getData() as any;
+    // Sort nodes by date if available, otherwise by position
+    const sortedNodes = [...nodes].sort((a, b) => {
+      const dataA = a.getData() as any;
+      const dataB = b.getData() as any;
 
-    if (sortByDate && dataA?.date && dataB?.date) {
-      return new Date(dataA.date).getTime() - new Date(dataB.date).getTime();
-    }
+      if (sortByDate && dataA?.date && dataB?.date) {
+        return new Date(dataA.date).getTime() - new Date(dataB.date).getTime();
+      }
 
-    // Fallback to position
+      // Fallback to position
+      if (orientation === 'horizontal') {
+        return a.getPosition().x - b.getPosition().x;
+      } else {
+        return a.getPosition().y - b.getPosition().y;
+      }
+    });
+
+    // Calculate spacing based on days difference if auto-spacing enabled
+    const calculateSpacing = (index: number): number => {
+      if (!autoSpacing || index === 0) return 0;
+
+      const currentData = sortedNodes[index].getData() as any;
+      const prevData = sortedNodes[index - 1].getData() as any;
+
+      if (currentData?.date && prevData?.date) {
+        const currentDate = new Date(currentData.date).getTime();
+        const prevDate = new Date(prevData.date).getTime();
+        const daysDiff = (currentDate - prevDate) / (1000 * 60 * 60 * 24);
+
+        // Scale spacing based on time difference (min 150px, max 400px)
+        const baseGap = 200;
+        const scaleFactor = Math.min(Math.max(daysDiff / 30, 0.75), 2); // 30 days = 1x spacing
+        return baseGap * scaleFactor;
+      }
+
+      return 200; // Default gap
+    };
+
+    const OFFSET = 100;
+
     if (orientation === 'horizontal') {
-      return a.getPosition().x - b.getPosition().x;
+      // Horizontal timeline
+      const centerY = 300;
+      let currentX = 100;
+
+      sortedNodes.forEach((node, i) => {
+        const gap = i === 0 ? 0 : calculateSpacing(i);
+        currentX += gap;
+
+        // Alternate above and below the timeline
+        const y = i % 2 === 0 ? centerY - OFFSET : centerY + OFFSET;
+        node.setPosition({ x: currentX, y });
+
+        // Add date label if enabled
+        if (showDateLabels) {
+          const data = node.getData() as any;
+          if (data?.date) {
+            const dateStr = formatDateLabel(data.date);
+            const currentLabel = String(node.getAttrs()?.label?.text || '');
+            if (!currentLabel.includes(dateStr)) {
+              node.setAttrs({
+                label: {
+                  text: `${currentLabel}\n${dateStr}`,
+                  fontSize: 12,
+                }
+              });
+            }
+          }
+        }
+
+        currentX += node.getSize().width;
+      });
+
+      // Update edges to connect sequentially
+      sortedNodes.forEach((node, i) => {
+        if (i > 0) {
+          const prevNode = sortedNodes[i - 1];
+          const edges = graph.getEdges().filter(e =>
+            e.getSourceCellId() === prevNode.id && e.getTargetCellId() === node.id
+          );
+
+          if (edges.length === 0) {
+            // Create edge if it doesn't exist
+            graph.addEdge({
+              source: { cell: prevNode.id, port: 'right' },
+              target: { cell: node.id, port: 'left' },
+              attrs: {
+                line: {
+                  stroke: '#5F95FF',
+                  strokeWidth: 2,
+                  targetMarker: {
+                    name: 'block',
+                    width: 12,
+                    height: 8,
+                  },
+                },
+              },
+            });
+          } else {
+            // Update existing edge ports
+            edges[0].setSource({ cell: prevNode.id, port: 'right' });
+            edges[0].setTarget({ cell: node.id, port: 'left' });
+          }
+        }
+      });
     } else {
-      return a.getPosition().y - b.getPosition().y;
-    }
-  });
+      // Vertical timeline
+      const centerX = 400;
+      let currentY = 100;
 
-  // Calculate spacing based on dates if auto-spacing enabled
-  const calculateSpacing = (index: number): number => {
-    if (!autoSpacing || index === 0) return 0;
+      sortedNodes.forEach((node, i) => {
+        const gap = i === 0 ? 0 : calculateSpacing(i);
+        currentY += gap;
 
-    const currentData = sortedNodes[index].getData() as any;
-    const prevData = sortedNodes[index - 1].getData() as any;
+        // Alternate left and right of the timeline
+        const x = i % 2 === 0 ? centerX - OFFSET : centerX + OFFSET;
+        node.setPosition({ x, y: currentY });
 
-    if (currentData?.date && prevData?.date) {
-      const currentDate = new Date(currentData.date).getTime();
-      const prevDate = new Date(prevData.date).getTime();
-      const daysDiff = (currentDate - prevDate) / (1000 * 60 * 60 * 24);
-
-      // Scale spacing based on time difference (min 150px, max 400px)
-      const baseGap = 200;
-      const scaleFactor = Math.min(Math.max(daysDiff / 30, 0.75), 2); // 30 days = 1x spacing
-      return baseGap * scaleFactor;
-    }
-
-    return 200; // Default gap
-  };
-
-  const OFFSET = 100;
-
-  if (orientation === 'horizontal') {
-    // Horizontal timeline
-    const centerY = 300;
-    let currentX = 100;
-
-    sortedNodes.forEach((node, i) => {
-      const gap = i === 0 ? 0 : calculateSpacing(i);
-      currentX += gap;
-
-      // Alternate above and below the timeline
-      const y = i % 2 === 0 ? centerY - OFFSET : centerY + OFFSET;
-      node.setPosition({ x: currentX, y });
-
-      // Add date label if enabled
-      if (showDateLabels) {
-        const data = node.getData() as any;
-        if (data?.date) {
-          const dateStr = formatDateLabel(data.date);
-          const currentLabel = String(node.getAttrs()?.label?.text || '');
-          if (!currentLabel.includes(dateStr)) {
-            node.setAttrs({
-              label: {
-                text: `${currentLabel}\n${dateStr}`,
-                fontSize: 12,
-              }
-            });
+        // Add date label if enabled
+        if (showDateLabels) {
+          const data = node.getData() as any;
+          if (data?.date) {
+            const dateStr = formatDateLabel(data.date);
+            const currentLabel = String(node.getAttrs()?.label?.text || '');
+            if (!currentLabel.includes(dateStr)) {
+              node.setAttrs({
+                label: {
+                  text: `${currentLabel}\n${dateStr}`,
+                  fontSize: 12,
+                }
+              });
+            }
           }
         }
-      }
 
-      currentX += node.getSize().width;
-    });
+        currentY += node.getSize().height;
+      });
 
-    // Update edges to connect sequentially
-    sortedNodes.forEach((node, i) => {
-      if (i > 0) {
-        const prevNode = sortedNodes[i - 1];
-        const edges = graph.getEdges().filter(e =>
-          e.getSourceCellId() === prevNode.id && e.getTargetCellId() === node.id
-        );
+      // Update edges
+      sortedNodes.forEach((node, i) => {
+        if (i > 0) {
+          const prevNode = sortedNodes[i - 1];
+          const edges = graph.getEdges().filter(e =>
+            e.getSourceCellId() === prevNode.id && e.getTargetCellId() === node.id
+          );
 
-        if (edges.length === 0) {
-          // Create edge if it doesn't exist
-          graph.addEdge({
-            source: { cell: prevNode.id, port: 'right' },
-            target: { cell: node.id, port: 'left' },
-            attrs: {
-              line: {
-                stroke: '#5F95FF',
-                strokeWidth: 2,
-                targetMarker: {
-                  name: 'block',
-                  width: 12,
-                  height: 8,
+          if (edges.length === 0) {
+            graph.addEdge({
+              source: { cell: prevNode.id, port: 'bottom' },
+              target: { cell: node.id, port: 'top' },
+              attrs: {
+                line: {
+                  stroke: '#5F95FF',
+                  strokeWidth: 2,
+                  targetMarker: {
+                    name: 'block',
+                    width: 12,
+                    height: 8,
+                  },
                 },
               },
-            },
-          });
-        } else {
-          // Update existing edge ports
-          edges[0].setSource({ cell: prevNode.id, port: 'right' });
-          edges[0].setTarget({ cell: node.id, port: 'left' });
-        }
-      }
-    });
-  } else {
-    // Vertical timeline
-    const centerX = 400;
-    let currentY = 100;
-
-    sortedNodes.forEach((node, i) => {
-      const gap = i === 0 ? 0 : calculateSpacing(i);
-      currentY += gap;
-
-      // Alternate left and right of the timeline
-      const x = i % 2 === 0 ? centerX - OFFSET : centerX + OFFSET;
-      node.setPosition({ x, y: currentY });
-
-      // Add date label if enabled
-      if (showDateLabels) {
-        const data = node.getData() as any;
-        if (data?.date) {
-          const dateStr = formatDateLabel(data.date);
-          const currentLabel = String(node.getAttrs()?.label?.text || '');
-          if (!currentLabel.includes(dateStr)) {
-            node.setAttrs({
-              label: {
-                text: `${currentLabel}\n${dateStr}`,
-                fontSize: 12,
-              }
             });
+          } else {
+            edges[0].setSource({ cell: prevNode.id, port: 'bottom' });
+            edges[0].setTarget({ cell: node.id, port: 'top' });
           }
         }
-      }
+      });
+    }
 
-      currentY += node.getSize().height;
-    });
-
-    // Update edges
-    sortedNodes.forEach((node, i) => {
-      if (i > 0) {
-        const prevNode = sortedNodes[i - 1];
-        const edges = graph.getEdges().filter(e =>
-          e.getSourceCellId() === prevNode.id && e.getTargetCellId() === node.id
-        );
-
-        if (edges.length === 0) {
-          graph.addEdge({
-            source: { cell: prevNode.id, port: 'bottom' },
-            target: { cell: node.id, port: 'top' },
-            attrs: {
-              line: {
-                stroke: '#5F95FF',
-                strokeWidth: 2,
-                targetMarker: {
-                  name: 'block',
-                  width: 12,
-                  height: 8,
-                },
-              },
-            },
-          });
-        } else {
-          edges[0].setSource({ cell: prevNode.id, port: 'bottom' });
-          edges[0].setTarget({ cell: node.id, port: 'top' });
-        }
-      }
-    });
+    graph.centerContent();
+  } finally {
+    graph.stopBatch('layout');
   }
-
-  graph.centerContent();
 }
 
 function formatDateLabel(dateStr: string): string {

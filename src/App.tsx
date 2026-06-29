@@ -143,6 +143,16 @@ function AppContent() {
     } else {
       graph.clearCells();
     }
+
+    // Clear history stack after page load / canvas reset
+    const historyPlugin = (graph as any).getPluginInstance('history') as any;
+    if (historyPlugin) {
+      if (typeof historyPlugin.clean === 'function') {
+        historyPlugin.clean();
+      } else if (typeof historyPlugin.clear === 'function') {
+        historyPlugin.clear();
+      }
+    }
   }, [graph, setMode]);
 
   // --- FILE OPERATIONS ---
@@ -478,6 +488,11 @@ function AppContent() {
             setTimelineDirection,
             setCanvasBackground,
           });
+          const historyPlugin = (graph as any).getPluginInstance('history') as any;
+          if (historyPlugin) {
+            if (typeof historyPlugin.clean === 'function') historyPlugin.clean();
+            else if (typeof historyPlugin.clear === 'function') historyPlugin.clear();
+          }
         }
       }
     };
@@ -491,6 +506,11 @@ function AppContent() {
       if (graph) {
         graph.clearCells();
         importFn();
+        const historyPlugin = (graph as any).getPluginInstance('history') as any;
+        if (historyPlugin) {
+          if (typeof historyPlugin.clean === 'function') historyPlugin.clean();
+          else if (typeof historyPlugin.clear === 'function') historyPlugin.clear();
+        }
       }
     };
     return () => {

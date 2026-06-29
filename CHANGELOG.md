@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.5] - 2026-06-29
+
+### Fixed
+
+#### History & Undo Stability
+- **Programmatic Operations History Filtering**: The undo stack is now cleared after loading page data, creating a blank canvas, switching tabs, or importing files. This prevents programmatic graph reconstruction steps from creating unwanted history states.
+- **Batched Auto-Layout Actions**: Flowchart, mindmap, tree, fishbone, and timeline auto-layout actions are now consolidated inside layout-specific history batches, allowing users to undo a full auto-layout in a single step.
+
+#### First-Selected Alignment
+- **Key Object Alignment**: Bounding-box-based alignment has been replaced with first-selected relative alignment. Clicking Align Left, Center H, Right, Top, Center V, or Bottom will align all other selected shapes relative to the first selected key shape.
+- **Selection Order Tracking**: Handlers for selection changed, cell selection, and cell deselection events now maintain an exact selection history list (`graph._selectionOrder`) to correctly identify the first selected element.
+- **Batched Alignment Actions**: All alignment updates are wrapped in an `'align'` batch so they undo as a single action.
+
+#### Arrow & Line Routing
+- **Perpendicular Port Exit Enforcement**: Removed hardcoded direction restrictions from the manhattan router in the canvas edge builder and toolbar default routing. This allows the routing engine to naturally exit ports perpendicularly, preventing weird loops and overlap regressions.
+
 ## [2.2.3] - 2026-05-28
 
 ### Fixed

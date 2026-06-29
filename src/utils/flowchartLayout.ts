@@ -379,24 +379,29 @@ export function applyFlowchartLayout(
     if (firstKey) roots.push(firstKey);
   }
 
-  if (opts.type === 'hierarchical' || opts.type === 'tree') {
-    // Assign ranks
-    assignRanks(nodeMap, roots);
-    
-    // Group by rank
-    const rankGroups = groupByRank(nodeMap);
-    
-    // Order nodes within ranks
-    orderNodesInRanks(nodeMap, rankGroups);
-    
-    // Calculate positions
-    calculateHierarchicalPositions(nodeMap, rankGroups, opts);
-  } else if (opts.type === 'grid') {
-    calculateGridPositions(nodeMap, opts);
-  }
+  graph.startBatch('layout');
+  try {
+    if (opts.type === 'hierarchical' || opts.type === 'tree') {
+      // Assign ranks
+      assignRanks(nodeMap, roots);
+      
+      // Group by rank
+      const rankGroups = groupByRank(nodeMap);
+      
+      // Order nodes within ranks
+      orderNodesInRanks(nodeMap, rankGroups);
+      
+      // Calculate positions
+      calculateHierarchicalPositions(nodeMap, rankGroups, opts);
+    } else if (opts.type === 'grid') {
+      calculateGridPositions(nodeMap, opts);
+    }
 
-  // Apply positions
-  applyPositions(graph, nodeMap, opts.animate);
+    // Apply positions
+    applyPositions(graph, nodeMap, opts.animate);
+  } finally {
+    graph.stopBatch('layout');
+  }
 }
 
 /**

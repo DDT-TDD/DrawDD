@@ -850,40 +850,80 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
     const cells = graph.getSelectedCells().filter(c => c.isNode());
     if (cells.length < 2) return;
 
-    const boxes = cells.map(c => c.getBBox());
+    // Get the first selected node based on selection order
+    const selectionOrder = (graph as any)._selectionOrder || [];
+    let refNode = cells[0];
+    let minIndex = Infinity;
+    cells.forEach(n => {
+      const idx = selectionOrder.indexOf(n.id);
+      if (idx !== -1 && idx < minIndex) {
+        minIndex = idx;
+        refNode = n;
+      }
+    });
 
+    const refBox = refNode.getBBox();
+
+    graph.startBatch('align');
     switch (type) {
       case 'left': {
-        const minX = Math.min(...boxes.map(b => b.x));
-        cells.forEach((c, i) => c.setPosition(minX, boxes[i].y));
+        cells.forEach(c => {
+          if (c.id !== refNode.id) {
+            c.setPosition(refBox.x, c.getBBox().y);
+          }
+        });
         break;
       }
       case 'center': {
-        const avgX = boxes.reduce((sum, b) => sum + b.x + b.width / 2, 0) / boxes.length;
-        cells.forEach((c, i) => c.setPosition(avgX - boxes[i].width / 2, boxes[i].y));
+        const refCenterX = refBox.x + refBox.width / 2;
+        cells.forEach(c => {
+          if (c.id !== refNode.id) {
+            const box = c.getBBox();
+            c.setPosition(refCenterX - box.width / 2, box.y);
+          }
+        });
         break;
       }
       case 'right': {
-        const maxX = Math.max(...boxes.map(b => b.x + b.width));
-        cells.forEach((c, i) => c.setPosition(maxX - boxes[i].width, boxes[i].y));
+        const refRightX = refBox.x + refBox.width;
+        cells.forEach(c => {
+          if (c.id !== refNode.id) {
+            const box = c.getBBox();
+            c.setPosition(refRightX - box.width, box.y);
+          }
+        });
         break;
       }
       case 'top': {
-        const minY = Math.min(...boxes.map(b => b.y));
-        cells.forEach((c, i) => c.setPosition(boxes[i].x, minY));
+        cells.forEach(c => {
+          if (c.id !== refNode.id) {
+            c.setPosition(c.getBBox().x, refBox.y);
+          }
+        });
         break;
       }
       case 'middle': {
-        const avgY = boxes.reduce((sum, b) => sum + b.y + b.height / 2, 0) / boxes.length;
-        cells.forEach((c, i) => c.setPosition(boxes[i].x, avgY - boxes[i].height / 2));
+        const refCenterY = refBox.y + refBox.height / 2;
+        cells.forEach(c => {
+          if (c.id !== refNode.id) {
+            const box = c.getBBox();
+            c.setPosition(box.x, refCenterY - box.height / 2);
+          }
+        });
         break;
       }
       case 'bottom': {
-        const maxY = Math.max(...boxes.map(b => b.y + b.height));
-        cells.forEach((c, i) => c.setPosition(boxes[i].x, maxY - boxes[i].height));
+        const refBottomY = refBox.y + refBox.height;
+        cells.forEach(c => {
+          if (c.id !== refNode.id) {
+            const box = c.getBBox();
+            c.setPosition(box.x, refBottomY - box.height);
+          }
+        });
         break;
       }
     }
+    graph.stopBatch('align');
     setActiveMenu(null);
   };
 

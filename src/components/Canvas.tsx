@@ -330,7 +330,7 @@ export function Canvas() {
               edgeRouter = { name: 'normal' };
               edgeConnector = { name: 'smooth' };
             } else if (flowchartStyle === 'flowchart') {
-              edgeRouter = { name: 'manhattan', args: { startDirections: ['top', 'right', 'bottom', 'left'], endDirections: ['top', 'right', 'bottom', 'left'] } };
+              edgeRouter = { name: 'manhattan', args: { padding: 10 } };
               edgeConnector = { name: 'rounded', args: { radius: 10 } };
             } else if (flowchartStyle === 'straight') {
               edgeRouter = { name: 'normal' };
@@ -1040,8 +1040,38 @@ export function Canvas() {
       return false;
     });
 
+    // Selection order tracking
+    graph.on('cell:selected', ({ cell }) => {
+      if (!(graph as any)._selectionOrder) {
+        (graph as any)._selectionOrder = [];
+      }
+      if (!(graph as any)._selectionOrder.includes(cell.id)) {
+        (graph as any)._selectionOrder.push(cell.id);
+      }
+    });
+
+    graph.on('cell:unselected', ({ cell }) => {
+      if ((graph as any)._selectionOrder) {
+        (graph as any)._selectionOrder = (graph as any)._selectionOrder.filter((id: string) => id !== cell.id);
+      }
+    });
+
     // Event handlers
     graph.on('selection:changed', ({ selected }: { selected: { length: number; 0?: unknown } }) => {
+      const selectedArray = Array.isArray(selected) ? selected : Array.from(selected as any);
+      const selectedIds = selectedArray.map(c => c.id);
+      if (!(graph as any)._selectionOrder) {
+        (graph as any)._selectionOrder = [];
+      }
+      // Prune IDs that are no longer selected
+      (graph as any)._selectionOrder = (graph as any)._selectionOrder.filter((id: string) => selectedIds.includes(id));
+      // Add any selected IDs that aren't in selectionOrder yet
+      selectedIds.forEach((id: string) => {
+        if (!(graph as any)._selectionOrder.includes(id)) {
+          (graph as any)._selectionOrder.push(id);
+        }
+      });
+
       if (selected.length === 1) {
         const cell = selected[0] as any;
         setSelectedCell(cell as never);
@@ -1109,7 +1139,6 @@ export function Canvas() {
       }
 
       // Remove tools from unselected cells
-      const selectedArray = Array.isArray(selected) ? selected : Array.from(selected as any);
       graph.getCells().forEach(cell => {
         if (!selectedArray.includes(cell)) {
           (cell as any).removeTools?.();
