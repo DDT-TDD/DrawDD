@@ -1,7 +1,7 @@
 {
   "name": "drawdd",
   "private": false,
-  "version": "2.2.5",
+  "version": "2.3.0",
   "description": "DRAWDD - Open source diagramming tool for flowcharts, mindmaps, timelines, Venn diagrams, and more",
   "author": "DRAWDD Team",
   "license": "MIT",

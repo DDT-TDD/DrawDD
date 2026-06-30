@@ -145,13 +145,8 @@ function AppContent() {
     }
 
     // Clear history stack after page load / canvas reset
-    const historyPlugin = (graph as any).getPluginInstance('history') as any;
-    if (historyPlugin) {
-      if (typeof historyPlugin.clean === 'function') {
-        historyPlugin.clean();
-      } else if (typeof historyPlugin.clear === 'function') {
-        historyPlugin.clear();
-      }
+    if (typeof (graph as any).cleanHistory === 'function') {
+      (graph as any).cleanHistory();
     }
   }, [graph, setMode]);
 
@@ -488,10 +483,8 @@ function AppContent() {
             setTimelineDirection,
             setCanvasBackground,
           });
-          const historyPlugin = (graph as any).getPluginInstance('history') as any;
-          if (historyPlugin) {
-            if (typeof historyPlugin.clean === 'function') historyPlugin.clean();
-            else if (typeof historyPlugin.clear === 'function') historyPlugin.clear();
+          if (typeof (graph as any).cleanHistory === 'function') {
+            (graph as any).cleanHistory();
           }
         }
       }
@@ -506,10 +499,8 @@ function AppContent() {
       if (graph) {
         graph.clearCells();
         importFn();
-        const historyPlugin = (graph as any).getPluginInstance('history') as any;
-        if (historyPlugin) {
-          if (typeof historyPlugin.clean === 'function') historyPlugin.clean();
-          else if (typeof historyPlugin.clear === 'function') historyPlugin.clear();
+        if (typeof (graph as any).cleanHistory === 'function') {
+          (graph as any).cleanHistory();
         }
       }
     };
