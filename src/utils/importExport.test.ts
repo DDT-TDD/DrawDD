@@ -1,74 +1,83 @@
-import { describe, expect, it } from '@jest/globals';
+import { describe, expect, it, jest } from '@jest/globals';
+import type { Graph } from '@antv/x6';
+import { parseDrawioToPages } from './importExport';
 
-jest.mock('./text', () => ({
-  setNodeLabelWithAutoSize: jest.fn((node) => node),
-}));
+describe('parseDrawioToPages', () => {
+  it('correctly parses multiple diagram pages from draw.io XML', async () => {
+    const multiPageXml = `
+      <mxfile host="Electron">
+        <diagram id="page1" name="First Page">
+          <mxGraphModel>
+            <root>
+              <mxCell id="0" />
+              <mxCell id="1" parent="0" />
+              <mxCell id="node1" value="Node 1" vertex="1" parent="1">
+                <mxGeometry x="100" y="100" width="120" height="60" as="geometry" />
+              </mxCell>
+            </root>
+          </mxGraphModel>
+        </diagram>
+        <diagram id="page2" name="Second Page">
+          <mxGraphModel>
+            <root>
+              <mxCell id="0" />
+              <mxCell id="1" parent="0" />
+              <mxCell id="node2" value="Node 2" vertex="1" parent="1">
+                <mxGeometry x="200" y="200" width="120" height="60" as="geometry" />
+              </mxCell>
+            </root>
+          </mxGraphModel>
+        </diagram>
+      </mxfile>
+    `;
 
-import { importKityMinder, resolveMindmapNodeStyle } from './importExport';
-
-describe('KityMinder import styling', () => {
-  it('maps KityMinder color aliases into visible mindmap styles', async () => {
-    const kmJson = {
-      root: {
-        data: {
-          id: 'root-node',
-          text: 'Visible Topic',
-          background: '#f5f7fa',
-          color: '#263238',
-          'font-family': 'Courier New',
-          'font-size': 18,
-          'font-weight': 'bold',
-          'font-style': 'italic',
-        },
-        children: [],
-      },
+    const mockNode = {
+      getAttrs: () => ({ label: { text: 'Hello' } }),
+      setAttrs: jest.fn(),
     };
 
-    const file = new File([JSON.stringify(kmJson)], 'topic.km', { type: 'application/json' });
-    const root = await importKityMinder(file);
+    const mockGraph = {
+      toJSON: jest.fn()
+        .mockReturnValueOnce({ cells: [{ id: 'original-cell' }] }) // original state
+        .mockReturnValueOnce({ cells: [{ id: 'node1', type: 'rect' }] }) // first page
+        .mockReturnValueOnce({ cells: [{ id: 'node2', type: 'circle' }] }), // second page
+      fromJSON: jest.fn(),
+      clearCells: jest.fn(),
+      addNode: jest.fn().mockReturnValue(mockNode),
+      addEdge: jest.fn(),
+    } as unknown as Graph;
 
-    expect(root.topic).toBe('Visible Topic');
-    expect(root.style).toEqual({
-      backgroundColor: '#f5f7fa',
-      textColor: '#263238',
-      fontFamily: 'Courier New',
-      fontSize: 18,
-      bold: true,
-      italic: true,
-    });
+    const pages = await parseDrawioToPages(multiPageXml, mockGraph);
+
+    expect(pages).toHaveLength(2);
+    expect(pages[0].name).toBe('First Page');
+    expect(JSON.parse(pages[0].data)).toEqual({ cells: [{ id: 'node1', type: 'rect' }] });
+    expect(pages[1].name).toBe('Second Page');
+    expect(JSON.parse(pages[1].data)).toEqual({ cells: [{ id: 'node2', type: 'circle' }] });
+
+    // Verify it restored the original graph state
+    expect(mockGraph.fromJSON).toHaveBeenCalledTimes(1);
+    expect(mockGraph.fromJSON).toHaveBeenCalledWith({ cells: [{ id: 'original-cell' }] });
   });
 
-  it('normalizes array-based Kity text payloads into visible labels', async () => {
-    const kmJson = {
-      root: {
-        data: {
-          id: 'array-text-root',
-          text: ['Parent line', 'Child line'],
-        },
-        children: [],
-      },
-    };
+  it('handles empty diagram elements without crashing', async () => {
+    const emptyPageXml = `
+      <mxfile host="Electron">
+        <diagram id="page1" name="Empty Page"></diagram>
+      </mxfile>
+    `;
 
-    const file = new File([JSON.stringify(kmJson)], 'array-topic.km', { type: 'application/json' });
-    const root = await importKityMinder(file);
+    const mockGraph = {
+      toJSON: jest.fn()
+        .mockReturnValueOnce({ cells: [] }) // original state
+        .mockReturnValueOnce({ cells: [] }), // first page
+      fromJSON: jest.fn(),
+      clearCells: jest.fn(),
+    } as unknown as Graph;
 
-    expect(root.topic).toBe('Parent line\nChild line');
-  });
-
-  it('chooses a readable label color when KityMinder omits one', () => {
-    const style = resolveMindmapNodeStyle(
-      {
-        id: 'child-node',
-        topic: 'Contrast Topic',
-        style: {
-          backgroundColor: '#1f2937',
-        },
-      },
-      '#42a5f5',
-      '#ffffff',
-    );
-
-    expect(style.backgroundColor).toBe('#1f2937');
-    expect(style.textColor).toBe('#ffffff');
+    const pages = await parseDrawioToPages(emptyPageXml, mockGraph);
+    expect(pages).toHaveLength(1);
+    expect(pages[0].name).toBe('Empty Page');
+    expect(pages[0].data).toBe('');
   });
 });

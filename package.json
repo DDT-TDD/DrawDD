@@ -1,7 +1,7 @@
 {
   "name": "drawdd",
   "private": false,
-  "version": "2.3.0",
+  "version": "2.3.1",
   "description": "DRAWDD - Open source diagramming tool for flowcharts, mindmaps, timelines, Venn diagrams, and more",
   "author": "DRAWDD Team",
   "license": "MIT",
@@ -43,19 +43,29 @@
       "icon": "public/icons/icon-256.ico",
       "target": [
         {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
           "target": "portable",
           "arch": [
             "x64"
           ]
         }
-      ],
-      "artifactName": "${productName}-${version}-Portable.${ext}"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "${productName}-${version}-Setup.${ext}"
     },
     "portable": {
       "artifactName": "${productName}-${version}-Portable.${ext}"
     },
-    "compression": "maximum",
-    "nsis": false
+    "compression": "maximum"
   },
   "dependencies": {
     "@antv/x6": "^2.19.2",

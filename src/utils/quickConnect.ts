@@ -353,21 +353,40 @@ export class QuickConnectManager {
     const sourcePort = this.getPortForDirection(direction, true);
     const targetPort = this.getPortForDirection(direction, false);
 
+    // Get active line color and connector style preference
+    const activeLineColor = (window as any).__drawdd_lineColor || theme.stroke;
+    const flowchartStyle = (window as any).__drawdd_flowchartConnectorStyle || 'rounded';
+
+    let edgeRouter: any = { name: 'manhattan', args: { padding: 10 } };
+    let edgeConnector: any = { name: 'rounded', args: { radius: 8 } };
+
+    if (flowchartStyle === 'smooth') {
+      edgeRouter = { name: 'normal' };
+      edgeConnector = { name: 'smooth' };
+    } else if (flowchartStyle === 'flowchart' || flowchartStyle === 'ortho') {
+      edgeRouter = { name: 'manhattan', args: { padding: 10 } };
+      edgeConnector = { name: 'normal' };
+    } else if (flowchartStyle === 'straight') {
+      edgeRouter = { name: 'normal' };
+      edgeConnector = { name: 'normal' };
+    }
+
     this.graph.addEdge({
       source: { cell: sourceNode.id, port: sourcePort },
       target: { cell: newNode.id, port: targetPort },
       attrs: {
         line: {
-          stroke: theme.stroke,
+          stroke: activeLineColor,
           strokeWidth: 2,
           targetMarker: {
             name: 'block',
-            size: 8,
+            width: 12,
+            height: 8,
           },
         },
       },
-      router: { name: 'manhattan' },
-      connector: { name: 'rounded', args: { radius: 8 } },
+      router: edgeRouter,
+      connector: edgeConnector,
     });
 
     // Do NOT select the new node — keep the quick connect arrows visible

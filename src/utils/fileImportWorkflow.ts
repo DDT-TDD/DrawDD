@@ -19,6 +19,7 @@ import {
   inferDiagramModeFromPageData,
   isDrawddImportDocument,
   mindmapToGraph,
+  parseDrawioToPages,
   visioToGraph,
 } from './importExport';
 
@@ -264,13 +265,48 @@ export async function importFileWithWorkflow(file: File, options: ImportWorkflow
     }
 
     case 'drawio': {
-      if (options.importToNewTab) {
-        options.importToNewTab(displayName, async () => {
-          await importFromDrawio(file, options.graph);
-        }, options.filePath);
+      const text = textContent || await file.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(text, 'text/xml');
+      const diagrams = doc.querySelectorAll('diagram');
+
+      if (diagrams.length > 1 && options.loadDrawddFile) {
+        const pagesData = await parseDrawioToPages(text, options.graph);
+        const PAGE_COLORS = [
+          '#3b82f6', // Blue
+          '#10b981', // Green
+          '#f59e0b', // Amber
+          '#ef4444', // Red
+          '#8b5cf6', // Purple
+          '#ec4899', // Pink
+          '#06b6d4', // Cyan
+          '#84cc16', // Lime
+        ];
+        const pages = pagesData.map((p, index) => ({
+          id: `page-${Date.now()}-${Math.random().toString(36).substring(2, 9)}-${index}`,
+          name: p.name,
+          color: PAGE_COLORS[index % PAGE_COLORS.length],
+          data: p.data,
+          order: index,
+          mode: p.mode
+        }));
+        const fileData = {
+          name: displayName,
+          pages,
+          activePageId: pages[0]?.id || '',
+          isModified: false,
+          ...(options.filePath ? { filePath: options.filePath } : {})
+        };
+        options.loadDrawddFile(fileData);
       } else {
-        await importFromDrawio(file, options.graph);
-        options.updateFileName?.(displayName);
+        if (options.importToNewTab) {
+          options.importToNewTab(displayName, async () => {
+            await importFromDrawio(file, options.graph);
+          }, options.filePath);
+        } else {
+          await importFromDrawio(file, options.graph);
+          options.updateFileName?.(displayName);
+        }
       }
       options.setMode('flowchart');
       break;

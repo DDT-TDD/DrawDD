@@ -51,6 +51,13 @@ export function Toolbar() {
   const [selectionCount, setSelectionCount] = useState(0);
   const drawddWindow = window as DrawddWindow;
 
+  const getExportFilename = (extension: string): string => {
+    const currentFile = (window as any).__currentDiagramFile;
+    let name = currentFile?.name || 'diagram';
+    name = name.replace(/\.(drwdd|json|png|svg|jpeg|jpg|pdf|drawio|html|md|txt|km)$/i, '');
+    return `${name}.${extension}`;
+  };
+
   // Track selection changes
   useEffect(() => {
     if (!graph) return;
@@ -145,7 +152,7 @@ export function Toolbar() {
           ia[i] = byteString.charCodeAt(i);
         }
         const blob = new Blob([ab], { type: mimeString });
-        saveAs(blob, 'drawdd-export.png');
+        saveAs(blob, getExportFilename('png'));
 
         // Restore after export
         if (shouldHide && container) container.classList.remove('hide-ports');
@@ -175,7 +182,7 @@ export function Toolbar() {
 
       graph.toSVG((svgString: string) => {
         const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-        saveAs(blob, 'drawdd-export.svg');
+        saveAs(blob, getExportFilename('svg'));
 
         // Restore after export
         if (shouldHide && container) container.classList.remove('hide-ports');
@@ -192,7 +199,7 @@ export function Toolbar() {
       if (currentFile) {
         // Export entire file structure with all pages
         const blob = new Blob([JSON.stringify(currentFile, null, 2)], { type: 'application/json' });
-        saveAs(blob, `${currentFile.name || 'diagram'}.drwdd`);
+        saveAs(blob, getExportFilename('drwdd'));
       } else {
         // Fallback: export just current graph
         const doc = exportToJSON(graph, {
@@ -203,7 +210,7 @@ export function Toolbar() {
           timelineDirection
         });
         const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' });
-        saveAs(blob, 'drawdd-export.drwdd');
+        saveAs(blob, getExportFilename('drwdd'));
       }
     }
   };
@@ -213,7 +220,7 @@ export function Toolbar() {
       try {
         const xml = exportToDrawioXML(graph);
         const blob = new Blob([xml], { type: 'application/xml;charset=utf-8' });
-        saveAs(blob, 'diagram.drawio');
+        saveAs(blob, getExportFilename('drawio'));
       } catch (error) {
         console.error('draw.io export error:', error);
         alert('Failed to export draw.io file: ' + (error instanceof Error ? error.message : 'Unknown error'));

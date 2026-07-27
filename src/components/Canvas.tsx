@@ -329,15 +329,15 @@ export function Canvas() {
             if (flowchartStyle === 'smooth') {
               edgeRouter = { name: 'normal' };
               edgeConnector = { name: 'smooth' };
-            } else if (flowchartStyle === 'flowchart') {
+            } else if (flowchartStyle === 'flowchart' || flowchartStyle === 'ortho') {
               edgeRouter = { name: 'manhattan', args: { padding: 10 } };
-              edgeConnector = { name: 'rounded', args: { radius: 10 } };
+              edgeConnector = { name: 'normal' };
             } else if (flowchartStyle === 'straight') {
               edgeRouter = { name: 'normal' };
               edgeConnector = { name: 'normal' };
             } else {
-              // 'rounded' (default) - normal router with rounded connector
-              edgeRouter = { name: 'normal' };
+              // 'rounded' (default) - manhattan router with rounded connector
+              edgeRouter = { name: 'manhattan', args: { padding: 10 } };
               edgeConnector = { name: 'rounded', args: { radius: 8 } };
             }
           }
@@ -1072,13 +1072,12 @@ export function Canvas() {
         }
       });
 
-      if (selected.length === 1) {
-        const cell = selected[0] as any;
-        setSelectedCell(cell as never);
-
-        // Add draggable tools to edges when selected
+      selectedArray.forEach((cell: any) => {
         if (cell.isEdge?.()) {
-          cell.addTools([
+          const routerName = (cell.getRouter() as any)?.name;
+          const isOrthogonal = routerName === 'manhattan' || routerName === 'metro' || routerName === 'er';
+
+          const tools: any[] = [
             {
               name: 'source-arrowhead',
               args: {
@@ -1103,21 +1102,10 @@ export function Canvas() {
                 }
               }
             },
-            {
-              name: 'vertices',
-              args: {
-                attrs: {
-                  fill: '#1976d2',
-                  stroke: '#fff',
-                  'stroke-width': 2,
-                  r: 5,
-                  cursor: 'move',
-                },
-                // Allow adding vertices by clicking on the edge
-                stopPropagation: false,
-              }
-            },
-            {
+          ];
+
+          if (isOrthogonal) {
+            tools.push({
               name: 'segments',
               args: {
                 attrs: {
@@ -1128,12 +1116,32 @@ export function Canvas() {
                   height: 10,
                   cursor: 'pointer',
                 },
-                // Show segment manipulation handles
                 stopPropagation: false,
               }
-            },
-          ]);
+            });
+          } else {
+            tools.push({
+              name: 'vertices',
+              args: {
+                attrs: {
+                  fill: '#1976d2',
+                  stroke: '#fff',
+                  'stroke-width': 2,
+                  r: 5,
+                  cursor: 'move',
+                },
+                stopPropagation: false,
+              }
+            });
+          }
+
+          cell.addTools(tools);
         }
+      });
+
+      if (selected.length === 1) {
+        const cell = selected[0] as any;
+        setSelectedCell(cell as never);
       } else {
         setSelectedCell(null);
       }

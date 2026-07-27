@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.1] - 2026-07-27
+
+### Fixed
+
+#### draw.io Imports
+- **Multi-page draw.io XML Import**: Full support for importing multi-page `.drawio` and `.xml` files. Each diagram page in the draw.io document is successfully parsed, decompressed (handling raw/uncompressed and compressed base64 zlib-deflate content), and imported as a separate tab/page inside DRAWDD.
+
+#### Export Filename Polish
+- **Dynamic Export Naming**: Exported files from both the Toolbar and MenuBar are now named dynamically based on the active tab/diagram title and the target export format extension (e.g. `diagram-name.png`, `diagram-name.svg`, etc.), rather than falling back to hardcoded `drawdd-export.*` or `diagram.*` names.
+
+#### Flowchart Line Creation & Interaction
+- **Standardized Connector Routing**: Unified line creation router and connector definitions across canvas port dragging, Toolbar default settings, PropertiesPanel, and QuickConnect (`rounded` -> manhattan + rounded, `ortho` -> manhattan + normal, `smooth` -> normal + smooth, `straight` -> normal + normal).
+- **Contextual Line Handle Selection**: Edge handles dynamically adapt to the line style — attaching `segments` tool handles to orthogonal/manhattan lines and `vertices` waypoint handles to straight/curved lines.
+- **QuickConnect Preference Inheritance**: QuickConnect hover arrows now inherit the active toolbar flowchart connector style and line stroke color when generating connected shapes.
+
 ## [2.3.0] - 2026-06-30
 
 ### Fixed

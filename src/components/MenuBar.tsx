@@ -108,6 +108,13 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
 
   const drawddWindow = window as DrawddWindow;
 
+  const getExportFilename = (extension: string): string => {
+    const currentFile = drawddWindow.__currentDiagramFile;
+    let name = currentFile?.name || 'diagram';
+    name = name.replace(/\.(drwdd|json|png|svg|jpeg|jpg|pdf|drawio|html|md|txt|km)$/i, '');
+    return `${name}.${extension}`;
+  };
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -428,7 +435,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
               ia[i] = byteString.charCodeAt(i);
             }
             const blob = new Blob([ab], { type: mimeString });
-            saveAs(blob, 'diagram.png');
+            saveAs(blob, getExportFilename('png'));
           }, {
             ratio: '2',
             padding: 20,
@@ -449,7 +456,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
         graph.toSVG((svgString: string) => {
           // SVG string is returned directly
           const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-          saveAs(blob, 'diagram.svg');
+          saveAs(blob, getExportFilename('svg'));
         });
       });
     }
@@ -463,7 +470,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
       if (currentFile) {
         // Export entire file structure with all pages
         const blob = new Blob([JSON.stringify(currentFile, null, 2)], { type: 'application/json' });
-        saveAs(blob, `${currentFile.name || 'diagram'}.json`);
+        saveAs(blob, getExportFilename('json'));
       } else {
         // Fallback: export just current graph
         const doc = exportToJSON(graph, {
@@ -474,7 +481,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
           timelineDirection
         });
         const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' });
-        saveAs(blob, 'diagram.json');
+        saveAs(blob, getExportFilename('json'));
       }
     }
     setActiveMenu(null);
@@ -497,7 +504,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
                 format: [logicalW, logicalH]
               });
               pdf.addImage(dataUri, 'PNG', 0, 0, logicalW, logicalH);
-              pdf.save('diagram.pdf');
+              pdf.save(getExportFilename('pdf'));
             };
             img.src = dataUri;
           }, {
@@ -519,7 +526,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
       try {
         const xml = exportToDrawioXML(graph);
         const blob = new Blob([xml], { type: 'application/xml;charset=utf-8' });
-        saveAs(blob, 'diagram.drawio');
+        saveAs(blob, getExportFilename('drawio'));
       } catch (e) {
         console.error('draw.io export error:', e);
         alert('Failed to export draw.io file: ' + (e instanceof Error ? e.message : 'Unknown error'));
@@ -542,7 +549,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
               ia[i] = byteString.charCodeAt(i);
             }
             const blob = new Blob([ab], { type: mimeString });
-            saveAs(blob, 'diagram.jpg');
+            saveAs(blob, getExportFilename('jpg'));
           }, {
             ratio: '2',
             padding: 20,
@@ -566,7 +573,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
           title: 'DRAWDD Diagram'
         });
         const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-        saveAs(blob, 'diagram.html');
+        saveAs(blob, getExportFilename('html'));
       } catch (e) {
         console.error('HTML export error:', e);
         alert('Failed to export HTML: ' + (e instanceof Error ? e.message : 'Unknown error'));
@@ -580,7 +587,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
       try {
         const markdown = exportToMarkdown(graph);
         const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
-        saveAs(blob, 'diagram.md');
+        saveAs(blob, getExportFilename('md'));
       } catch (e) {
         console.error('Markdown export error:', e);
         alert('Failed to export Markdown: ' + (e instanceof Error ? e.message : 'Unknown error'));
@@ -594,7 +601,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
       try {
         const text = exportToTextOutline(graph);
         const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-        saveAs(blob, 'diagram.txt');
+        saveAs(blob, getExportFilename('txt'));
       } catch (e) {
         console.error('Text export error:', e);
         alert('Failed to export text outline: ' + (e instanceof Error ? e.message : 'Unknown error'));
@@ -608,7 +615,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
       try {
         const kmJson = exportToKityMinder(graph);
         const blob = new Blob([kmJson], { type: 'application/json;charset=utf-8' });
-        saveAs(blob, 'diagram.km');
+        saveAs(blob, getExportFilename('km'));
       } catch (e) {
         console.error('KityMinder export error:', e);
         alert('Failed to export KityMinder file: ' + (e instanceof Error ? e.message : 'Unknown error'));

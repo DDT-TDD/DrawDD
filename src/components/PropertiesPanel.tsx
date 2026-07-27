@@ -1231,6 +1231,9 @@ export function PropertiesPanel() {
         edge.setConnector({ name: 'jumpover', args: { size: 6, type: 'arc' } });
       }
     });
+    if (graph) {
+      graph.trigger('selection:changed', { selected: graph.getSelectedCells() });
+    }
   };
 
   const handleLineHopsChange = (enabled: boolean) => {

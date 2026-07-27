@@ -2099,32 +2099,8 @@ async function extractMxGraphModelXml(mxfileDoc: Document): Promise<string> {
  *  - Compressed XML (what the real draw.io app produces by default)
  *  - Multi-page files (imports the first diagram page)
  */
-export async function importFromDrawio(file: File, graph: Graph): Promise<void> {
-  const text = await file.text();
+export async function loadMxGraphModelIntoGraph(modelXml: string, graph: Graph): Promise<void> {
   const parser = new DOMParser();
-
-  // The outer document should be an <mxfile> or an <mxGraphModel> directly
-  const doc = parser.parseFromString(text, 'text/xml');
-
-  const parseError = doc.querySelector('parsererror');
-  if (parseError) {
-    throw new Error('Invalid draw.io file: XML parse error. ' + parseError.textContent?.slice(0, 200));
-  }
-
-  let modelXml: string;
-  const rootTag = doc.documentElement.tagName.toLowerCase();
-
-  if (rootTag === 'mxfile') {
-    // Standard draw.io file: extract and possibly decompress the diagram content
-    modelXml = await extractMxGraphModelXml(doc);
-  } else if (rootTag === 'mxgraphmodel') {
-    // Raw mxGraphModel (no mxfile wrapper)
-    modelXml = text;
-  } else {
-    throw new Error(`Unexpected root element <${rootTag}>. Expected <mxfile> or <mxGraphModel>.`);
-  }
-
-  // Parse the mxGraphModel XML
   const modelDoc = parser.parseFromString(modelXml, 'text/xml');
   const modelParseError = modelDoc.querySelector('parsererror');
   if (modelParseError) {
@@ -2259,12 +2235,12 @@ export async function importFromDrawio(file: File, graph: Graph): Promise<void> 
     }
   }
 
-  if (vertices.length === 0 && edges.length === 0) {
-    throw new Error('No diagram content found in draw.io file. The file may be empty or use an unsupported format.');
-  }
-
   // Clear the graph and add all cells
   graph.clearCells();
+
+  if (vertices.length === 0 && edges.length === 0) {
+    return;
+  }
 
   // Build a set of valid vertex IDs so we can skip edges with missing endpoints
   const vertexIds = new Set(vertices.map(v => v.id));
@@ -2322,7 +2298,6 @@ export async function importFromDrawio(file: File, graph: Graph): Promise<void> 
 
   // Add edges (only if both endpoints exist as vertices in this diagram)
   for (const e of edges) {
-    // Edges with no source/target are floating annotations — skip them
     if (!e.source || !e.target) continue;
     if (!vertexIds.has(e.source) || !vertexIds.has(e.target)) continue;
 
@@ -2364,12 +2339,97 @@ export async function importFromDrawio(file: File, graph: Graph): Promise<void> 
 
     graph.addEdge(edgeDef);
   }
+}
+
+export async function importFromDrawio(file: File, graph: Graph): Promise<void> {
+  const text = await file.text();
+  const parser = new DOMParser();
+
+  // The outer document should be an <mxfile> or an <mxGraphModel> directly
+  const doc = parser.parseFromString(text, 'text/xml');
+
+  const parseError = doc.querySelector('parsererror');
+  if (parseError) {
+    throw new Error('Invalid draw.io file: XML parse error. ' + parseError.textContent?.slice(0, 200));
+  }
+
+  let modelXml: string;
+  const rootTag = doc.documentElement.tagName.toLowerCase();
+
+  if (rootTag === 'mxfile') {
+    modelXml = await extractMxGraphModelXml(doc);
+  } else if (rootTag === 'mxgraphmodel') {
+    modelXml = text;
+  } else {
+    throw new Error(`Unexpected root element <${rootTag}>. Expected <mxfile> or <mxGraphModel>.`);
+  }
+
+  await loadMxGraphModelIntoGraph(modelXml, graph);
 
   // Fit the view to the imported content
   setTimeout(() => {
     graph.zoomToFit({ padding: 40, maxScale: 1.5 });
     graph.centerContent();
   }, 50);
+}
+
+export async function parseDrawioToPages(
+  text: string,
+  graph: Graph
+): Promise<Array<{ name: string; data: string; mode: DiagramCanvasMode }>> {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(text, 'text/xml');
+  const parseError = doc.querySelector('parsererror');
+  if (parseError) {
+    throw new Error('Invalid draw.io file: XML parse error. ' + parseError.textContent?.slice(0, 200));
+  }
+
+  const diagramElements = Array.from(doc.querySelectorAll('diagram'));
+  if (diagramElements.length === 0) {
+    throw new Error('No <diagram> element found in draw.io file.');
+  }
+
+  const originalJSON = graph.toJSON();
+  const pages: Array<{ name: string; data: string; mode: DiagramCanvasMode }> = [];
+
+  try {
+    for (let i = 0; i < diagramElements.length; i++) {
+      const diagramEl = diagramElements[i];
+      const name = diagramEl.getAttribute('name') || `Page ${i + 1}`;
+      
+      let modelXml: string;
+      const rawContent = diagramEl.textContent?.trim() || '';
+      const inlineModel = diagramEl.querySelector('mxGraphModel');
+      
+      if (inlineModel) {
+        modelXml = inlineModel.outerHTML;
+      } else if (rawContent.startsWith('<')) {
+        modelXml = rawContent;
+      } else if (rawContent.length > 0) {
+        modelXml = await decompressDrawioDiagram(rawContent);
+      } else {
+        modelXml = '';
+      }
+
+      let pageData = '';
+      if (modelXml) {
+        graph.clearCells();
+        await loadMxGraphModelIntoGraph(modelXml, graph);
+        pageData = JSON.stringify(graph.toJSON());
+      }
+
+      pages.push({
+        name,
+        data: pageData,
+        mode: 'flowchart'
+      });
+    }
+  } finally {
+    graph.clearCells();
+    graph.fromJSON(originalJSON);
+  }
+
+  return pages;
 }
 
 // ============ HTML Export ============
