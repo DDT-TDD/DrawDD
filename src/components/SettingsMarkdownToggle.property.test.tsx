@@ -346,8 +346,8 @@ describe('Feature: markdown-and-folder-explorer, Property 7: Markdown toggle eff
   it('should handle complex markdown syntax when toggling', () => {
     fc.assert(
       fc.property(
-        fc.string().filter(s => s.length > 0 && s.length < 30 && !s.includes('*') && !s.includes('_') && !s.includes('`')),
-        fc.string().filter(s => s.length > 0 && s.length < 30 && !s.includes('*') && !s.includes('_') && !s.includes('`')),
+        fc.string().filter(s => s.length > 0 && s.length < 30 && !s.includes('*') && !s.includes('_') && !s.includes('`') && !s.includes('$')),
+        fc.string().filter(s => s.length > 0 && s.length < 30 && !s.includes('*') && !s.includes('_') && !s.includes('`') && !s.includes('$')),
         (text1, text2) => {
           // Create complex markdown with multiple syntax types
           const complexText = `**${text1}** and *${text2}* with \`code\``;

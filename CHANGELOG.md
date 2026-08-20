@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.2] - 2026-08-20
+
+### Security
+
+#### Dependency Hardening & Toolchain Upgrades
+- **Archive Extraction & Symlink Protections**: Upgraded `tar` and packaging modules to address arbitrary file overwrite and symlink poisoning vulnerabilities (GHSA-34x7-hfp2-rc4v, GHSA-8qq5-rm4j-mr97).
+- **Vite & Rollup Upgrades**: Upgraded `vite` to `7.3.6` and `rollup` to patch path traversal, source map disclosure, and Windows UNC path NTLM vulnerabilities (GHSA-4w7w-66w2-5vf9, GHSA-v6wh-96g9-6wx3, GHSA-mw96-cpmx-2vgc).
+- **Safe ZIP Handling**: Configured `adm-zip` override (`>=0.6.0`) for `vsdx-js` preventing malicious 4GB allocation DoS vectors (GHSA-xcpc-8h2w-3j85).
+- **Export & Parser Fixes**: Bumped `jspdf` to `4.2.1` and CSS dependencies to eliminate PDF injection and XSS risks (GHSA-f8cm-6447-x5h2, GHSA-qx2v-qp2m-jg93).
+- **ReDoS Mitigations**: Updated `brace-expansion`, `picomatch`, and `nanoid` packages.
+
+### Fixed
+
+#### Test Harness
+- **KaTeX Delimiter Property Test Isolation**: Excluded `$` in markdown property test generators to eliminate false positive collisions with inline math formulas.
+
 ## [2.3.1] - 2026-07-27
 
 ### Fixed
