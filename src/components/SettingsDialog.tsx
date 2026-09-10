@@ -94,7 +94,11 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
 
     // Apply to existing nodes if graph exists
     if (graph) {
-      graph.drawBackground({ color: scheme.backgroundColor });
+      if (scheme.backgroundColor === 'transparent') {
+        graph.clearBackground();
+      } else {
+        graph.drawBackground({ color: scheme.backgroundColor });
+      }
       applyColorSchemeToGraph(graph, scheme);
     }
   };
@@ -244,20 +248,43 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                 </div>
 
                 {canvasBackground.type === 'color' ? (
-                  <div className="grid grid-cols-10 gap-2">
-                    {backgroundColors.map((color) => (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-10 gap-2">
+                      {backgroundColors.map((color) => (
+                        <button
+                          key={color}
+                          onClick={() => {
+                            setBgColor(color);
+                            setCanvasBackground({ type: 'color', color });
+                          }}
+                          className={`w-8 h-8 rounded-lg border-2 transition-transform hover:scale-110 ${bgColor === color ? 'border-blue-500 ring-2 ring-blue-300' : 'border-gray-200 dark:border-gray-600'
+                            }`}
+                          style={{ backgroundColor: color }}
+                          title={color}
+                        />
+                      ))}
+                    </div>
+                    <div>
                       <button
-                        key={color}
                         onClick={() => {
-                          setBgColor(color);
-                          setCanvasBackground({ type: 'color', color });
+                          setBgColor('transparent');
+                          setCanvasBackground({ type: 'color', color: 'transparent' });
                         }}
-                        className={`w-8 h-8 rounded-lg border-2 transition-transform hover:scale-110 ${bgColor === color ? 'border-blue-500 ring-2 ring-blue-300' : 'border-gray-200 dark:border-gray-600'
-                          }`}
-                        style={{ backgroundColor: color }}
-                        title={color}
-                      />
-                    ))}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition-colors ${
+                          bgColor === 'transparent'
+                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-semibold'
+                            : 'border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        <span className="w-4 h-4 rounded-sm border border-gray-400 canvas-transparent-bg inline-block" />
+                        Transparent Canvas
+                      </button>
+                    </div>
+                    {bgColor === 'transparent' && (
+                      <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 text-xs leading-relaxed text-blue-800 dark:text-blue-300">
+                        <span className="font-semibold">ℹ️ Transparent Background:</span> Displayed with a light squared pattern so shapes and text remain clearly visible in both light and dark modes. Exports with a true transparent alpha channel.
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -410,8 +437,10 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                       {scheme.preview.map((color, i) => (
                         <div
                           key={i}
-                          className="w-6 h-6 rounded-full border border-gray-200"
-                          style={{ backgroundColor: color }}
+                          className={`w-6 h-6 rounded-full border border-gray-200 ${
+                            scheme.id === 'wireframe-transparent' && i === 0 ? 'canvas-transparent-bg' : ''
+                          }`}
+                          style={{ backgroundColor: color === 'transparent' ? '#ffffff' : color }}
                         />
                       ))}
                     </div>

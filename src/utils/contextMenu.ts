@@ -1220,6 +1220,17 @@ export function showCellContextMenu(
       { label: '---' },
       { label: '## Line Routing', icon: '' },
       {
+        label: 'Reset Waypoints / Reroute',
+        icon: '🔄',
+        action: () => {
+          (cell as Edge).setVertices([]);
+          const view = graph.findViewByCell(cell);
+          if (view) {
+            (view as any).update?.();
+          }
+        }
+      },
+      {
         label: 'Line Hops (Arc)',
         icon: '⌒',
         action: () => {
@@ -1230,22 +1241,39 @@ export function showCellContextMenu(
         label: 'Orthogonal Routing',
         icon: '⊢',
         action: () => {
+          (cell as Edge).setVertices([]);
           (cell as Edge).setConnector('normal');
-          (cell as Edge).setRouter('manhattan');
+          (cell as Edge).setRouter({
+            name: 'manhattan',
+            args: {
+              padding: 12,
+              startDirections: ['top', 'right', 'bottom', 'left'],
+              endDirections: ['top', 'right', 'bottom', 'left'],
+            },
+          });
         }
       },
       {
         label: 'Rounded Routing',
         icon: '⌒',
         action: () => {
+          (cell as Edge).setVertices([]);
           (cell as Edge).setConnector({ name: 'rounded', args: { radius: 10 } });
-          (cell as Edge).setRouter('manhattan');
+          (cell as Edge).setRouter({
+            name: 'manhattan',
+            args: {
+              padding: 12,
+              startDirections: ['top', 'right', 'bottom', 'left'],
+              endDirections: ['top', 'right', 'bottom', 'left'],
+            },
+          });
         }
       },
       {
         label: 'Smooth Curves',
         icon: '∿',
         action: () => {
+          (cell as Edge).setVertices([]);
           (cell as Edge).setConnector('smooth');
           (cell as Edge).setRouter('normal');
         }
@@ -1254,6 +1282,7 @@ export function showCellContextMenu(
         label: 'Straight Line',
         icon: '—',
         action: () => {
+          (cell as Edge).setVertices([]);
           (cell as Edge).setConnector('normal');
           (cell as Edge).setRouter('normal');
         }

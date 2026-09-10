@@ -439,6 +439,20 @@ export function PropertiesPanel() {
     graph.select(cloned);
   };
 
+  const handleResetWaypoints = () => {
+    const edgeTargets = getEdgeTargets();
+    if (!graph || edgeTargets.length === 0) return;
+    graph.startBatch('reroute');
+    edgeTargets.forEach(edge => {
+      edge.setVertices([]);
+      const router = edge.getRouter();
+      const connector = edge.getConnector();
+      edge.setRouter(router || { name: 'manhattan', args: { padding: 10 } });
+      edge.setConnector(connector || { name: 'rounded', args: { radius: 8 } });
+    });
+    graph.stopBatch('reroute');
+  };
+
   useEffect(() => {
     if (selectedCell && selectedCell.isNode()) {
       const node = selectedCell as Node;
@@ -713,10 +727,11 @@ export function PropertiesPanel() {
 
   const handleFontFamilyChange = (family: string) => {
     setFontFamily(family);
-    if (selectedCell && isNode) {
-      const fontValue = family === 'System UI' ? 'system-ui, sans-serif' : family;
-      (selectedCell as Node).setAttrs({ label: { fontFamily: fontValue } });
-    }
+    const fontValue = family === 'System UI' ? 'system-ui, sans-serif' : family;
+    const targets = selectedNodes.length > 0 ? selectedNodes : (selectedCell && isNode ? [selectedCell as Node] : []);
+    targets.forEach(node => {
+      node.setAttrs({ label: { fontFamily: fontValue } });
+    });
   };
 
   const handleTextColorChange = (color: string) => {
@@ -724,6 +739,19 @@ export function PropertiesPanel() {
     const targets = selectedNodes.length > 0 ? selectedNodes : (selectedCell && isNode ? [selectedCell as Node] : []);
     targets.forEach(node => {
       node.setAttrs({ label: { fill: color } });
+    });
+    const edgeTargets = getEdgeTargets();
+    edgeTargets.forEach(edge => {
+      const labels = edge.getLabels();
+      if (labels && labels.length > 0) {
+        labels.forEach((_, idx) => {
+          edge.setLabelAt(idx, {
+            attrs: {
+              label: { fill: color }
+            }
+          });
+        });
+      }
     });
   };
 
@@ -745,51 +773,57 @@ export function PropertiesPanel() {
 
   const handleTextAlignChange = (align: 'left' | 'center' | 'right') => {
     setTextAlign(align);
-    if (selectedCell && isNode) {
-      const textAnchor = align === 'left' ? 'start' : align === 'right' ? 'end' : 'middle';
-      const refX = align === 'left' ? 0.1 : align === 'right' ? 0.9 : 0.5;
-      (selectedCell as Node).setAttrs({
+    const textAnchor = align === 'left' ? 'start' : align === 'right' ? 'end' : 'middle';
+    const refX = align === 'left' ? 0.1 : align === 'right' ? 0.9 : 0.5;
+    const targets = selectedNodes.length > 0 ? selectedNodes : (selectedCell && isNode ? [selectedCell as Node] : []);
+    targets.forEach(node => {
+      node.setAttrs({
         label: {
           textAnchor,
           refX,
         }
       });
-    }
+    });
   };
 
   const handleFontWeightChange = (weight: 'normal' | 'bold') => {
     setFontWeight(weight);
-    if (selectedCell && isNode) {
-      (selectedCell as Node).setAttrs({ label: { fontWeight: weight } });
-    }
+    const targets = selectedNodes.length > 0 ? selectedNodes : (selectedCell && isNode ? [selectedCell as Node] : []);
+    targets.forEach(node => {
+      node.setAttrs({ label: { fontWeight: weight } });
+    });
   };
 
   const handleFontStyleChange = (style: 'normal' | 'italic') => {
     setFontStyle(style);
-    if (selectedCell && isNode) {
-      (selectedCell as Node).setAttrs({ label: { fontStyle: style } });
-    }
+    const targets = selectedNodes.length > 0 ? selectedNodes : (selectedCell && isNode ? [selectedCell as Node] : []);
+    targets.forEach(node => {
+      node.setAttrs({ label: { fontStyle: style } });
+    });
   };
 
   const handleTextDecorationChange = (decoration: 'none' | 'underline') => {
     setTextDecoration(decoration);
-    if (selectedCell && isNode) {
-      (selectedCell as Node).setAttrs({ label: { textDecoration: decoration } });
-    }
+    const targets = selectedNodes.length > 0 ? selectedNodes : (selectedCell && isNode ? [selectedCell as Node] : []);
+    targets.forEach(node => {
+      node.setAttrs({ label: { textDecoration: decoration } });
+    });
   };
 
   const handleRotationChange = (angle: number) => {
     setRotation(angle);
-    if (selectedCell && isNode) {
-      (selectedCell as Node).rotate(angle, { absolute: true });
-    }
+    const targets = selectedNodes.length > 0 ? selectedNodes : (selectedCell && isNode ? [selectedCell as Node] : []);
+    targets.forEach(node => {
+      node.rotate(angle, { absolute: true });
+    });
   };
 
   const handleShadowToggle = (enabled: boolean) => {
     setShadowEnabled(enabled);
-    if (selectedCell && isNode) {
+    const targets = selectedNodes.length > 0 ? selectedNodes : (selectedCell && isNode ? [selectedCell as Node] : []);
+    targets.forEach(node => {
       if (enabled) {
-        (selectedCell as Node).setAttrs({
+        node.setAttrs({
           body: {
             filter: {
               name: 'dropShadow',
@@ -803,9 +837,9 @@ export function PropertiesPanel() {
           }
         });
       } else {
-        (selectedCell as Node).setAttrs({ body: { filter: null } });
+        node.setAttrs({ body: { filter: null } });
       }
-    }
+    });
   };
 
   const handleShadowChange = (blur: number, offsetX: number, offsetY: number, color: string) => {
@@ -813,21 +847,24 @@ export function PropertiesPanel() {
     setShadowOffsetX(offsetX);
     setShadowOffsetY(offsetY);
     setShadowColor(color);
-    if (selectedCell && isNode && shadowEnabled) {
-      (selectedCell as Node).setAttrs({
-        body: {
-          filter: {
-            name: 'dropShadow',
-            args: {
-              dx: offsetX,
-              dy: offsetY,
-              blur: blur,
-              color: color,
+    const targets = selectedNodes.length > 0 ? selectedNodes : (selectedCell && isNode ? [selectedCell as Node] : []);
+    targets.forEach(node => {
+      if (shadowEnabled) {
+        node.setAttrs({
+          body: {
+            filter: {
+              name: 'dropShadow',
+              args: {
+                dx: offsetX,
+                dy: offsetY,
+                blur: blur,
+                color: color,
+              },
             },
-          },
-        }
-      });
-    }
+          }
+        });
+      }
+    });
   };
 
   const handleImageUrlChange = (url: string) => {
@@ -1417,7 +1454,11 @@ export function PropertiesPanel() {
       // Apply to canvas background
       setCanvasBackground({ type: 'color', color: scheme.backgroundColor });
       if (graph) {
-        graph.drawBackground({ color: scheme.backgroundColor });
+        if (scheme.backgroundColor === 'transparent') {
+          graph.clearBackground();
+        } else {
+          graph.drawBackground({ color: scheme.backgroundColor });
+        }
         applyColorSchemeToGraph(graph, scheme);
       }
     };
@@ -1439,6 +1480,25 @@ export function PropertiesPanel() {
               selectedColor={canvasBackground.type === 'color' ? canvasBackground.color : '#f8fafc'}
               onColorSelect={handleBackgroundColorChange}
             />
+            <div className="mt-2">
+              <button
+                onClick={() => handleBackgroundColorChange('transparent')}
+                className={`w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
+                  canvasBackground.type === 'color' && canvasBackground.color === 'transparent'
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-semibold'
+                    : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+                title="Set canvas background to transparent"
+              >
+                <span className="w-3.5 h-3.5 rounded-sm border border-gray-400 canvas-transparent-bg inline-block" />
+                Transparent Canvas
+              </button>
+            </div>
+            {canvasBackground.type === 'color' && canvasBackground.color === 'transparent' && (
+              <div className="mt-2 p-2 rounded bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 text-[11px] leading-relaxed text-blue-800 dark:text-blue-300">
+                <span className="font-semibold">ℹ️ Transparent Background:</span> Displayed with a light squared pattern so shapes and dark text remain clear in both light and dark modes. Exports with a true transparent alpha channel.
+              </div>
+            )}
           </Section>
 
           <Section title="Grid">
@@ -1499,8 +1559,10 @@ export function PropertiesPanel() {
                     {scheme.preview.slice(0, 3).map((color, i) => (
                       <div
                         key={i}
-                        className="w-3 h-3 rounded-full border border-gray-200"
-                        style={{ backgroundColor: color }}
+                        className={`w-3 h-3 rounded-full border border-gray-200 ${
+                          scheme.id === 'wireframe-transparent' && i === 0 ? 'canvas-transparent-bg' : ''
+                        }`}
+                        style={{ backgroundColor: color === 'transparent' ? '#ffffff' : color }}
                       />
                     ))}
                   </div>
@@ -1720,6 +1782,7 @@ export function PropertiesPanel() {
           {/* Border */}
           <Section title="Border">
             <ColorRow color={strokeColor} onChange={handleStrokeColorChange} />
+            <ColorPalette selectedColor={strokeColor} onColorSelect={handleStrokeColorChange} />
             <div className="mt-3">
               <div className="flex justify-between mb-1">
                 <label className="text-xs text-gray-500 dark:text-gray-400">Width</label>
@@ -1734,7 +1797,211 @@ export function PropertiesPanel() {
                 className="w-full accent-blue-500"
               />
             </div>
+            <div className="mt-3">
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Border Style</label>
+              <div className="grid grid-cols-3 gap-1">
+                {(['solid', 'dashed', 'dotted'] as const).map((style) => (
+                  <button
+                    key={style}
+                    onClick={() => handleBorderStyleChange(style)}
+                    className={`py-1 px-2 text-xs rounded border capitalize transition-colors ${
+                      borderStyle === style
+                        ? 'bg-blue-100 dark:bg-blue-900 border-blue-500 text-blue-700 dark:text-blue-300'
+                        : 'border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300'
+                    }`}
+                  >
+                    {style}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="flex justify-between mb-1">
+                <label className="text-xs text-gray-500 dark:text-gray-400">Corner Radius</label>
+                <span className="text-xs font-mono text-gray-600 dark:text-gray-300">{cornerRadius}px</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="20"
+                value={cornerRadius}
+                onChange={(e) => handleCornerRadiusChange(Number(e.target.value))}
+                className="w-full accent-blue-500"
+              />
+            </div>
           </Section>
+
+          {/* Text & Typography */}
+          <Section title="Text & Typography">
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div>
+                <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Font Family</label>
+                <select
+                  value={fontFamily}
+                  onChange={(e) => handleFontFamilyChange(e.target.value)}
+                  className="w-full px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                >
+                  {FONT_FAMILIES.map(f => <option key={f} value={f}>{f}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Font Size</label>
+                <select
+                  value={fontSize}
+                  onChange={(e) => handleFontSizeChange(Number(e.target.value))}
+                  className="w-full px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                >
+                  {FONT_SIZES.map(s => <option key={s} value={s}>{s}px</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="mb-3">
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Text Color</label>
+              <ColorRow color={textColor} onChange={handleTextColorChange} />
+              <ColorPalette selectedColor={textColor} onColorSelect={handleTextColorChange} />
+            </div>
+
+            <div className="mb-3">
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Text Style</label>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => handleFontWeightChange(fontWeight === 'bold' ? 'normal' : 'bold')}
+                  className={`flex-1 py-1.5 px-2 text-xs rounded border font-bold ${fontWeight === 'bold' ? 'bg-blue-100 dark:bg-blue-900 border-blue-500 text-blue-700 dark:text-blue-300' : 'border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300'}`}
+                  title="Bold"
+                >
+                  B
+                </button>
+                <button
+                  onClick={() => handleFontStyleChange(fontStyle === 'italic' ? 'normal' : 'italic')}
+                  className={`flex-1 py-1.5 px-2 text-xs rounded border italic ${fontStyle === 'italic' ? 'bg-blue-100 dark:bg-blue-900 border-blue-500 text-blue-700 dark:text-blue-300' : 'border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300'}`}
+                  title="Italic"
+                >
+                  I
+                </button>
+                <button
+                  onClick={() => handleTextDecorationChange(textDecoration === 'underline' ? 'none' : 'underline')}
+                  className={`flex-1 py-1.5 px-2 text-xs rounded border underline ${textDecoration === 'underline' ? 'bg-blue-100 dark:bg-blue-900 border-blue-500 text-blue-700 dark:text-blue-300' : 'border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300'}`}
+                  title="Underline"
+                >
+                  U
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Text Alignment</label>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => handleTextAlignChange('left')}
+                  className={`flex-1 py-1.5 px-2 text-xs rounded border ${textAlign === 'left' ? 'bg-blue-100 dark:bg-blue-900 border-blue-500 text-blue-700 dark:text-blue-300' : 'border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300'}`}
+                  title="Align Left"
+                >
+                  Left
+                </button>
+                <button
+                  onClick={() => handleTextAlignChange('center')}
+                  className={`flex-1 py-1.5 px-2 text-xs rounded border ${textAlign === 'center' ? 'bg-blue-100 dark:bg-blue-900 border-blue-500 text-blue-700 dark:text-blue-300' : 'border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300'}`}
+                  title="Align Center"
+                >
+                  Center
+                </button>
+                <button
+                  onClick={() => handleTextAlignChange('right')}
+                  className={`flex-1 py-1.5 px-2 text-xs rounded border ${textAlign === 'right' ? 'bg-blue-100 dark:bg-blue-900 border-blue-500 text-blue-700 dark:text-blue-300' : 'border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300'}`}
+                  title="Align Right"
+                >
+                  Right
+                </button>
+              </div>
+            </div>
+          </Section>
+
+          {/* Appearance & Shadow */}
+          <Section title="Appearance">
+            <div className="mb-3">
+              <div className="flex justify-between mb-1">
+                <label className="text-xs text-gray-500 dark:text-gray-400">Shape Opacity</label>
+                <span className="text-xs font-mono text-gray-600 dark:text-gray-300">{Math.round(opacity * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min="0.1"
+                max="1"
+                step="0.05"
+                value={opacity}
+                onChange={(e) => handleOpacityChange(Number(e.target.value))}
+                className="w-full accent-blue-500"
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <label className="text-xs text-gray-700 dark:text-gray-300">Drop Shadow</label>
+              <input
+                type="checkbox"
+                checked={shadowEnabled}
+                onChange={(e) => handleShadowToggle(e.target.checked)}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+            </div>
+          </Section>
+
+          {/* Selected Connections Styling (if any edges selected alongside shapes) */}
+          {selectedEdges.length > 0 && (
+            <Section title={`Connection Styling (${selectedEdges.length})`}>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Line Color</label>
+                  <ColorPalette
+                    selectedColor={selectedEdges[0]?.getAttrs()?.line?.stroke as string || '#333'}
+                    onColorSelect={(color) => {
+                      selectedEdges.forEach(edge => {
+                        edge.setAttrs({ line: { stroke: color } });
+                      });
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Line Type</label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {(['normal', 'rounded', 'smooth', 'ortho'] as const).map(type => (
+                      <button
+                        key={type}
+                        onClick={() => {
+                          selectedEdges.forEach(edge => {
+                            edge.setVertices([]);
+                            if (type === 'smooth') {
+                              edge.setConnector('smooth');
+                              edge.setRouter('normal');
+                            } else if (type === 'rounded') {
+                              edge.setConnector('rounded', { radius: 8 });
+                              edge.setRouter('normal');
+                            } else if (type === 'ortho') {
+                              edge.setConnector('rounded', { radius: 8 });
+                              edge.setRouter('manhattan');
+                            } else {
+                              edge.setConnector('normal');
+                              edge.setRouter('normal');
+                            }
+                          });
+                        }}
+                        className="py-1.5 px-2 rounded border text-xs capitalize border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300 transition-colors"
+                      >
+                        {type === 'normal' ? 'Straight' : type === 'rounded' ? 'Rounded' : type === 'smooth' ? 'Curved' : 'Orthogonal'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleResetWaypoints}
+                  className="w-full py-1.5 text-xs border border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/20 rounded hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+                >
+                  ↻ Reset Waypoints / Reroute Lines
+                </button>
+              </div>
+            </Section>
+          )}
 
           <Section title="Actions">
             <div className="grid grid-cols-2 gap-2 mb-3">

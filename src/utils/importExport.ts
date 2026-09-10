@@ -793,7 +793,11 @@ export function importFromJSON(
     if (doc.settings.canvasBackground && callbacks?.setCanvasBackground) {
       callbacks.setCanvasBackground(doc.settings.canvasBackground);
       // Apply background to graph
-      graph.drawBackground({ color: doc.settings.canvasBackground.color });
+      if (doc.settings.canvasBackground.color === 'transparent') {
+        graph.clearBackground();
+      } else {
+        graph.drawBackground({ color: doc.settings.canvasBackground.color });
+      }
     }
     if (doc.settings.showGrid !== undefined && callbacks?.setShowGrid) {
       callbacks.setShowGrid(doc.settings.showGrid);
@@ -1775,6 +1779,10 @@ function toMxColor(value: unknown): string | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
 
+  if (trimmed.toLowerCase() === 'none' || trimmed.toLowerCase() === 'transparent') {
+    return 'none';
+  }
+
   if (/^#[0-9a-fA-F]{3,8}$/.test(trimmed)) {
     if (trimmed.length === 4) {
       const r = trimmed[1];
@@ -1794,8 +1802,8 @@ function buildVertexStyle(node: Node): string {
   const label = attrs.label || {};
   const shape = String((node as any).shape || 'rect').toLowerCase();
 
-  const fillColor = toMxColor(body.fill) || '#ffffff';
-  const strokeColor = toMxColor(body.stroke) || '#000000';
+  const fillColor = toMxColor(body.fill) ?? '#ffffff';
+  const strokeColor = toMxColor(body.stroke) ?? '#000000';
   const textColor = toMxColor(label.fill) || '#000000';
   const fontSize = Number(label.fontSize) > 0 ? Number(label.fontSize) : 12;
   const rounded = Number(body.rx) > 0 || Number(body.ry) > 0 ? '1' : '0';

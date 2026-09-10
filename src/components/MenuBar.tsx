@@ -439,7 +439,7 @@ export function MenuBar({ onShowSettings, onShowExamples, onShowAbout }: MenuBar
           }, {
             ratio: '2',
             padding: 20,
-            backgroundColor: canvasBackground?.color || '#ffffff',
+            backgroundColor: canvasBackground?.color === 'transparent' ? undefined : (canvasBackground?.color || '#ffffff'),
           });
         });
       } catch (e) {

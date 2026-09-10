@@ -84,6 +84,7 @@ export function Canvas() {
     mindmapConnectorStyle,
     mindmapLayoutMode,
     flowchartConnectorStyle,
+    canvasBackground,
     setCanvasBackground
   } = useGraph();
   const graphRef = useRef<Graph | null>(null);
@@ -293,7 +294,7 @@ export function Canvas() {
         connectionPoint: 'boundary',
         allowBlank: true, // Allow creating standalone lines (not connected to nodes)
         snap: {
-          radius: 20,
+          radius: 25,
         },
         createEdge(): Edge {
           // Check if we're in mindmap mode and respect settings
@@ -325,19 +326,27 @@ export function Canvas() {
             edgeRouter = { name: 'normal' };
             edgeConnector = { name: 'smooth' };
           } else {
-            // Apply user's default flowchart connector style
+            // Apply user's default flowchart connector style with clean clearance
+            const manhattanConfig = {
+              name: 'manhattan',
+              args: {
+                padding: 12,
+                startDirections: ['top', 'right', 'bottom', 'left'],
+                endDirections: ['top', 'right', 'bottom', 'left'],
+              },
+            };
             if (flowchartStyle === 'smooth') {
               edgeRouter = { name: 'normal' };
               edgeConnector = { name: 'smooth' };
             } else if (flowchartStyle === 'flowchart' || flowchartStyle === 'ortho') {
-              edgeRouter = { name: 'manhattan', args: { padding: 10 } };
+              edgeRouter = manhattanConfig;
               edgeConnector = { name: 'normal' };
             } else if (flowchartStyle === 'straight') {
               edgeRouter = { name: 'normal' };
               edgeConnector = { name: 'normal' };
             } else {
               // 'rounded' (default) - manhattan router with rounded connector
-              edgeRouter = { name: 'manhattan', args: { padding: 10 } };
+              edgeRouter = manhattanConfig;
               edgeConnector = { name: 'rounded', args: { radius: 8 } };
             }
           }
@@ -349,11 +358,24 @@ export function Canvas() {
             zIndex: 0,
           });
         },
-        validateConnection({ targetMagnet }: any) {
-          return !!targetMagnet;
+        validateConnection({ sourceCell, targetCell, targetMagnet }: any) {
+          // Disallow connecting to self
+          if (sourceCell && targetCell && sourceCell === targetCell) return false;
+          // Valid if connecting to a port magnet OR connecting to a target cell/node
+          return !!targetMagnet || !!(targetCell && targetCell.isNode && targetCell.isNode());
         },
       }) as any,
       highlighting: {
+        magnetAvailable: {
+          name: 'stroke',
+          args: {
+            attrs: {
+              fill: '#fff',
+              stroke: '#3b82f6',
+              strokeWidth: 3,
+            },
+          },
+        },
         magnetAdsorbed: {
           name: 'stroke',
           args: {
@@ -1449,7 +1471,11 @@ export function Canvas() {
         const newBg = { type: 'color' as const, color: e.detail.color };
         setCanvasBackground(newBg);
         // Also update the visual graph background immediately
-        graphRef.current.drawBackground({ color: e.detail.color });
+        if (e.detail.color === 'transparent') {
+          graphRef.current.clearBackground();
+        } else {
+          graphRef.current.drawBackground({ color: e.detail.color });
+        }
       }
     };
 
@@ -1458,6 +1484,18 @@ export function Canvas() {
       window.removeEventListener('drawdd:set-background', handleSetBackground as EventListener);
     };
   }, [setCanvasBackground]);
+
+  // Keep visual graph background synchronized with canvasBackground state
+  useEffect(() => {
+    if (!graphRef.current) return;
+    if (canvasBackground.type === 'color') {
+      if (canvasBackground.color === 'transparent') {
+        graphRef.current.clearBackground();
+      } else {
+        graphRef.current.drawBackground({ color: canvasBackground.color });
+      }
+    }
+  }, [canvasBackground]);
 
   // Listen for layout mode changes (compact/standard) and re-apply layout
   useEffect(() => {
@@ -1760,18 +1798,22 @@ export function Canvas() {
     }
   }, [gridSize]);
 
+  const isTransparent = canvasBackground?.color === 'transparent';
+
   return (
-    <div className="relative flex-1 h-full">
+    <div className={`relative flex-1 h-full ${isTransparent ? 'canvas-transparent-bg' : ''}`}>
       <div
         ref={containerRef}
-        className="w-full h-full"
+        className={`w-full h-full ${isTransparent ? 'canvas-transparent-bg' : ''}`}
       />
 
       <ZoomControls />
       <QuickActions />
       <div
         ref={minimapRef}
-        className="absolute bottom-4 right-4 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden"
+        className={`absolute bottom-4 right-4 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden ${
+          isTransparent ? 'bg-white' : 'bg-white dark:bg-gray-800'
+        }`}
       />
     </div>
   );

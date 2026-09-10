@@ -61,6 +61,8 @@ class MockEdge {
 class MockGraph {
   private nodes: MockNode[];
   private edges: MockEdge[];
+  public backgroundCleared = false;
+  public drawnBackgroundColor?: string;
 
   constructor(nodes: MockNode[], edges: MockEdge[]) {
     this.nodes = nodes;
@@ -73,6 +75,14 @@ class MockGraph {
 
   getEdges(): MockEdge[] {
     return this.edges;
+  }
+
+  clearBackground(): void {
+    this.backgroundCleared = true;
+  }
+
+  drawBackground(options: { color: string }): void {
+    this.drawnBackgroundColor = options.color;
   }
 }
 
@@ -138,5 +148,40 @@ describe('applyColorSchemeToGraph', () => {
     expect(standardNode.getAttrs().body.stroke).toBe(scheme.nodeColors.primary.stroke);
     expect(standardNode.getAttrs().label.fill).toBe(scheme.nodeColors.primary.text);
     expect(edge.getAttrs().line.stroke).toBe(scheme.lineColor);
+  });
+
+  it('correctly applies wireframe-transparent theme removing fills and clearing background', () => {
+    const scheme = getColorScheme('wireframe-transparent');
+    expect(scheme.backgroundColor).toBe('transparent');
+    expect(scheme.lineColor).toBe('#000000');
+
+    const node = new MockNode(
+      {
+        body: { fill: '#3b82f6', stroke: '#1d4ed8', strokeWidth: 2 },
+        label: { text: 'Node', fill: '#ffffff' },
+      },
+      {},
+    );
+    const edge = new MockEdge({ line: { stroke: '#1d4ed8' } });
+    const graph = new MockGraph([node], [edge]);
+
+    applyColorSchemeToGraph(graph as unknown as Graph, scheme);
+
+    expect(graph.backgroundCleared).toBe(true);
+    expect(node.getAttrs().body.fill).toBe('transparent');
+    expect(node.getAttrs().body.stroke).toBe('#000000');
+    expect(node.getAttrs().label.fill).toBe('#000000');
+    expect(edge.getAttrs().line.stroke).toBe('#000000');
+  });
+
+  it('correctly applies black-and-white and grayscale themes', () => {
+    const bwScheme = getColorScheme('black-and-white');
+    expect(bwScheme.name).toBe('Black & White');
+    expect(bwScheme.lineColor).toBe('#000000');
+    expect(bwScheme.backgroundColor).toBe('#ffffff');
+
+    const grayScheme = getColorScheme('grayscale');
+    expect(grayScheme.name).toBe('Grayscale');
+    expect(grayScheme.lineColor).toBe('#374151');
   });
 });

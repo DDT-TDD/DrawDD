@@ -246,6 +246,16 @@ export interface VennThemeStyle extends BodyStyleSnapshot {
  * semi-transparent circles remain clearly visible against the dark canvas.
  */
 export function getVennThemeStyle(scheme: ColorScheme, index: number, fillOpacity = 0.30): VennThemeStyle {
+  if (scheme.id === 'wireframe-transparent') {
+    return {
+      fill: 'transparent',
+      stroke: '#000000',
+      strokeWidth: 2,
+      fillOpacity: 0,
+      labelFill: '#000000',
+    };
+  }
+
   const i = Math.abs(Math.trunc(index)) % 5;
 
   const lineHsl = hexToHsl(scheme.lineColor);

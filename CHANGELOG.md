@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.4.0] - 2026-09-10
+
+### Added
+
+#### New Color Themes
+- **Black & White Theme**: High-contrast, clean monochrome theme with pure white canvas, solid black lines, black text, and crisp black-and-white node styling.
+- **Grayscale Theme**: Subtle and professional neutral gray tones designed for clean printing and documentation.
+- **Wireframe (Transparent) Theme**: Minimalist wireframe presentation with a completely transparent canvas background, transparent shape fills, solid black borders, and black text.
+- **Transparent PNG Export**: PNG exports with the Wireframe (Transparent) theme or transparent canvas background preserve alpha channel transparency.
+
+#### Multi-Selection Properties Panel Enhancements
+- **Bulk Text & Typography Styling**: Text color, font family, font size, text alignment (left, center, right), and font styles (bold, italic, underline) can now be modified simultaneously for multiple selected shapes or all shapes (`Ctrl+A`).
+- **Comprehensive Bulk Appearance Controls**: Border style (solid, dashed, dotted), stroke width, corner radius, fill color, stroke color, opacity, and drop shadows can be set in bulk across multiple selected shapes.
+- **Bulk Connection Styling**: Multi-edge selection now supports bulk changes to line styles, arrowhead markers, and line routing.
+
+#### Connection Usability & Automatic Rerouting
+- **Draw.io-Style Connection Snapping**: Relaxed connection validation to allow snapping directly to target node boundaries and bodies rather than requiring exact 6px port circle placement.
+- **Connectable Magnet Visual Feedback**: Added `magnetAvailable` highlighting when dragging connections near valid target ports.
+- **Reset Waypoints / Reroute Action**: Added "Reset Waypoints / Reroute" controls to the edge context menu and Properties Panel to cleanly discard obsolete manual waypoints and restore optimal Manhattan routing.
+- **Automatic Rerouting on Style Switch**: Switching edge routing types (e.g., Orthogonal, Rounded, Straight, Smooth Curves) automatically resets stale vertices for a clean route.
+
+### Fixed
+
+#### Page Tab Bar & Duplication
+- **Page Renaming on Duplicated Tabs**: Fixed event bubbling from the rename `<input>` to the parent tab element that previously triggered page selection and prematurely aborted rename operations.
+- **Double-Submit Prevention**: Added `isSubmittingRef` guard preventing enter keypress and input blur race conditions during page renaming.
+- **Context Menu Clamping**: Dynamically calculated context menu coordinates to prevent page tab context menus from overflowing off-screen.
+- **Atomic Page Duplication**: Page duplication now atomically captures and clones active graph state and file data simultaneously.
+
 ## [2.3.2] - 2026-08-20
 
 ### Security

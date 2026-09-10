@@ -268,21 +268,35 @@ function AppContent() {
     const sourcePage = currentFile.pages.find(p => p.id === pageId);
     if (!sourcePage) return;
 
-    saveCurrentPageData();
+    const currentGraphData = graph ? JSON.stringify(graph.toJSON()) : '';
+    const duplicatedData = (pageId === currentFile.activePageId && currentGraphData)
+      ? currentGraphData
+      : (sourcePage.data || '');
+
     const newPage: DiagramPage = {
       ...createNewPage(currentFile.pages.length),
       name: `${sourcePage.name} (Copy)`,
-      data: sourcePage.data,
+      data: duplicatedData,
       mode: sourcePage.mode ?? mode
     };
 
-    setFiles(prev => prev.map(f =>
-      f.id === activeFileId
-        ? { ...f, pages: [...f.pages, newPage], activePageId: newPage.id, isModified: true }
-        : f
-    ));
+    setFiles(prev => prev.map(f => {
+      if (f.id !== activeFileId) return f;
+      const updatedPages = f.pages.map(p =>
+        p.id === f.activePageId
+          ? { ...p, data: currentGraphData || p.data, mode }
+          : p
+      );
+      return {
+        ...f,
+        pages: [...updatedPages, newPage],
+        activePageId: newPage.id,
+        isModified: true
+      };
+    }));
+
     loadPageData(newPage);
-  }, [activeFileId, currentFile, mode, saveCurrentPageData, loadPageData]);
+  }, [activeFileId, currentFile, graph, mode, loadPageData]);
 
   const handlePageColorChange = useCallback((pageId: string, color: string) => {
     setFiles(prev => prev.map(f =>

@@ -41,6 +41,8 @@ export function PageTabBar({
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  const isSubmittingRef = useRef(false);
+
   // Close context menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -62,17 +64,31 @@ export function PageTabBar({
 
   const handleContextMenu = (e: React.MouseEvent, pageId: string) => {
     e.preventDefault();
-    setContextMenu({ pageId, x: e.clientX, y: e.clientY });
+    e.stopPropagation();
+    const tabRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const menuWidth = 180;
+    // Align with the tab's left edge while keeping within screen bounds
+    const x = Math.max(8, Math.min(tabRect.left, window.innerWidth - menuWidth - 8));
+    // Position menu directly above the tab bar
+    const bottom = Math.max(8, window.innerHeight - tabRect.top + 4);
+    setContextMenu({ pageId, x, y: bottom });
   };
 
   const handleDoubleClick = (page: DiagramPage) => {
+    isSubmittingRef.current = false;
     setEditingPageId(page.id);
     setEditingName(page.name);
   };
 
   const handleRenameSubmit = () => {
-    if (editingPageId && editingName.trim()) {
-      onPageRename(editingPageId, editingName.trim());
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+
+    if (editingPageId) {
+      const trimmed = editingName.trim();
+      if (trimmed) {
+        onPageRename(editingPageId, trimmed);
+      }
     }
     setEditingPageId(null);
     setEditingName('');
@@ -80,8 +96,13 @@ export function PageTabBar({
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
       handleRenameSubmit();
     } else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      isSubmittingRef.current = true;
       setEditingPageId(null);
       setEditingName('');
     }
@@ -99,8 +120,17 @@ export function PageTabBar({
                 ? 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100'
                 : 'bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-850'
             }`}
-            onClick={() => onPageSelect(page.id)}
-            onDoubleClick={() => handleDoubleClick(page)}
+            onClick={(e) => {
+              if (editingPageId === page.id) {
+                e.stopPropagation();
+                return;
+              }
+              onPageSelect(page.id);
+            }}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              handleDoubleClick(page);
+            }}
             onContextMenu={(e) => handleContextMenu(e, page.id)}
             title={`${page.name}\nRight-click for options\nDouble-click to rename`}
           >
@@ -118,15 +148,18 @@ export function PageTabBar({
                 onChange={(e) => setEditingName(e.target.value)}
                 onBlur={handleRenameSubmit}
                 onKeyDown={handleKeyDown}
-                className="w-20 px-1 py-0.5 text-xs bg-white dark:bg-gray-700 border border-blue-500 rounded outline-none"
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onDoubleClick={(e) => e.stopPropagation()}
+                className="w-28 px-1.5 py-0.5 text-xs bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-blue-500 rounded outline-none shadow-sm"
               />
             ) : (
-              <span className="text-xs truncate max-w-[80px]">
+              <span className="text-xs truncate max-w-[120px]">
                 {page.name}
               </span>
             )}
             
-            {pages.length > 1 && activePageId === page.id && (
+            {pages.length > 1 && activePageId === page.id && editingPageId !== page.id && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -155,8 +188,8 @@ export function PageTabBar({
       {contextMenu && (
         <div
           ref={menuRef}
-          className="fixed bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-[1000] py-1 min-w-[160px]"
-          style={{ left: contextMenu.x, top: contextMenu.y - 150 }}
+          className="fixed bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-[1000] py-1 min-w-[170px]"
+          style={{ left: contextMenu.x, bottom: contextMenu.y }}
         >
           <button
             onClick={() => {
@@ -170,11 +203,16 @@ export function PageTabBar({
           </button>
           <button
             onClick={() => {
-              const page = pages.find(p => p.id === contextMenu.pageId);
-              if (page) handleDoubleClick(page);
+              const targetPageId = contextMenu.pageId;
+              const page = pages.find(p => p.id === targetPageId);
               setContextMenu(null);
+              if (page) {
+                setTimeout(() => {
+                  handleDoubleClick(page);
+                }, 30);
+              }
             }}
-            className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+            className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
           >
             Rename Page
           </button>

@@ -15,6 +15,12 @@ export function applyColorSchemeToGraph(graph: Graph, scheme: ColorScheme): void
   let colorIndex = 0;
   let fallbackVennIndex = 0;
 
+  if (scheme.backgroundColor === 'transparent') {
+    (graph as any).clearBackground?.();
+  } else if (scheme.backgroundColor) {
+    (graph as any).drawBackground?.({ color: scheme.backgroundColor });
+  }
+
   graph.getNodes().forEach((node) => {
     const attrs = node.getAttrs();
     const body = (attrs.body || {}) as Partial<ShapeBodyAttrs>;
