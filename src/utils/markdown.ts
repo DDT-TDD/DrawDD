@@ -216,6 +216,19 @@ function addNodeToHierarchy(
 // ============ INLINE MARKDOWN RENDERING ============
 
 /**
+ * Sanitize URL to ensure dangerous protocols (javascript, vbscript, data) are rejected.
+ */
+export function sanitizeUrl(url: string): string {
+    const trimmed = url.trim();
+    if (!trimmed) return '#';
+    if (/^(javascript|vbscript|data):/i.test(trimmed)) {
+        return '#';
+    }
+    return trimmed;
+}
+
+
+/**
  * Render inline markdown to HTML
  * Supports: bold, italic, strikethrough, highlight, code, links, equations
  */
@@ -234,18 +247,21 @@ export function renderInlineMarkdown(text: string): string {
     // Protect generated HTML so later markdown passes do not mutate hrefs or KaTeX output.
 
     // Links: [text](url)
-    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) =>
-        protectFragment(`<a href="${url}" target="_blank" style="color:#2196f3;text-decoration:underline;">${label}</a>`));
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
+        const safeUrl = sanitizeUrl(unescapeHtml(url));
+        const finalUrl = safeUrl === '#' ? '#' : url;
+        return protectFragment(`<a href="${finalUrl}" target="_blank" rel="noopener noreferrer" style="color:#2196f3;text-decoration:underline;">${label}</a>`);
+    });
 
     // KaTeX equations - $...$ and $$...$$
     html = html.replace(/\$\$([^$]+)\$\$/g, (_, eq) => {
         try {
-            return protectFragment(katex.renderToString(unescapeHtml(eq), { throwOnError: false, displayMode: true }));
+            return protectFragment(katex.renderToString(unescapeHtml(eq), { throwOnError: false, displayMode: true, trust: false }));
         } catch { return `$$${eq}$$`; }
     });
     html = html.replace(/\$([^$]+)\$/g, (_, eq) => {
         try {
-            return protectFragment(katex.renderToString(unescapeHtml(eq), { throwOnError: false, displayMode: false }));
+            return protectFragment(katex.renderToString(unescapeHtml(eq), { throwOnError: false, displayMode: false, trust: false }));
         } catch { return `$${eq}$`; }
     });
 

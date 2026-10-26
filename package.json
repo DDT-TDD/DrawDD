@@ -1,7 +1,7 @@
 {
   "name": "drawdd",
   "private": false,
-  "version": "2.4.0",
+  "version": "2.5.0",
   "description": "DRAWDD - Open source diagramming tool for flowcharts, mindmaps, timelines, Venn diagrams, and more",
   "author": "DRAWDD Team",
   "license": "MIT",
@@ -9,7 +9,18 @@
   "type": "module",
   "overrides": {
     "adm-zip": ">=0.6.0",
-    "brace-expansion": ">=1.1.18"
+    "brace-expansion": ">=1.1.18",
+    "dompurify": ">=3.4.17",
+    "fast-uri": ">=3.1.9",
+    "fflate": ">=0.8.3",
+    "handlebars": ">=4.7.10",
+    "http-cache-semantics": ">=4.2.1",
+    "js-yaml": ">=4.3.2",
+    "source-map-js": ">=1.2.2",
+    "undici": ">=6.29.1",
+    "@xmldom/xmldom": ">=0.8.15",
+    "zod": ">=4.6.6",
+    "@humanfs/node": ">=0.16.8"
   },
   "scripts": {
     "dev": "vite",
@@ -87,13 +98,13 @@
     "file-saver": "^2.0.5",
     "jspdf": "^4.2.1",
     "jszip": "^3.10.1",
-    "katex": "^0.16.28",
+    "katex": "^0.19.1",
     "lucide-react": "^0.556.0",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "vsdx-js": "^1.2.0"
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@electron/packager": "^20.3.0",
     "@eslint/js": "^9.39.1",
     "@tailwindcss/vite": "^4.1.17",
     "@testing-library/jest-dom": "^6.9.1",
@@ -104,9 +115,8 @@
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
-    "electron": "^39.8.10",
+    "electron": "^42.11.18",
     "electron-builder": "^26.15.3",
-    "electron-packager": "^17.1.2",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
@@ -119,6 +129,6 @@
     "ts-jest": "^29.4.6",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
-    "vite": "^7.3.6"
+    "vite": "^7.3.7"
   }
 }

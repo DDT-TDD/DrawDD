@@ -2012,12 +2012,21 @@ async function decompressDrawioDiagram(encoded: string): Promise<string> {
     writer.write(bytes);
     writer.close();
 
+    const MAX_DECOMPRESSED_SIZE = 50 * 1024 * 1024; // 50MB decompression limit guard
     const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
     let done = false;
     while (!done) {
       const { value, done: d } = await reader.read();
       done = d;
-      if (value) chunks.push(value);
+      if (value) {
+        totalBytes += value.length;
+        if (totalBytes > MAX_DECOMPRESSED_SIZE) {
+          await reader.cancel();
+          throw new Error("Decompressed payload exceeds maximum allowable limit (50MB).");
+        }
+        chunks.push(value);
+      }
     }
 
     const total = chunks.reduce((n, c) => n + c.length, 0);

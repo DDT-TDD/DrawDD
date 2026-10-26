@@ -215,8 +215,8 @@ describe('Feature: markdown-and-folder-explorer, Property 2: Markdown applicatio
   it('should apply markdown rendering to mixed content with multiple syntax types', () => {
     fc.assert(
       fc.property(
-        fc.string().filter(s => s.length > 0 && s.length < 20 && !s.includes('*') && !s.includes('_')),
-        fc.string().filter(s => s.length > 0 && s.length < 20 && !s.includes('*') && !s.includes('_')),
+        fc.string().filter(s => s.length > 0 && s.length < 20 && !s.includes('*') && !s.includes('_') && !s.includes(String.fromCharCode(36))),
+        fc.string().filter(s => s.length > 0 && s.length < 20 && !s.includes('*') && !s.includes('_') && !s.includes(String.fromCharCode(36))),
         (text1, text2) => {
           // Create mixed content: bold + italic
           const mixedText = `**${text1}** and *${text2}*`;

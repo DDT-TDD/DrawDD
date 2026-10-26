@@ -14,6 +14,16 @@ try {
 let mainWindow;
 let lastOpenDir = null; // Track last-used directory for faster file open dialogs
 
+function isSafeUrl(rawUrl) {
+  if (typeof rawUrl !== 'string') return false;
+  try {
+    const parsed = new URL(rawUrl);
+    return ['http:', 'https:', 'mailto:'].includes(parsed.protocol);
+  } catch {
+    return false;
+  }
+}
+
 function ensureDrawddExtension(filePath) {
   if (filePath.toLowerCase().endsWith('.drwdd')) return filePath;
   if (filePath.toLowerCase().endsWith('.drawdd.json')) return filePath.replace(/\.drawdd\.json$/i, '.drwdd');
@@ -49,6 +59,9 @@ function createWindow() {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.cjs'),
       spellcheck: true, // Enable spellcheck
+      webviewTag: false,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
     },
     show: false,
     titleBarStyle: 'default',
@@ -107,13 +120,26 @@ function createWindow() {
   }
 
   // Show window when ready
+    // Restrict navigation to prevent arbitrary external redirects
+  mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    try {
+      const parsedUrl = new URL(navigationUrl);
+      if (process.env.ELECTRON_DEV && parsedUrl.origin === 'http://localhost:5173') return;
+      if (!process.env.ELECTRON_DEV && (navigationUrl.startsWith('file://') || parsedUrl.protocol === 'file:')) return;
+    } catch {
+      // invalid URL
+    }
+    event.preventDefault();
+  });
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
   });
 
   // Open external links in default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    if (isSafeUrl(url)) {
+      shell.openExternal(url);
+    }
     return { action: 'deny' };
   });
 
@@ -570,6 +596,9 @@ ipcMain.handle('get-recent-files', async () => {
 // Open external URL in default browser
 ipcMain.handle('open-external', async (_event, url) => {
   try {
+    if (!isSafeUrl(url)) {
+      return { success: false, error: 'Blocked unsafe URL protocol' };
+    }
     await shell.openExternal(url);
     return { success: true };
   } catch (error) {
@@ -595,9 +624,20 @@ ipcMain.handle('select-folder', async () => {
 // Folder Explorer: Open file with default application
 ipcMain.handle('open-file', async (_event, filePath) => {
   try {
-    const result = await shell.openPath(filePath);
+    if (typeof filePath !== 'string' || !filePath.trim()) {
+      return { success: false, error: 'Invalid file path' };
+    }
+    const resolved = path.resolve(filePath);
+    if (!fs.existsSync(resolved)) {
+      return { success: false, error: 'File does not exist' };
+    }
+    const ext = path.extname(resolved).toLowerCase();
+    const dangerousExts = ['.bat', '.cmd', '.exe', '.com', '.msi', '.vbs', '.vbe', '.js', '.jse', '.wsf', '.wsh', '.ps1', '.scr', '.pif'];
+    if (dangerousExts.includes(ext)) {
+      return { success: false, error: 'Opening executable files directly is restricted for security' };
+    }
+    const result = await shell.openPath(resolved);
     if (result) {
-      // shell.openPath returns empty string on success, error message on failure
       return { success: false, error: `Failed to open file: ${result}` };
     }
     return { success: true };
@@ -609,7 +649,15 @@ ipcMain.handle('open-file', async (_event, filePath) => {
 // Folder Explorer: Scan directory recursively
 ipcMain.handle('scan-directory', async (_event, dirPath, includeHidden = false) => {
   try {
+    if (typeof dirPath !== 'string' || !dirPath.trim()) {
+      return { success: false, error: 'Invalid directory path' };
+    }
+    const MAX_DEPTH = 10;
+    let scannedCount = 0;
+    const MAX_SCANNED = 5000;
     const scanDir = async (currentPath, depth = 0) => {
+      if (depth > MAX_DEPTH || scannedCount >= MAX_SCANNED) return null;
+      scannedCount++;
       const stats = await fs.promises.stat(currentPath);
       const name = path.basename(currentPath);
 
@@ -655,7 +703,7 @@ ipcMain.handle('scan-directory', async (_event, dirPath, includeHidden = false) 
             }
 
             const childNode = await scanDir(entryPath, depth + 1);
-            node.children.push(childNode);
+            if (childNode) node.children.push(childNode);
           } catch (err) {
             // Skip files/folders we can't access (permission errors, etc.)
             console.warn(`Skipping ${entryPath}: ${err.message}`);

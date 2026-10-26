@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.5.0] - 2026-10-26
+
+### Security
+
+#### Comprehensive Dependency Audit & Vulnerability Remediation
+- **0 Vulnerability Baseline**: Remediated all 22 vulnerabilities (4 critical, 13 high, 4 moderate, 1 low) reported by `npm audit`.
+- **Elimination of Critical RCE & Insecure ZIP Dependencies**: Removed unused `vsdx-js` dependency, eradicating `adm-zip` (multiple DoS and symlink file overwrite advisories), `vitest`, and `tinypool` (prototype pollution leading to arbitrary code execution: GHSA-5gmw-xhrv-c9v3, GHSA-85c8-ppgw-ccpr).
+- **Electron Upgrade (`^42.11.18`)**: Upgraded Electron runtime to 42.11.18, resolving 12 Electron CVEs including sandbox inheritance bypasses, protocol handler cross-origin leakage, webview Node integration bypass, and certificate validation mitigations.
+- **Vite Upgrade (`^7.3.7`)**: Upgraded Vite to version 7.3.7, closing Windows launch-editor command argument injection, fs existence check bypasses, and middleware cross-origin script execution vulnerabilities.
+- **Packager Modernization**: Migrated to `@electron/packager@^20.3.0`, removing vulnerable `extract-zip` symlink path traversal and arbitrary file write flaws.
+- **KaTeX Upgrade (`^0.19.1`)**: Upgraded KaTeX to version 0.19.1 to fix prototype pollution trust bypasses, with `trust: false` enabled across all renderer passes.
+- **Transitive Dependency Overrides**: Added strict overrides for `dompurify` (>=3.4.17), `brace-expansion` (>=5.0.12), `fast-uri` (>=3.1.9), `fflate` (>=0.8.3), `handlebars` (>=4.7.10), `http-cache-semantics` (>=4.2.1), `js-yaml` (>=4.3.2), `source-map-js` (>=1.2.2), `undici` (>=6.29.1), `@xmldom/xmldom` (>=0.8.15), `zod` (>=4.6.6), and `@humanfs/node` (>=0.16.8).
+
+#### Node.js October 2026 Security Release Remediation
+- **Node.js LTS Runtime Compliance**: Validated execution against patched Node.js v24.22.1 LTS runtime to address CVE-2026-111497 (Brotli decoder out-of-bounds write / "Node2Shell").
+- **Decompression Bomb Protection**: Added 50MB in-flight stream limit (`MAX_DECOMPRESSED_SIZE`) in `decompressDrawioDiagram` to prevent memory exhaustion and browser/Node crashes when decompressing untrusted draw.io inflate/deflate streams.
+
+#### Electron IPC & Application Hardening
+- **IPC URL Scheme Validation**: Enforced strict `isSafeUrl` verification (`http:`, `https:`, `mailto:`) in `shell.openExternal` and the `open-external` IPC handler to reject `javascript:`, `file:`, and dangerous protocol handlers.
+- **Executable File Blocking**: Hardened `open-file` IPC handler to prevent executing dangerous files (`.bat`, `.cmd`, `.exe`, `.vbs`, `.ps1`, etc.) via `shell.openPath`.
+- **Directory Scan Resource Limits**: Bounded recursive traversal depth to 10 and max nodes to 5,000 in `scan-directory` to prevent stack exhaustion and DoS.
+- **WebPreferences & Navigation Lockdown**: Configured `webviewTag: false`, `webSecurity: true`, and disabled untrusted external navigation in `will-navigate`.
+- **Markdown Link Sanitization**: Added `sanitizeUrl` stripping dangerous schemes (`javascript:`, `vbscript:`, `data:`) and attached `rel="noopener noreferrer"`.
+
+### Fixed
+
+#### Test Suite
+- **KaTeX Delimiter Isolation**: Isolated `# Changelog
+
+All notable changes to this project will be documented in this file.
+
+ delimiters in `MarkdownRendererProperty.test.tsx` property generator to prevent false positive collisions with inline math formulas during mixed markdown testing.
+
 ## [2.4.0] - 2026-09-10
 
 ### Added
