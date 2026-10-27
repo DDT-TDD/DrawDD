@@ -85,12 +85,19 @@ export function Canvas() {
     mindmapLayoutMode,
     flowchartConnectorStyle,
     canvasBackground,
-    setCanvasBackground
+    setCanvasBackground,
+    isDrawingLine = false,
+    setIsDrawingLine = () => {},
   } = useGraph();
   const graphRef = useRef<Graph | null>(null);
   const lineColorRef = useRef<string>(getLineColor(colorScheme));
   const editCellTextHandlerRef = useRef<EventListener | null>(null);
   const quickConnectRef = useRef<QuickConnectManager | null>(null);
+  const isDrawingLineRef = useRef(isDrawingLine);
+
+  useEffect(() => {
+    isDrawingLineRef.current = isDrawingLine;
+  }, [isDrawingLine]);
 
   // Mindmap settings ref for use in callbacks
   const mindmapSettingsRef = useRef({
@@ -361,6 +368,8 @@ export function Canvas() {
         validateConnection({ sourceCell, targetCell, targetMagnet }: any) {
           // Disallow connecting to self
           if (sourceCell && targetCell && sourceCell === targetCell) return false;
+          // Connecting to blank canvas is allowed when targetCell is not set
+          if (!targetCell) return true;
           // Valid if connecting to a port magnet OR connecting to a target cell/node
           return !!targetMagnet || !!(targetCell && targetCell.isNode && targetCell.isNode());
         },
@@ -1096,10 +1105,29 @@ export function Canvas() {
 
       selectedArray.forEach((cell: any) => {
         if (cell.isEdge?.()) {
-          const routerName = (cell.getRouter() as any)?.name;
-          const isOrthogonal = routerName === 'manhattan' || routerName === 'metro' || routerName === 'er';
+          // If the edge has no manual vertices, extract computed route points so segments and vertices are immediately movable (matching draw.io)
+          if (!cell.getVertices || cell.getVertices().length === 0) {
+            const edgeView = graph.findViewByCell(cell) as any;
+            if (edgeView && typeof edgeView.findRoutePoints === 'function') {
+              try {
+                const routePoints = edgeView.findRoutePoints();
+                if (routePoints && routePoints.length > 0) {
+                  cell.setVertices(routePoints.map((p: any) => ({
+                    x: Math.round(p.x),
+                    y: Math.round(p.y),
+                  })));
+                }
+              } catch {
+                // Ignore route point calculation error
+              }
+            }
+          }
 
-          const tools: any[] = [
+          // Reset existing tools first to avoid duplicate tool accumulation
+          cell.removeTools?.();
+
+          // Provide arrowhead, waypoint (vertices), and segment tools matching draw.io
+          cell.addTools([
             {
               name: 'source-arrowhead',
               args: {
@@ -1109,8 +1137,8 @@ export function Canvas() {
                   'stroke-width': 2,
                   d: 'M 0 -5 L 5 0 L 0 5 L -5 0 Z',
                   cursor: 'move',
-                }
-              }
+                },
+              },
             },
             {
               name: 'target-arrowhead',
@@ -1121,13 +1149,23 @@ export function Canvas() {
                   'stroke-width': 2,
                   d: 'M 0 -5 L 5 0 L 0 5 L -5 0 Z',
                   cursor: 'move',
-                }
-              }
+                },
+              },
             },
-          ];
-
-          if (isOrthogonal) {
-            tools.push({
+            {
+              name: 'vertices',
+              args: {
+                attrs: {
+                  fill: '#1976d2',
+                  stroke: '#fff',
+                  'stroke-width': 2,
+                  r: 5,
+                  cursor: 'move',
+                },
+                stopPropagation: false,
+              },
+            },
+            {
               name: 'segments',
               args: {
                 attrs: {
@@ -1139,25 +1177,9 @@ export function Canvas() {
                   cursor: 'pointer',
                 },
                 stopPropagation: false,
-              }
-            });
-          } else {
-            tools.push({
-              name: 'vertices',
-              args: {
-                attrs: {
-                  fill: '#1976d2',
-                  stroke: '#fff',
-                  'stroke-width': 2,
-                  r: 5,
-                  cursor: 'move',
-                },
-                stopPropagation: false,
-              }
-            });
-          }
-
-          cell.addTools(tools);
+              },
+            },
+          ]);
         }
       });
 
@@ -1180,6 +1202,25 @@ export function Canvas() {
     graph.on('blank:click', () => {
       graph.cleanSelection();
       setSelectedCell(null);
+    });
+
+    // Clicking an edge directly should select it
+    graph.on('edge:click', ({ edge }) => {
+      if (!graph.isSelected(edge)) {
+        graph.cleanSelection();
+        graph.select(edge);
+      }
+    });
+
+    // Line drawing keyboard shortcuts
+    graph.bindKey(['l', 'L'], () => {
+      setIsDrawingLine?.(!isDrawingLineRef.current);
+      return false;
+    });
+
+    graph.bindKey(['escape', 'Escape'], () => {
+      setIsDrawingLine?.(false);
+      return false;
     });
 
     graph.on('scale', ({ sx }: { sx: number }) => {
@@ -1798,13 +1839,241 @@ export function Canvas() {
     }
   }, [gridSize]);
 
+  // Handle line drawing mode rubberband toggle
+  useEffect(() => {
+    if (!graphRef.current) return;
+    const selection = (graphRef.current as any).getPlugin?.('selection');
+    if (selection) {
+      if (isDrawingLine) {
+        selection.disableRubberband?.();
+      } else {
+        selection.enableRubberband?.();
+      }
+    }
+  }, [isDrawingLine]);
+
+  // Handle interactive line drawing on canvas
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    let drawingEdge: Edge | null = null;
+    let startPoint: { x: number; y: number } | null = null;
+    let sourceCellId: string | undefined = undefined;
+    let sourcePortId: string | undefined = undefined;
+
+    const handleMouseDown = (e: MouseEvent) => {
+      if (!isDrawingLineRef.current || !graphRef.current) return;
+      if (e.button !== 0) return; // Left mouse only
+
+      const graph = graphRef.current;
+      const targetEl = e.target as HTMLElement;
+
+      const localStart = graph.clientToLocal({ x: e.clientX, y: e.clientY });
+      startPoint = { x: Math.round(localStart.x), y: Math.round(localStart.y) };
+
+      // Check if clicked on a node or port
+      const cellView = graph.findViewByElem(targetEl);
+      let source: any;
+      if (cellView && cellView.isNodeView()) {
+        sourceCellId = cellView.cell.id;
+        const magnet = cellView.findMagnet(targetEl);
+        sourcePortId = magnet?.getAttribute('port') || undefined;
+        source = sourcePortId ? { cell: sourceCellId, port: sourcePortId } : { cell: sourceCellId };
+      } else {
+        sourceCellId = undefined;
+        sourcePortId = undefined;
+        source = { x: startPoint.x, y: startPoint.y };
+      }
+
+      const currentStyle = (window as any).__drawdd_flowchartConnectorStyle || 'rounded';
+      let edgeConnector: any = { name: 'normal' };
+      if (currentStyle === 'smooth') {
+        edgeConnector = { name: 'smooth' };
+      } else if (currentStyle === 'rounded' || currentStyle === 'flowchart') {
+        edgeConnector = { name: 'rounded', args: { radius: 8 } };
+      }
+
+      drawingEdge = graph.addEdge({
+        source,
+        target: { x: startPoint.x, y: startPoint.y },
+        attrs: {
+          line: {
+            stroke: lineColorRef.current || '#5F95FF',
+            strokeWidth: 2,
+            targetMarker: {
+              name: 'block',
+              width: 12,
+              height: 8,
+            },
+          },
+        },
+        router: { name: 'normal' },
+        connector: edgeConnector,
+        zIndex: 0,
+      });
+
+      const handleMouseMove = (moveEvt: MouseEvent) => {
+        if (!drawingEdge || !graphRef.current) return;
+        const curLocal = graphRef.current.clientToLocal({ x: moveEvt.clientX, y: moveEvt.clientY });
+        const curX = Math.round(curLocal.x);
+        const curY = Math.round(curLocal.y);
+
+        const hoverEl = moveEvt.target as HTMLElement;
+        const hoverView = graphRef.current.findViewByElem(hoverEl);
+        if (hoverView && hoverView.isNodeView() && hoverView.cell.id !== sourceCellId) {
+          const hoverMagnet = hoverView.findMagnet(hoverEl);
+          const portId = hoverMagnet?.getAttribute('port');
+          if (portId) {
+            drawingEdge.setTarget({ cell: hoverView.cell.id, port: portId });
+            return;
+          }
+        }
+
+        drawingEdge.setTarget({ x: curX, y: curY });
+      };
+
+      const handleMouseUp = (upEvt: MouseEvent) => {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+
+        if (!drawingEdge || !graphRef.current || !startPoint) return;
+        const graph = graphRef.current;
+        const endLocal = graph.clientToLocal({ x: upEvt.clientX, y: upEvt.clientY });
+        const endX = Math.round(endLocal.x);
+        const endY = Math.round(endLocal.y);
+
+        const upEl = upEvt.target as HTMLElement;
+        const upView = graph.findViewByElem(upEl);
+
+        if (upView && upView.isNodeView() && upView.cell.id !== sourceCellId) {
+          const upMagnet = upView.findMagnet(upEl);
+          const portId = upMagnet?.getAttribute('port');
+          drawingEdge.setTarget(portId ? { cell: upView.cell.id, port: portId } : { cell: upView.cell.id });
+        } else {
+          const dist = Math.hypot(endX - startPoint.x, endY - startPoint.y);
+          if (dist < 10) {
+            drawingEdge.setTarget({ x: startPoint.x + 140, y: startPoint.y });
+          } else {
+            drawingEdge.setTarget({ x: endX, y: endY });
+          }
+        }
+
+        // For orthogonal style lines without connected nodes, set step vertices if diagonal
+        const currentStyle = (window as any).__drawdd_flowchartConnectorStyle || 'rounded';
+        if (
+          (currentStyle === 'rounded' || currentStyle === 'flowchart') &&
+          !sourceCellId &&
+          !drawingEdge.getTargetCellId()
+        ) {
+          const s = drawingEdge.getSourcePoint();
+          const t = drawingEdge.getTargetPoint();
+          if (Math.abs(s.x - t.x) > 10 && Math.abs(s.y - t.y) > 10) {
+            const midX = Math.round((s.x + t.x) / 2);
+            drawingEdge.setVertices([
+              { x: midX, y: s.y },
+              { x: midX, y: t.y },
+            ]);
+          }
+        }
+
+        graph.cleanSelection();
+        graph.select(drawingEdge);
+
+        drawingEdge = null;
+        startPoint = null;
+        sourceCellId = undefined;
+        sourcePortId = undefined;
+
+        if (!upEvt.shiftKey) {
+          setIsDrawingLine(false);
+        }
+      };
+
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    };
+
+    container.addEventListener('mousedown', handleMouseDown);
+    return () => {
+      container.removeEventListener('mousedown', handleMouseDown);
+    };
+  }, [setIsDrawingLine]);
+
+  // Handle dropping line/edge shapes dragged from sidebar
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleDragOver = (e: DragEvent) => {
+      if ((window as any).__drawdd_draggingEdgeShape) {
+        e.preventDefault();
+        if (e.dataTransfer) {
+          e.dataTransfer.dropEffect = 'copy';
+        }
+      }
+    };
+
+    const handleDrop = (e: DragEvent) => {
+      const draggingEdgeShape = (window as any).__drawdd_draggingEdgeShape;
+      if (draggingEdgeShape && graphRef.current) {
+        e.preventDefault();
+        const graph = graphRef.current;
+        const localPos = graph.clientToLocal({ x: e.clientX, y: e.clientY });
+        const cx = Math.round(localPos.x);
+        const cy = Math.round(localPos.y);
+        const strokeColor = lineColorRef.current || draggingEdgeShape.attrs?.line?.stroke || '#5F95FF';
+        const edgeData = draggingEdgeShape.data || {};
+        let router: any = { name: 'normal' };
+        let connector: any = { name: 'normal' };
+        let vertices: any[] = [];
+
+        if (edgeData.connector === 'rounded' || edgeData.hasStep) {
+          connector = { name: 'rounded', args: { radius: 8 } };
+          vertices = [{ x: cx + 60, y: cy }, { x: cx + 60, y: cy + (draggingEdgeShape.height || 60) }];
+        } else if (edgeData.connector === 'smooth' || edgeData.hasCurve) {
+          connector = { name: 'smooth' };
+          vertices = [{ x: cx + 60, y: cy + 20 }];
+        }
+
+        const targetY = edgeData.hasStep || edgeData.hasCurve ? cy + (draggingEdgeShape.height || 60) : cy;
+
+        const edge = graph.addEdge({
+          source: { x: cx, y: cy },
+          target: { x: cx + (draggingEdgeShape.width || 120), y: targetY },
+          vertices,
+          router,
+          connector,
+          attrs: {
+            line: {
+              stroke: strokeColor,
+              strokeWidth: 2,
+              sourceMarker: draggingEdgeShape.attrs?.line?.sourceMarker || null,
+              targetMarker: draggingEdgeShape.attrs?.line?.targetMarker || null,
+            },
+          },
+        });
+        graph.cleanSelection();
+        graph.select(edge);
+        (window as any).__drawdd_draggingEdgeShape = null;
+      }
+    };
+
+    container.addEventListener('dragover', handleDragOver);
+    container.addEventListener('drop', handleDrop);
+    return () => {
+      container.removeEventListener('dragover', handleDragOver);
+      container.removeEventListener('drop', handleDrop);
+    };
+  }, []);
+
   const isTransparent = canvasBackground?.color === 'transparent';
 
   return (
     <div className={`relative flex-1 h-full ${isTransparent ? 'canvas-transparent-bg' : ''}`}>
       <div
         ref={containerRef}
-        className={`w-full h-full ${isTransparent ? 'canvas-transparent-bg' : ''}`}
+        className={`w-full h-full ${isTransparent ? 'canvas-transparent-bg' : ''} ${isDrawingLine ? 'cursor-crosshair' : ''}`}
       />
 
       <ZoomControls />

@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useContext, useState, type ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 import type { Graph, Node, Edge } from '@antv/x6';
 import type { GraphContextType, CanvasBackground, MindmapLayoutDirection, DiagramCanvasMode } from '../types';
 
@@ -75,6 +75,13 @@ export function GraphProvider({ children }: { children: ReactNode }) {
   const [includeHiddenFiles, setIncludeHiddenFiles] = useState<boolean>(() => {
     return localStorage.getItem('drawdd-include-hidden-files') === 'true';
   });
+  const [isDrawingLine, setIsDrawingLineState] = useState<boolean>(false);
+
+  const setIsDrawingLine = useCallback((active: boolean) => {
+    setIsDrawingLineState(active);
+    (window as any).__drawdd_isDrawingLine = active;
+    window.dispatchEvent(new CustomEvent('drawdd:draw-line-mode', { detail: { active } }));
+  }, []);
 
   return (
     <GraphContext.Provider
@@ -176,6 +183,8 @@ export function GraphProvider({ children }: { children: ReactNode }) {
           setIncludeHiddenFiles(include);
           localStorage.setItem('drawdd-include-hidden-files', include ? 'true' : 'false');
         },
+        isDrawingLine,
+        setIsDrawingLine,
       }}
     >
       {children}

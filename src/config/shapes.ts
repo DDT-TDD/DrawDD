@@ -42,6 +42,107 @@ export const FULL_PORTS_CONFIG = {
 
 export const FLOWCHART_SHAPES: ShapeConfig[] = [
   {
+    type: 'edge',
+    label: 'Line',
+    icon: 'minus',
+    width: 120,
+    height: 0,
+    attrs: {
+      body: {
+        fill: 'transparent',
+        stroke: '#333333',
+        strokeWidth: 2,
+      },
+      label: {
+        text: '',
+        fill: '#333333',
+        fontSize: 12,
+      },
+      line: {
+        stroke: '#333333',
+        strokeWidth: 2,
+        targetMarker: null,
+      },
+    },
+    data: {
+      isEdge: true,
+      router: 'normal',
+      connector: 'normal',
+    },
+  },
+  {
+    type: 'edge',
+    label: 'Connector',
+    icon: 'arrow-right',
+    width: 120,
+    height: 60,
+    attrs: {
+      body: {
+        fill: 'transparent',
+        stroke: '#5F95FF',
+        strokeWidth: 2,
+      },
+      label: {
+        text: '',
+        fill: '#333333',
+        fontSize: 12,
+      },
+      line: {
+        stroke: '#5F95FF',
+        strokeWidth: 2,
+        targetMarker: {
+          name: 'block',
+          width: 12,
+          height: 8,
+        },
+      },
+    },
+    data: {
+      isEdge: true,
+      router: 'normal',
+      connector: 'rounded',
+      hasStep: true,
+    },
+  },
+  {
+    type: 'edge',
+    label: 'Bidirectional',
+    icon: 'arrow-left-right',
+    width: 120,
+    height: 0,
+    attrs: {
+      body: {
+        fill: 'transparent',
+        stroke: '#5F95FF',
+        strokeWidth: 2,
+      },
+      label: {
+        text: '',
+        fill: '#333333',
+        fontSize: 12,
+      },
+      line: {
+        stroke: '#5F95FF',
+        strokeWidth: 2,
+        sourceMarker: {
+          name: 'block',
+          width: 12,
+          height: 8,
+        },
+        targetMarker: {
+          name: 'block',
+          width: 12,
+          height: 8,
+        },
+      },
+    },
+    data: {
+      isEdge: true,
+      router: 'normal',
+      connector: 'normal',
+    },
+  },
+  {
     type: 'rect',
     label: 'Process',
     icon: 'square',
@@ -294,8 +395,181 @@ export const FLOWCHART_SHAPES: ShapeConfig[] = [
   },
 ];
 
+// Line and Connector Shapes (draw.io compatible)
+export const LINE_SHAPES: ShapeConfig[] = [
+  {
+    type: 'edge',
+    label: 'Straight Line',
+    icon: 'minus',
+    width: 120,
+    height: 0,
+    attrs: {
+      body: {
+        fill: 'transparent',
+        stroke: '#333333',
+        strokeWidth: 2,
+      },
+      label: {
+        text: '',
+        fill: '#333333',
+        fontSize: 12,
+      },
+      line: {
+        stroke: '#333333',
+        strokeWidth: 2,
+        targetMarker: null,
+      },
+    },
+    data: {
+      isEdge: true,
+      router: 'normal',
+      connector: 'normal',
+    },
+  },
+  {
+    type: 'edge',
+    label: 'Directional Connector',
+    icon: 'arrow-right',
+    width: 120,
+    height: 0,
+    attrs: {
+      body: {
+        fill: 'transparent',
+        stroke: '#1976d2',
+        strokeWidth: 2,
+      },
+      label: {
+        text: '',
+        fill: '#333333',
+        fontSize: 12,
+      },
+      line: {
+        stroke: '#1976d2',
+        strokeWidth: 2,
+        targetMarker: {
+          name: 'block',
+          width: 12,
+          height: 8,
+        },
+      },
+    },
+    data: {
+      isEdge: true,
+      router: 'normal',
+      connector: 'normal',
+    },
+  },
+  {
+    type: 'edge',
+    label: 'Bidirectional Connector',
+    icon: 'arrow-left-right',
+    width: 120,
+    height: 0,
+    attrs: {
+      body: {
+        fill: 'transparent',
+        stroke: '#1976d2',
+        strokeWidth: 2,
+      },
+      label: {
+        text: '',
+        fill: '#333333',
+        fontSize: 12,
+      },
+      line: {
+        stroke: '#1976d2',
+        strokeWidth: 2,
+        sourceMarker: {
+          name: 'block',
+          width: 12,
+          height: 8,
+        },
+        targetMarker: {
+          name: 'block',
+          width: 12,
+          height: 8,
+        },
+      },
+    },
+    data: {
+      isEdge: true,
+      router: 'normal',
+      connector: 'normal',
+    },
+  },
+  {
+    type: 'edge',
+    label: 'Orthogonal Connector',
+    icon: 'corner-down-right',
+    width: 120,
+    height: 60,
+    attrs: {
+      body: {
+        fill: 'transparent',
+        stroke: '#1976d2',
+        strokeWidth: 2,
+      },
+      label: {
+        text: '',
+        fill: '#333333',
+        fontSize: 12,
+      },
+      line: {
+        stroke: '#1976d2',
+        strokeWidth: 2,
+        targetMarker: {
+          name: 'block',
+          width: 12,
+          height: 8,
+        },
+      },
+    },
+    data: {
+      isEdge: true,
+      router: 'normal',
+      connector: 'rounded',
+      hasStep: true,
+    },
+  },
+  {
+    type: 'edge',
+    label: 'Curved Connector',
+    icon: 'spline',
+    width: 120,
+    height: 50,
+    attrs: {
+      body: {
+        fill: 'transparent',
+        stroke: '#1976d2',
+        strokeWidth: 2,
+      },
+      label: {
+        text: '',
+        fill: '#333333',
+        fontSize: 12,
+      },
+      line: {
+        stroke: '#1976d2',
+        strokeWidth: 2,
+        targetMarker: {
+          name: 'block',
+          width: 12,
+          height: 8,
+        },
+      },
+    },
+    data: {
+      isEdge: true,
+      router: 'normal',
+      connector: 'smooth',
+      hasCurve: true,
+    },
+  },
+];
+
 // Arrow and Line Shapes
 export const ARROW_SHAPES: ShapeConfig[] = [
+  ...LINE_SHAPES,
   {
     type: 'polygon',
     label: 'Arrow Right',
@@ -747,6 +1021,68 @@ export const ORGCHART_SHAPES: ShapeConfig[] = [
 
 // Basic Shapes
 export const BASIC_SHAPES: ShapeConfig[] = [
+  {
+    type: 'edge',
+    label: 'Line',
+    icon: 'minus',
+    width: 120,
+    height: 0,
+    attrs: {
+      body: {
+        fill: 'transparent',
+        stroke: '#333333',
+        strokeWidth: 2,
+      },
+      label: {
+        text: '',
+        fill: '#333333',
+        fontSize: 12,
+      },
+      line: {
+        stroke: '#333333',
+        strokeWidth: 2,
+        targetMarker: null,
+      },
+    },
+    data: {
+      isEdge: true,
+      router: 'normal',
+      connector: 'normal',
+    },
+  },
+  {
+    type: 'edge',
+    label: 'Connector',
+    icon: 'arrow-right',
+    width: 120,
+    height: 0,
+    attrs: {
+      body: {
+        fill: 'transparent',
+        stroke: '#5F95FF',
+        strokeWidth: 2,
+      },
+      label: {
+        text: '',
+        fill: '#333333',
+        fontSize: 12,
+      },
+      line: {
+        stroke: '#5F95FF',
+        strokeWidth: 2,
+        targetMarker: {
+          name: 'block',
+          width: 12,
+          height: 8,
+        },
+      },
+    },
+    data: {
+      isEdge: true,
+      router: 'normal',
+      connector: 'normal',
+    },
+  },
   {
     type: 'rect',
     label: 'Rectangle',

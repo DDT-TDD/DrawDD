@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.5.1] - 2026-10-27
+
+### Added
+
+#### Direct Interactive Line & Connector Drawing (draw.io Parity)
+- **Line Drawing Tool (`L` Shortcut)**: Added dedicated line drawing mode activated via the new "Draw Line / Connector" toolbar button or by pressing `L` (press `Escape` or `L` again to exit).
+- **Freeform Canvas Line Drawing**: Click and drag across any canvas region to draw straight, stepped, or orthogonal connectors. Port snapping engages automatically when interacting near existing shape ports.
+- **Single-Click Connector Placement**: Clicking the canvas while in line drawing mode places a default 140px connector with auto-calculated orthogonal path routing.
+- **Unrestricted Canvas Connections**: Relaxed connection validation to allow connecting from blank canvas space to blank canvas space, or connecting shapes to arbitrary canvas positions.
+- **Sidebar Connector Shapes**: Added standalone line shapes (Straight Line, Directional Connector, Bidirectional Connector, Orthogonal Connector, and Curved Connector) to Flowchart, Basic Shapes, and Arrow Shapes sidebar palettes with both drag-and-drop and click-to-center placement.
+
+### Fixed
+
+#### Flowchart Line Moving & Segment Manipulation
+- **Restored Segment & Vertex Movement on Selected Lines**: Fixed regression where lines in flowchart mode could not be moved or adjusted after selection.
+- **S-Shape Distance Adjustment**: Selecting an orthogonal or stepped connector now exposes interactive segment handles. Dragging the middle segment dynamically adjusts the distance between the two ends, matching draw.io behavior.
+- **Simultaneous Waypoint and Segment Tool Attachment**: Replaced mutually exclusive tool attachment with concurrent `vertices` and `segments` tools alongside source/target arrowheads.
+- **Automatic Route Point Extraction**: On edge selection, intermediate bend points from `findRoutePoints()` are automatically converted to edge vertices if uninitialized, ensuring segment handles appear immediately.
+- **Routing Transition Reset**: Changing routing algorithms via the toolbar now clears outdated vertices, recalculating clean paths without stale vertex artifacts.
+- **Reliable Edge Selection**: Added explicit `edge:click` event handling to ensure consistent selection and handle rendering across complex diagrams.
+
 ## [2.5.0] - 2026-10-26
 
 ### Security

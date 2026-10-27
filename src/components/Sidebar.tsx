@@ -39,6 +39,9 @@ import {
   Layers,
   MessageSquare,
   Image as ImageIcon,
+  ArrowRightLeft,
+  CornerDownRight,
+  Spline,
 } from 'lucide-react';
 import { useGraph } from '../context/GraphContext';
 import { getColorScheme } from '../config/colorSchemes';
@@ -98,6 +101,9 @@ const iconMap: Record<string, React.FC<{ size?: number; className?: string }>> =
   'message-square': MessageSquare,
   calendar: Clock,
   image: ImageIcon,
+  'arrow-left-right': ArrowRightLeft,
+  'corner-down-right': CornerDownRight,
+  spline: Spline,
 };
 
 interface ShapeCategory {
@@ -178,6 +184,12 @@ export function Sidebar() {
   const handleDragStart = (e: React.MouseEvent, shape: ShapeConfig) => {
     if (!graph || !dndRef.current) return;
 
+    // Line / edge shape dragging
+    if (shape.type === 'edge') {
+      (window as any).__drawdd_draggingEdgeShape = shape;
+      return;
+    }
+
     // Special handling for image shape - show file picker
     if (shape.label === 'Image') {
       e.preventDefault();
@@ -228,6 +240,50 @@ export function Sidebar() {
 
     const node = createNode(graph, shape, colorScheme);
     dndRef.current.start(node, e.nativeEvent);
+  };
+
+  const handleShapeClick = (shape: ShapeConfig) => {
+    if (!graph) return;
+
+    if (shape.type === 'edge') {
+      const center = graph.getGraphArea();
+      const cx = Math.round(center.x + center.width / 2 - 60);
+      const cy = Math.round(center.y + center.height / 2);
+      const strokeColor = (window as any).__drawdd_lineColor || shape.attrs?.line?.stroke || '#5F95FF';
+      const edgeData = shape.data || {};
+      let router: any = { name: 'normal' };
+      let connector: any = { name: 'normal' };
+      let vertices: any[] = [];
+
+      if (edgeData.connector === 'rounded' || edgeData.hasStep) {
+        connector = { name: 'rounded', args: { radius: 8 } };
+        vertices = [{ x: cx + 60, y: cy }, { x: cx + 60, y: cy + (shape.height || 60) }];
+      } else if (edgeData.connector === 'smooth' || edgeData.hasCurve) {
+        connector = { name: 'smooth' };
+        vertices = [{ x: cx + 60, y: cy + 20 }];
+      }
+
+      const targetY = edgeData.hasStep || edgeData.hasCurve ? cy + (shape.height || 60) : cy;
+
+      const edge = graph.addEdge({
+        source: { x: cx, y: cy },
+        target: { x: cx + (shape.width || 120), y: targetY },
+        vertices,
+        router,
+        connector,
+        attrs: {
+          line: {
+            stroke: strokeColor,
+            strokeWidth: 2,
+            sourceMarker: shape.attrs?.line?.sourceMarker || null,
+            targetMarker: shape.attrs?.line?.targetMarker || null,
+          },
+        },
+      });
+      graph.cleanSelection();
+      graph.select(edge);
+      return;
+    }
   };
 
   return (
@@ -286,15 +342,16 @@ export function Sidebar() {
                           key={`${category.id}-${shape.type}-${index}-${shape.label}`}
                           draggable
                           onMouseDown={(e) => handleDragStart(e, shape)}
+                          onClick={() => handleShapeClick(shape)}
                           className="flex flex-col items-center gap-1.5 p-2 bg-gray-50 dark:bg-gray-800 rounded border border-transparent cursor-grab hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-gray-700 transition-all group"
                           title={shape.label}
                         >
                           <div
                             className="w-9 h-7 rounded flex items-center justify-center shadow-sm"
                             style={{
-                              backgroundColor: String(shape.attrs.body.fill || '#ffffff'),
-                              border: `1.5px solid ${String(shape.attrs.body.stroke || '#333333')}`,
-                              borderRadius: shape.attrs.body.rx ? `${Math.min(Number(shape.attrs.body.rx), 6)}px` : '2px',
+                              backgroundColor: String(shape.attrs?.body?.fill || '#ffffff'),
+                              border: `1.5px solid ${String(shape.attrs?.body?.stroke || shape.attrs?.line?.stroke || '#333333')}`,
+                              borderRadius: shape.attrs?.body?.rx ? `${Math.min(Number(shape.attrs.body.rx), 6)}px` : '2px',
                             }}
                           >
                             <Icon size={12} className="text-gray-500" />

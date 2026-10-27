@@ -59,6 +59,13 @@ export interface ShapeAttrs {
   body: ShapeBodyAttrs;
   label: ShapeLabelAttrs;
   image?: ShapeImageAttrs;
+  line?: {
+    stroke?: string;
+    strokeWidth?: number;
+    strokeDasharray?: string;
+    sourceMarker?: unknown;
+    targetMarker?: unknown;
+  };
 }
 
 export interface ShapeConfig {
@@ -272,6 +279,9 @@ export interface GraphContextType {
   setMarkdownEnabled: (enabled: boolean) => void;
   includeHiddenFiles: boolean;
   setIncludeHiddenFiles: (include: boolean) => void;
+  // Line drawing mode
+  isDrawingLine?: boolean;
+  setIsDrawingLine?: (active: boolean) => void;
 }
 
 export interface CanvasBackground {

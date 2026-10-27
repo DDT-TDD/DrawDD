@@ -26,6 +26,7 @@ import {
   ArrowRightLeft,
   Workflow,
   Circle,
+  Minus,
 } from 'lucide-react';
 import { saveAs } from 'file-saver';
 import { useGraph } from '../context/GraphContext';
@@ -45,7 +46,7 @@ interface DrawddWindow extends Window {
 }
 
 export function Toolbar() {
-  const { graph, mode, setMode, zoom, setZoom, canvasBackground, showGrid, mindmapDirection, timelineDirection, mindmapLayoutMode, setCanvasBackground, setShowGrid, setMindmapDirection, setTimelineDirection, setMindmapLayoutMode, exportConnectionPoints, exportGrid, exportCollapseIndicators, flowchartConnectorStyle, setFlowchartConnectorStyle } = useGraph();
+  const { graph, mode, setMode, zoom, setZoom, canvasBackground, showGrid, mindmapDirection, timelineDirection, mindmapLayoutMode, setCanvasBackground, setShowGrid, setMindmapDirection, setTimelineDirection, setMindmapLayoutMode, exportConnectionPoints, exportGrid, exportCollapseIndicators, flowchartConnectorStyle, setFlowchartConnectorStyle, isDrawingLine, setIsDrawingLine } = useGraph();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectionCount, setSelectionCount] = useState(0);
@@ -311,6 +312,8 @@ export function Toolbar() {
     setFlowchartConnectorStyle(mappedStyle);
     // Use same logic as PropertiesPanel handleApplyEdgesToAll for consistency
     graph.getEdges().forEach(edge => {
+      // Clear manual vertices when switching style to allow natural auto-routing
+      edge.setVertices([]);
       // Get current source/target to preserve connection points
       const source = edge.getSource();
       const target = edge.getTarget();
@@ -729,6 +732,14 @@ export function Toolbar() {
         </>
       )}
 
+      {/* Line Drawing Tool */}
+      <ToolbarButton
+        icon={Minus}
+        title={isDrawingLine ? "Exit Line Drawing Mode (Esc or L)" : "Draw Line / Connector (L)"}
+        onClick={() => setIsDrawingLine?.(!isDrawingLine)}
+        active={isDrawingLine}
+      />
+
       {/* Smart Routing - available in all modes */}
       <div className="relative group">
         <ToolbarButton icon={ArrowRightLeft} title="Default Line Type" onClick={() => handleApplyRouting('flowchart')} />
@@ -866,15 +877,20 @@ interface ToolbarButtonProps {
   title: string;
   onClick: () => void;
   disabled?: boolean;
+  active?: boolean;
 }
 
-function ToolbarButton({ icon: Icon, title, onClick, disabled }: ToolbarButtonProps) {
+function ToolbarButton({ icon: Icon, title, onClick, disabled, active }: ToolbarButtonProps) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      className={`p-2 rounded-lg transition-colors ${
+        active
+          ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 ring-2 ring-blue-500 shadow-sm'
+          : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+      } disabled:opacity-50 disabled:cursor-not-allowed`}
     >
       <Icon size={18} />
     </button>
